@@ -1,7 +1,6 @@
 import express from 'express';
 import { InitResponse, IncrementResponse, DecrementResponse } from '../shared/types/api';
 import { redis, reddit, createServer, context, getServerPort } from '@devvit/web/server';
-import { createPost } from './core/post'; // fallback only
 
 const app = express();
 app.use(express.json());
@@ -26,7 +25,8 @@ const AVAKEY  = (uid: string) => `euclid:avatar:${uid}`;
 const GAMEKEY = (gid: string) => `euclid:game:${gid}`;
 const USERMAP = (uid: string) => `euclid:user:${uid}:game`;
 const ACTIVE_GAMES = 'euclid:active_games';
-const GAMEPOST = (gid: string) => `euclid:gamepost:${gid}`;
+// NOTE: We are not creating or updating Reddit posts for now.
+// const GAMEPOST = (gid: string) => `euclid:gamepost:${gid}`;
 const ELOKEY = (uid: string) => `euclid:elo:${uid}`;
 
 const MAX_IDLE_MS = 10 * 60 * 1000; // 10m
@@ -69,7 +69,7 @@ type BoardJSON = {
   ended?: boolean;
   endedReason?: string;   // 'game_over' | 'player_left' | 'opponent_left'
   endedBy?: string;       // userId who left (if any)
-  postId?: string;        // ALWAYS store fullname e.g., 't3_abc123'
+  postId?: string;        // UNUSED for now
 };
 
 /* =========================
@@ -100,7 +100,7 @@ function makeInitialBoardJson(
     ended: false,
     endedReason: '',
     endedBy: '',
-    postId: opts.postId
+    postId: undefined // explicit: not using posts for now
   };
 }
 
@@ -170,59 +170,15 @@ function updateEloPair(a: EloRecord, b: EloRecord, resultForA: 1 | 0 | 0.5): [El
   return [newA, newB];
 }
 
-/* ===== Reddit post helpers (hardened, passing { id }) ===== */
-const sanitizeTitle = (s: string) => s.replace(/\s+/g, ' ').trim().slice(0, 140);
-const asT3 = (x?: string) => (x && typeof x === 'string') ? (x.startsWith('t3_') ? x : `t3_${x}`) : '';
-
-async function createGamePostWithTitle(title: string, body?: string): Promise<string> {
-  let fullname = '';
-  try {
-    const created = await (reddit as any).submitPost?.({
-      subredditName: context.subredditName!,
-      title: sanitizeTitle(title),
-      text: body ?? ''
-    });
-    fullname = created?.name || asT3(created?.id);
-  } catch (e) {
-    slog('[POST] submitPost failed; fallback to helper', e);
-  }
-  if (!fullname) {
-    try {
-      const fb = await (createPost as any)();
-      fullname = fb?.name || asT3(fb?.id);
-    } catch (e2) {
-      slog('[POST] createPost fallback failed', e2);
-    }
-  }
-  if (!fullname) slog('[POST] WARNING: no post fullname available; flair/body updates skipped');
-  return fullname || '';
+/* ===== Reddit post helpers (DISABLED) ===== */
+// For now, we do not create or update game posts.
+// These stubs intentionally no-op to avoid side effects and errors.
+async function createGamePostWithTitle(_title: string, _body?: string): Promise<string> {
+  return '';
 }
-
-async function updateGamePostStatus(postFullname?: string, opts: { flairText?: string; body?: string; title?: string } = {}) {
-  if (!postFullname || typeof postFullname !== 'string') { slog('[POST] skip update: no postId'); return; }
-  const id = asT3(postFullname);
-  if (!id) { slog('[POST] skip update: invalid id', postFullname); return; }
-
-  const { flairText, body, title } = opts;
-
-  if (flairText) {
-    try { await (reddit as any).setPostFlair?.({ id, text: flairText }); }
-    catch (e) { slog('[POST] setPostFlair failed', e, { id }); }
-  }
-  if (title) {
-    try { await (reddit as any).editPost?.({ id, title: sanitizeTitle(title) }); }
-    catch {/* titles often not editable for app posts; ignore */}
-  }
-  if (body) {
-    try { await (reddit as any).editPost?.({ id, text: body }); }
-    catch {
-      // Fallback: write a result comment so the outcome is visible even if body can't be edited
-      try { await (reddit as any).submitComment?.({ parentId: id, text: body }); }
-      catch (ee) { slog('[POST] submitComment fallback failed', ee); }
-    }
-  }
+async function updateGamePostStatus(_postFullname?: string, _opts: { flairText?: string; body?: string; title?: string } = {}) {
+  return;
 }
-
 function formatResultBody(board: BoardJSON, reason: string, extra?: { winnerUid?: string; loserUid?: string; afterWinner?: number; afterLoser?: number }) {
   const u1 = board.m_players[0].userId, u2 = board.m_players[1].userId;
   const names = board.playerNames || {};
@@ -321,7 +277,7 @@ router.get<{ postId: string }, InitResponse | { status: string; message: string 
    H2H: queue / pair / mapping / state / save / rematch / leave / list / stats
    ========================= */
 
-// Enqueue & pair, create post with "<name1> vs <name2>" server-side
+// Enqueue & pair (NO automatic post creation)
 router.post('/api/h2h/queue', async (_req, res) => {
   try {
     const uid = context.userId;
@@ -366,18 +322,15 @@ router.post('/api/h2h/queue', async (_req, res) => {
       if (a1) avatars[user1] = a1!;
       if (a2) avatars[user2] = a2!;
 
-      const title = `${names[user1] ?? 'Player 1'} vs ${names[user2] ?? 'Player 2'}`;
-      const postFullname = await createGamePostWithTitle(title);
-
+      // No post creation
       const gid = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
-      const board = makeInitialBoardJson(user1, user2, { names, avatars, postId: postFullname });
+      const board = makeInitialBoardJson(user1, user2, { names, avatars });
 
       await Promise.all([
         redis.set(GAMEKEY(gid), JSON.stringify(board)),
         redis.set(USERMAP(user1), gid),
         redis.set(USERMAP(user2), gid),
-        addActiveGame(gid),
-        postFullname ? redis.set(GAMEPOST(gid), postFullname) : Promise.resolve()
+        addActiveGame(gid)
       ]);
 
       return res.json({ queued: true, paired: true, gameId: gid, board, me: uid, isPlayer1: uid === user1 });
@@ -428,7 +381,7 @@ router.get('/api/h2h/mapping', async (_req, res) => {
   }
 });
 
-// state (detect opponent-left; prune; post update)
+// state (detect opponent-left; prune)
 router.get('/api/h2h/state', async (req, res) => {
   try {
     const gid = String(req.query.gameId || '');
@@ -463,15 +416,14 @@ router.get('/api/h2h/state', async (req, res) => {
         await saveBoard(gid, board);
         await removeActiveGame(gid);
 
-        const names = board.playerNames || {};
-        const n1 = names[u1||''] || 'Player 1';
-        const n2 = names[u2||''] || 'Player 2';
-        const postFullname = board.postId || (await redis.get(GAMEPOST(gid)) || '');
-        const body = formatResultBody(board, endedReason);
-        await updateGamePostStatus(postFullname, { flairText: 'Game Over', title: `${n1} vs ${n2} — Game Over`, body });
+        // Post updates disabled
+        // const names = board.playerNames || {};
+        // const n1 = names[u1||''] || 'Player 1';
+        // const n2 = names[u2||''] || 'Player 2';
+        // const body = formatResultBody(board, endedReason);
+        // await updateGamePostStatus(board.postId, { flairText: 'Game Over', title: `${n1} vs ${n2} — Game Over`, body });
       }
     } else if (ended) {
-      // if already ended (e.g., by save or leave), compute victor for UI
       const s1 = board.m_players[0].m_score ?? 0;
       const s2 = board.m_players[1].m_score ?? 0;
       if (endedReason === 'game_over') victorSide = s1 >= s2 ? 1 : 2;
@@ -486,7 +438,7 @@ router.get('/api/h2h/state', async (req, res) => {
   }
 });
 
-// save — server-authoritative validation; on game over update ELO and post body/flair
+// save — server-authoritative validation; on game over update ELO (no post updates)
 router.post('/api/h2h/save', async (req, res) => {
   try {
     const uid = context.userId;
@@ -578,12 +530,12 @@ router.post('/api/h2h/save', async (req, res) => {
       }
       await removeActiveGame(gameId);
 
-      const names = serverBoard.playerNames || {};
-      const n1 = names[u1||''] || 'Player 1';
-      const n2 = names[u2||''] || 'Player 2';
-      const postFullname = serverBoard.postId || (await redis.get(GAMEPOST(gameId)) || '');
-      const body = formatResultBody(serverBoard, 'game_over', { winnerUid, loserUid, afterWinner: afterW!, afterLoser: afterL! });
-      await updateGamePostStatus(postFullname, { flairText: 'Game Over', title: `${n1} vs ${n2} — Game Over`, body });
+      // Post updates disabled:
+      // const names = serverBoard.playerNames || {};
+      // const n1 = names[u1||''] || 'Player 1';
+      // const n2 = names[u2||''] || 'Player 2';
+      // const body = formatResultBody(serverBoard, 'game_over', { winnerUid, loserUid, afterWinner: afterW!, afterLoser: afterL! });
+      // await updateGamePostStatus(serverBoard.postId, { flairText: 'Game Over', title: `${n1} vs ${n2} — Game Over`, body });
     } else {
       // keep in active list (already there from pairing/rematch)
     }
@@ -596,7 +548,7 @@ router.post('/api/h2h/save', async (req, res) => {
   }
 });
 
-// rematch — restrict to participants and only after end
+// rematch — restrict to participants and only after end (no post updates)
 router.post('/api/h2h/rematch', async (req, res) => {
   try {
     const uid = context.userId;
@@ -615,15 +567,15 @@ router.post('/api/h2h/rematch', async (req, res) => {
 
     if (!old.ended) return res.status(409).json({ status: 'error', message: 'cannot rematch while game is live' });
 
-    const board = makeInitialBoardJson(u1, u2, { names: old.playerNames || {}, avatars: old.playerAvatars || {}, postId: old.postId });
+    const board = makeInitialBoardJson(u1, u2, { names: old.playerNames || {}, avatars: old.playerAvatars || {} });
     await saveBoard(gameId, board);
     await addActiveGame(gameId);
 
-    const names = board.playerNames || {};
-    const n1 = names[u1||''] || 'Player 1';
-    const n2 = names[u2||''] || 'Player 2';
-    const postFullname = board.postId || (await redis.get(GAMEPOST(gameId)) || '');
-    await updateGamePostStatus(postFullname, { flairText: 'Playing Now', title: `${n1} vs ${n2} — Playing Now` });
+    // Post updates disabled
+    // const names = board.playerNames || {};
+    // const n1 = names[u1||''] || 'Player 1';
+    // const n2 = names[u2||''] || 'Player 2';
+    // await updateGamePostStatus(board.postId, { flairText: 'Playing Now', title: `${n1} vs ${n2} — Playing Now` });
 
     slog('[H2H] rematch', { gameId, by: uid });
     return res.json({ ok: true, board });
@@ -633,7 +585,7 @@ router.post('/api/h2h/rematch', async (req, res) => {
   }
 });
 
-// leave — participant only; spectators are no-ops
+// leave — participant only; spectators are no-ops (no post updates)
 router.post('/api/h2h/leave', async (_req, res) => {
   try {
     const uid = context.userId;
@@ -652,12 +604,12 @@ router.post('/api/h2h/leave', async (_req, res) => {
           await saveBoard(gid, board);
           await removeActiveGame(gid);
 
-          const names = board.playerNames || {};
-          const n1 = names[u1||''] || 'Player 1';
-          const n2 = names[u2||''] || 'Player 2';
-          const postFullname = board.postId || (await redis.get(GAMEPOST(gid)) || '');
-          const body = formatResultBody(board, 'player_left');
-          await updateGamePostStatus(postFullname, { flairText: 'Game Over', title: `${n1} vs ${n2} — Game Over`, body });
+          // Post updates disabled
+          // const names = board.playerNames || {};
+          // const n1 = names[u1||''] || 'Player 1';
+          // const n2 = names[u2||''] || 'Player 2';
+          // const body = formatResultBody(board, 'player_left');
+          // await updateGamePostStatus(board.postId, { flairText: 'Game Over', title: `${n1} vs ${n2} — Game Over`, body });
         }
       }
       await redis.del(USERMAP(uid));

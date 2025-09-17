@@ -2,10 +2,37 @@ import React, { useEffect, useRef, useState } from 'react';
 import { navigateTo } from '@devvit/web/client';
 import { Devvit } from '@devvit/public-api';
 
-/* ===== theme ===== */
+/* ===== theme (light/dark aware) ===== */
 const GlobalStyles = () => (
   <style>{`
+    /* Light: default */
     :root{
+      --bg: #f8fafc;
+      --text: #0b1220;
+      --muted: #4b5563;
+      --card-bg: #ffffff;
+      --card-border: #d1d5db;
+
+      --empty-fill: #eef2f7;
+      --empty-stroke: #94a3b8;
+
+      --dot-red-stroke: #b91c1c;
+      --dot-red-fill:   #fde2e2;
+      --dot-blue-stroke:#1d4ed8;
+      --dot-blue-fill:  #e0ecff;
+
+      --line-red: 185, 28, 28;
+      --line-blue: 29, 78, 216;
+
+      --pill-red: rgba(185, 28, 28, .14);
+      --pill-blue: rgba(29, 78, 216, .14);
+    }
+
+    /* Dark: match common host toggles */
+    :root[data-theme="dark"],
+    .dark,
+    .theme-dark,
+    [data-color-mode="dark"]{
       --bg: #0b1220;
       --text: #f3f4f6;
       --muted: #9ca3af;
@@ -26,6 +53,35 @@ const GlobalStyles = () => (
       --pill-red: rgba(239, 68, 68, .20);
       --pill-blue: rgba(59, 130, 246, .20);
     }
+
+    /* Fallback to OS theme if host doesn't set attributes */
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg: #0b1220;
+        --text: #f3f4f6;
+        --muted: #9ca3af;
+        --card-bg: #111827;
+        --card-border: #374151;
+
+        --empty-fill: #1f2937;
+        --empty-stroke: #d1d5db;
+
+        --dot-red-stroke: #ef4444;
+        --dot-red-fill:   #7f1d1d;
+        --dot-blue-stroke:#3b82f6;
+        --dot-blue-fill:  #1e3a8a;
+
+        --line-red: 252, 97, 97;
+        --line-blue: 96, 165, 250;
+
+        --pill-red: rgba(239, 68, 68, .20);
+        --pill-blue: rgba(59, 130, 246, .20);
+      }
+    }
+
+    /* Let the UA know we support both */
+    body { color-scheme: light dark; }
+
     .glow-red { box-shadow: 0 0 0 3px rgba(239,68,68,.6), 0 0 18px rgba(239,68,68,.45); }
     .glow-blue{ box-shadow: 0 0 0 3px rgba(59,130,246,.6), 0 0 18px rgba(59,130,246,.45); }
     .anim__animated { animation-duration: .6s; animation-fill-mode: both; }
@@ -153,7 +209,7 @@ class Board {
   clone(){ return Board.fromJSON(this.toJSON()); }
 }
 
-/* ===== ScoreCard (single declaration!) ===== */
+/* ===== ScoreCard ===== */
 const ScoreCard:React.FC<{
   label:string;
   score:number;
@@ -198,11 +254,11 @@ export const App=(context:Devvit.Context)=>{
   const [board,setBoard]=useState<Board|null>(null);
   const [selectedStyle,setSelectedStyle]=useState(Board.PS_OFFENSIVE);
   const [status,setStatus]=useState<string>('');
-  const [winner,setWinner]=useState<number|null>(null);        // local-only (AI or immediate placer)
-  const [finalSide,setFinalSide]=useState<number|null>(null);  // authoritative (from server or derived)
-  const [finalReason,setFinalReason]=useState<string>('');     // 'game_over' | 'opponent_left' | 'player_left' | ''
+  const [winner,setWinner]=useState<number|null>(null);
+  const [finalSide,setFinalSide]=useState<number|null>(null);
+  const [finalReason,setFinalReason]=useState<string>('');
   const [isMobile,setIsMobile]=useState(false);
-  const [notice,setNotice]=useState<string>(''); // opponent left / stale
+  const [notice,setNotice]=useState<string>('');
 
   useEffect(()=>{ const onResize=()=>setIsMobile(typeof window!=='undefined'&&window.innerWidth<=768); onResize(); window.addEventListener('resize',onResize); return()=>window.removeEventListener('resize',onResize);},[]);
   useEffect(()=>{ (async()=>{ try{ await fetch('/api/init'); }catch{} })(); },[]);
@@ -222,7 +278,6 @@ export const App=(context:Devvit.Context)=>{
       if (r.status === 410) { setNotice('Game ended (stale or cleared).'); stopPolling(); return; }
       const j=await r.json();
       if (j.ended) {
-        // compute final winner side
         let side = j.victorSide ?? null;
         if (!side && j.board) {
           const s1=j.board.m_players?.[0]?.m_score??0, s2=j.board.m_players?.[1]?.m_score??0;
@@ -411,7 +466,7 @@ export const App=(context:Devvit.Context)=>{
     const onCellClick=async(x:number,y:number)=>{
       const gid = gameIdRef.current;
       if(!board||!gid) return;
-      if(spectating) return; // UX guard; server remains the authority
+      if(spectating) return;
       if(!isMyTurn || board.m_board[y*Board.WIDTH+x]>0 || winner || finalSide) return;
 
       const move=board.pointAt(x,y);
@@ -430,12 +485,10 @@ export const App=(context:Devvit.Context)=>{
       setTimeout(refreshStateOnce, 800);
     };
 
-    // Between-scorecards text
     const midText = finalSide
       ? ((finalSide===1 ? p1Name : p2Name) + ' wins!')
       : (spectating ? 'Spectating — read only' : (isMyTurn ? 'Your move' : `Waiting on ${(board.m_turn===0?p1Name:p2Name)}…`));
 
-    // Winner overlay (authoritative when finalSide set; otherwise local placer fallback)
     const decideWinnerSide = () => {
       if (finalSide) return finalSide;
       if (winner) return winner;
@@ -635,7 +688,7 @@ const GameScreen:React.FC<{
         </div>
       </div>
 
-      {/* Moved up to avoid footer overlap */}
+      {/* Spaced above footer to avoid overlap on mobile */}
       <div className="flex gap-2 mt-2" style={{ marginBottom: isMobile ? 96 : 56 }}>
         <button className="rounded cursor-pointer" style={{background:'#d93900', color:'#fff', padding:'6px 12px'}} onClick={onLeave}>
           {modeName==='Multiplayer' ? 'Leave Game' : 'Back'}
