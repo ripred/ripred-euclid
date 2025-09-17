@@ -26,6 +26,12 @@ const GlobalStyles = () => (
 
       --pill-red: rgba(185, 28, 28, .14);
       --pill-blue: rgba(29, 78, 216, .14);
+
+      /* last move highlight (light) */
+      --last-red-ring: rgba(185, 28, 28, .75);
+      --last-blue-ring: rgba(29, 78, 216, .75);
+      --last-red-glow: rgba(185, 28, 28, .45);
+      --last-blue-glow: rgba(29, 78, 216, .45);
     }
 
     /* Dark: match common host toggles */
@@ -52,6 +58,12 @@ const GlobalStyles = () => (
 
       --pill-red: rgba(239, 68, 68, .20);
       --pill-blue: rgba(59, 130, 246, .20);
+
+      /* last move highlight (dark) */
+      --last-red-ring: rgba(239, 68, 68, .80);
+      --last-blue-ring: rgba(59, 130, 246, .80);
+      --last-red-glow: rgba(239, 68, 68, .50);
+      --last-blue-glow: rgba(59, 130, 246, .50);
     }
 
     /* Fallback to OS theme if host doesn't set attributes */
@@ -76,6 +88,11 @@ const GlobalStyles = () => (
 
         --pill-red: rgba(239, 68, 68, .20);
         --pill-blue: rgba(59, 130, 246, .20);
+
+        --last-red-ring: rgba(239, 68, 68, .80);
+        --last-blue-ring: rgba(59, 130, 246, .80);
+        --last-red-glow: rgba(239, 68, 68, .50);
+        --last-blue-glow: rgba(59, 130, 246, .50);
       }
     }
 
@@ -84,9 +101,18 @@ const GlobalStyles = () => (
 
     .glow-red { box-shadow: 0 0 0 3px rgba(239,68,68,.6), 0 0 18px rgba(239,68,68,.45); }
     .glow-blue{ box-shadow: 0 0 0 3px rgba(59,130,246,.6), 0 0 18px rgba(59,130,246,.45); }
+
     .anim__animated { animation-duration: .6s; animation-fill-mode: both; }
     @keyframes zoomIn_kf { from{opacity:0;transform:scale3d(.3,.3,.3);} 50%{opacity:1;} }
     .anim__zoomIn { animation-name: zoomIn_kf; }
+
+    /* Slight pulse to make last-move pop briefly */
+    @keyframes lastPulse {
+      0%   { transform: scale(1); }
+      50%  { transform: scale(1.06); }
+      100% { transform: scale(1); }
+    }
+    .last__pulse { animation: lastPulse 900ms ease-out 2; }
   `}</style>
 );
 
@@ -252,7 +278,7 @@ type Mode='ai'|'multiplayer'|'spectate'|null;
 export const App=(context:Devvit.Context)=>{
   const [mode,setMode]=useState<Mode>(null);
   const [board,setBoard]=useState<Board|null>(null);
-  const [selectedStyle,setSelectedStyle]=useState(Board.PS_OFFENSIVE);
+  const [selectedStyle,setSelectedStyle]=useState(Board.PS_CASUAL); // default to Casual
   const [status,setStatus]=useState<string>('');
   const [winner,setWinner]=useState<number|null>(null);
   const [finalSide,setFinalSide]=useState<number|null>(null);
@@ -466,7 +492,7 @@ export const App=(context:Devvit.Context)=>{
     const onCellClick=async(x:number,y:number)=>{
       const gid = gameIdRef.current;
       if(!board||!gid) return;
-      if(spectating) return;
+      if(spectating) return; // UX guard; server remains the authority
       if(!isMyTurn || board.m_board[y*Board.WIDTH+x]>0 || winner || finalSide) return;
 
       const move=board.pointAt(x,y);
@@ -675,12 +701,37 @@ const GameScreen:React.FC<{
           {Array.from({length:8},(_,y)=>
             Array.from({length:8},(_,x)=>{
               const v=board.m_board[y * 8 + x];
-              let fill='var(--empty-fill)', stroke='var(--empty-stroke)';
-              if(v===1){ fill='var(--dot-red-fill)'; stroke='var(--dot-red-stroke)'; }
-              if(v===2){ fill='var(--dot-blue-fill)'; stroke='var(--dot-blue-stroke)'; }
+              const isLast = v>0 && board?.m_last && board.m_last.x===x && board.m_last.y===y;
+              let fill='var(--empty-fill)', stroke='var(--empty-stroke)', shadow: string | undefined = undefined, extraClass = '';
+              if(v===1){
+                fill='var(--dot-red-fill)';
+                stroke='var(--dot-red-stroke)';
+                if (isLast) {
+                  shadow = '0 0 0 5px var(--last-red-ring), 0 0 18px var(--last-red-glow)';
+                  extraClass = 'last__pulse';
+                }
+              }
+              if(v===2){
+                fill='var(--dot-blue-fill)';
+                stroke='var(--dot-blue-stroke)';
+                if (isLast) {
+                  shadow = '0 0 0 5px var(--last-blue-ring), 0 0 18px var(--last-blue-glow)';
+                  extraClass = 'last__pulse';
+                }
+              }
               return (
                 <div key={`${y}-${x}`} className="flex items-center justify-center" onClick={()=>onCellClick(x,y)}>
-                  <div className="rounded-full" style={{width:DOT, height:DOT, background:fill, border:`2px solid ${stroke}`}} />
+                  <div
+                    className={`rounded-full ${extraClass}`}
+                    style={{
+                      width:DOT, height:DOT,
+                      background:fill,
+                      border:`2px solid ${stroke}`,
+                      boxShadow: shadow
+                    }}
+                    aria-label={isLast ? 'Last move' : undefined}
+                    title={isLast ? 'Last move' : undefined}
+                  />
                 </div>
               );
             })
