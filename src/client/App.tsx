@@ -133,7 +133,9 @@ class Player { m_squares:Square[]=[]; m_score=0; m_lastNumSquares=0; m_playStyle
 /* ===== board + AI ===== */
 class Board {
   static GS_RUNNING=0; static GS_PLAYER1WIN=1; static GS_PLAYER2WIN=2; static GS_TIE=3;
-  static PS_OFFENSIVE=1; static PS_DEFENSIVE=2; static PS_CASUAL=3;
+
+  // AI styles
+  static PS_BRUTAL=0; static PS_OFFENSIVE=1; static PS_DEFENSIVE=2; static PS_CASUAL=3;
 
   static WIDTH=8; static HEIGHT=8; static CELL_WIDTH=40; static CELL_HEIGHT=40;
 
@@ -141,8 +143,11 @@ class Board {
   m_onlyShowLastSquares=false; m_createRandomizedRangeOrder=true; m_stopAt150=true;
   m_last:Point; m_lastPoints=0;
 
+  // per-player persistent offensive target (square key)
+  m_targets:(string|null)[]=[null,null];
+
   constructor(p1:Player,p2:Player,skip=false){ this.m_players=[p1,p2]; this.m_last=new Point(-1,-1); if(!skip) this.initGame(); }
-  initGame(){ this.m_board=new Array(Board.WIDTH*Board.HEIGHT).fill(0); this.m_history=[]; this.m_turn=0; this.m_displayed_game_over=false; this.m_last=new Point(-1,-1); this.m_players[0].initGame(); this.m_players[1].initGame(); }
+  initGame(){ this.m_board=new Array(Board.WIDTH*Board.HEIGHT).fill(0); this.m_history=[]; this.m_turn=0; this.m_displayed_game_over=false; this.m_last=new Point(-1,-1); this.m_players[0].initGame(); this.m_players[1].initGame(); this.m_targets=[null,null]; }
   pointAt(x:number,y:number){ return new Point(x,y); }
   createRandomizedRange(size:number){ const a=[...Array(size).keys()]; for(let p=0;p<size*size;p++){ const i=Math.floor(Math.random()*size),j=Math.floor(Math.random()*size); if(i!==j){[a[i],a[j]]=[a[j],a[i]]}} return a; }
 
@@ -186,6 +191,20 @@ class Board {
       if(remain===0){ const left=Math.min(x,col,x1,x2),top=Math.min(y,row,y1,y2),right=Math.max(x,col,x1,x2),bottom=Math.max(y,row,y1,y2); total+=(right-left+1)*(bottom-top+1); }
     } this.m_board[pt.index]=saved; return total; }
 
+  private scoreIfPlacedForColor(pt:Point, color:number){ const saved=this.m_board[pt.index]; const savedTurn=this.m_turn; this.m_board[pt.index]=color; this.m_turn=color-1;
+    let total=0; const x=pt.x,y=pt.y,other=color===1?2:1;
+    for(let row=0;row<Board.HEIGHT;row++){
+      for(let col=0;col<Board.WIDTH;col++){
+        const dx=col-x,dy=row-y,x1=x-dy,y1=y+dx,x2=col-dy,y2=row+dx;
+        if(x1<0||x1>=Board.WIDTH||y1<0||y1>=Board.HEIGHT||x2<0||x2>=Board.WIDTH||y2<0||y2>=Board.HEIGHT||(col===x&&row===y)) continue;
+        const v1=this.m_board[y*Board.WIDTH+x],v2=this.m_board[row*Board.WIDTH+col],v3=this.m_board[y1*Board.WIDTH+x1],v4=this.m_board[y2*Board.WIDTH+x2];
+        if(v1===other||v2===other||v3===other||v4===other) continue;
+        const remain=(v1===0?1:0)+(v2===0?1:0)+(v3===0?1:0)+(v4===0?1:0);
+        if(remain===0){ const left=Math.min(x,col,x1,x2),top=Math.min(y,row,y1,y2),right=Math.max(x,col,x1,x2),bottom=Math.max(y,row,y1,y2); total+=(right-left+1)*(bottom-top+1); }
+      }
+    }
+    this.m_board[pt.index]=saved; this.m_turn=savedTurn; return total; }
+
   private bestPotentialValueForMove(pt:Point){ const potentials:Square[]=[]; this.analyze(pt,potentials); let best=0; for(const s of potentials) if(s.points>best) best=s.points; return best; }
 
   private offensiveChoice(){ const rows=this.createRandomizedRange(Board.HEIGHT), cols=this.createRandomizedRange(Board.WIDTH), all:Square[]=[];
@@ -205,8 +224,132 @@ class Board {
     return { pt:best, immediate:bestImm };
   }
 
+  // ===== Unified engine helpers =====
+  private static sqKeyByIndices(...idx:number[]):string{ return idx.slice().sort((a,b)=>a-b).join(','); }
+
+  private collectSquaresForColor(color:number):Square[]{
+    const saveTurn=this.m_turn; this.m_turn=color-1;
+    const all:Square[]=[];
+    for(let y=0;y<Board.HEIGHT;y++){
+      for(let x=0;x<Board.WIDTH;x++){
+        const cur:Square[]=[]; this.analyze(this.pointAt(x,y),cur);
+        for(const s of cur){
+          if(!all.some(t=>t.p1.index===s.p1.index&&t.p2.index===s.p2.index&&t.p3.index===s.p3.index&&t.p4.index===s.p4.index&&t.points===s.points&&t.remain===s.remain&&t.clr===s.clr)){
+            all.push(s);
+          }
+        }
+      }
+    }
+    this.m_turn=saveTurn;
+    return all;
+  }
+
+  private shouldMistake(maxVal:number):boolean{
+    if(maxVal<0) return false;
+    if(maxVal===0) return true;
+    return Math.floor(Math.random()*maxVal)===0;
+  }
+
+  private randomEmptyPoint():Point{
+    const empties:number[]=[]; for(let i=0;i<this.m_board.length;i++){ if(this.m_board[i]===0) empties.push(i); }
+    if(empties.length===0) return this.pointAt(0,0);
+    const pick=empties[Math.floor(Math.random()*empties.length)];
+    return this.pointAt(pick%Board.WIDTH, Math.floor(pick/Board.WIDTH));
+  }
+
+  private chooseUnifiedMove(defMax:number, offMax:number):Point{
+    const me=this.m_turn; const myClr=me+1; const oppClr=myClr===1?2:1;
+
+    // 1) DEFENSE: block opponent's best immediate completion (one-away)
+    let bestBlockPts=-1; let bestBlock=this.pointAt(0,0); let foundThreat=false;
+    for(let i=0;i<this.m_board.length;i++){
+      if(this.m_board[i]!==0) continue;
+      const pt=this.pointAt(i%Board.WIDTH, Math.floor(i/Board.WIDTH));
+      const oppGain=this.scoreIfPlacedForColor(pt, oppClr);
+      if(oppGain>bestBlockPts){ bestBlockPts=oppGain; bestBlock=pt; }
+      if(oppGain>0) foundThreat=true;
+    }
+    if(foundThreat && !this.shouldMistake(defMax)){
+      return bestBlock; // perfect (or probabilistic) block
+    }
+
+    // 2) OFFENSE: persist or choose a max-area target for us
+    const opp=oppClr;
+    const getEmptyBestCorner = (idxs:number[]):Point|null=>{
+      let best:Point|null=null; let bestImm=-1;
+      for(const idx of idxs){
+        if(this.m_board[idx]!==0) continue;
+        const pt=this.pointAt(idx%Board.WIDTH, Math.floor(idx/Board.WIDTH));
+        const imm=this.scoreIfPlacedForColor(pt, myClr);
+        if(imm>bestImm){ bestImm=imm; best=pt; }
+      }
+      return best;
+    };
+
+    const currentKey=this.m_targets[me];
+    let targetKey:string|null=currentKey;
+
+    const keyToPlayableCorner = (key:string|null):Point|null=>{
+      if(!key) return null;
+      const parts=key.split(',').map(s=>parseInt(s,10));
+      // invalidate if opponent claimed any corner
+      for(const idx of parts){ if(this.m_board[idx]===opp) return null; }
+      // already ours?
+      let ours=0; for(const idx of parts){ if(this.m_board[idx]===myClr) ours++; }
+      if(ours===4) return null;
+      return getEmptyBestCorner(parts);
+    };
+
+    let playPt:Point|null = keyToPlayableCorner(targetKey);
+
+    if(!playPt){
+      // choose a new target among max-area squares for us
+      const cand=this.collectSquaresForColor(myClr).filter(s=>{
+        // filter out any square that currently contains opponent's color
+        const idxs=[s.p1.index,s.p2.index,s.p3.index,s.p4.index];
+        for(const idx of idxs){ if(this.m_board[idx]===opp) return false; }
+        return true;
+      });
+      if(cand.length>0){
+        let maxPts=0; for(const s of cand) if(s.points>maxPts) maxPts=s.points;
+        const top=cand.filter(s=>s.points===maxPts);
+        // tie-break: fewest remain, then stable by key
+        let minRemain=Math.min(...top.map(s=>s.remain));
+        const top2=top.filter(s=>s.remain===minRemain)
+                      .sort((a,b)=>{
+                        const ka=Board.sqKeyByIndices(a.p1.index,a.p2.index,a.p3.index,a.p4.index);
+                        const kb=Board.sqKeyByIndices(b.p1.index,b.p2.index,b.p3.index,b.p4.index);
+                        return ka<kb?-1:ka>kb?1:0;
+                      });
+        const chosen=top2[0];
+        targetKey=Board.sqKeyByIndices(chosen.p1.index,chosen.p2.index,chosen.p3.index,chosen.p4.index);
+        this.m_targets[me]=targetKey;
+        playPt=keyToPlayableCorner(targetKey);
+      }
+    }
+
+    if(playPt){
+      // possible offensive mistake?
+      if(this.shouldMistake(offMax)){
+        return this.randomEmptyPoint();
+      }
+      return playPt;
+    }
+
+    // Fallback: nothing compelling found
+    return this.randomEmptyPoint();
+  }
+
   findBestMove(){
     const style=this.m_players[this.m_turn].m_playStyle;
+
+    // New unified engine only for BRUTAL at first (safe rollout)
+    if(style===Board.PS_BRUTAL){
+      // perfect: no mistakes on defense or offense
+      return this.chooseUnifiedMove(-1, -1);
+    }
+
+    // Legacy behaviors remain for Offensive / Defensive / Casual
     if(this.m_players[this.m_turn].m_goofs || style===Board.PS_CASUAL){
       if(Math.floor(Math.random()*(style===Board.PS_CASUAL?18:12))===1){
         let x=-1,y=-1; while(x<0||this.m_board[y*Board.WIDTH+x]>0){ x=Math.floor(Math.random()*Board.WIDTH); y=Math.floor(Math.random()*Board.HEIGHT); }
@@ -285,6 +428,7 @@ export const App=(context:Devvit.Context)=>{
   const [finalReason,setFinalReason]=useState<string>('');
   const [isMobile,setIsMobile]=useState(false);
   const [notice,setNotice]=useState<string>('');
+  const [showRules,setShowRules]=useState(false);
 
   useEffect(()=>{ const onResize=()=>setIsMobile(typeof window!=='undefined'&&window.innerWidth<=768); onResize(); window.addEventListener('resize',onResize); return()=>window.removeEventListener('resize',onResize);},[]);
   useEffect(()=>{ (async()=>{ try{ await fetch('/api/init'); }catch{} })(); },[]);
@@ -376,23 +520,61 @@ export const App=(context:Devvit.Context)=>{
   const [games,setGames]=useState<{gameId:string; names:Record<string,string>; scores:number[]; lastSaved:number; ended:boolean}[]>([]);
   const loadGames = async () => { try { const r=await fetch('/api/games/list'); const j=await r.json(); setGames(j.games||[]); } catch {} };
 
+  /* ===== Rules Overlay ===== */
+  const RulesOverlay = showRules ? (
+    <div
+      className="anim__animated anim__zoomIn"
+      onClick={()=>setShowRules(false)}
+      style={{position:'fixed', inset:0, display:'flex', alignItems:'center', justifyContent:'center', zIndex:60, background:'rgba(0,0,0,.55)'}}
+    >
+      <div
+        onClick={(e)=>e.stopPropagation()}
+        style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`, borderRadius:12, padding:'16px 22px', maxWidth:680, width:'min(92vw, 680px)'}}
+      >
+        <div style={{fontSize:'1.2rem', fontWeight:800, marginBottom:8}}>How to Play — Euclid</div>
+        <div style={{lineHeight:1.45, color:'var(--text)'}}>
+          <ul style={{paddingLeft: '1.2em', listStyle:'disc'}}>
+            <li>Players take turns placing a dot on an 8×8 grid.</li>
+            <li>A rectangle is <b>completed</b> when all four of its corner cells are your color. The four corners do not need to be axis-aligned — they can form a rotated rectangle.</li>
+            <li><b>Scoring:</b> The points for each completed rectangle are the <b>area of the axis-aligned bounding rectangle</b> that encloses those four corners: <b>width × height</b>. This applies even if your rectangle is rotated. This is intentional.</li>
+            <li>One move can complete multiple rectangles; you score the sum of their areas.</li>
+            <li>First to <b>150</b> points wins. If both reach 150 on the same turn, higher total wins; ties are possible.</li>
+            <li>You can block an opponent by occupying a needed corner before they do.</li>
+          </ul>
+        </div>
+        <div className="mt-3" style={{display:'flex', justifyContent:'flex-end', marginTop:12}}>
+          <button className="rounded cursor-pointer" style={{background:'#d93900', color:'#fff', padding:'6px 12px'}} onClick={()=>setShowRules(false)}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   /* ===== Intro ===== */
   if(mode===null){
     return (
       <div className="flex flex-col justify-center items-center min-h-screen gap-6" style={{background:'var(--bg)'}}>
         <GlobalStyles />
+        {RulesOverlay}
         <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid</h1>
 
         <div className="flex flex-col items-center gap-2">
-          <label className="font-medium" style={{color:'var(--muted)'}}>AI Style</label>
-          <select className="rounded px-4 py-2" style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`}} value={selectedStyle} onChange={(e)=>setSelectedStyle(Number(e.target.value))}>
+          <label className="font-medium" style={{color:'var(--muted)'}}>AI Mode</label>
+          <select
+            className="rounded px-4 py-2"
+            style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`}}
+            value={selectedStyle}
+            onChange={(e)=>setSelectedStyle(Number(e.target.value))}
+          >
+            <option value={Board.PS_BRUTAL}>Brutal</option>
             <option value={Board.PS_OFFENSIVE}>Offensive</option>
             <option value={Board.PS_DEFENSIVE}>Defensive</option>
             <option value={Board.PS_CASUAL}>Casual</option>
           </select>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap items-center justify-center">
           <button className="rounded cursor-pointer" style={{background:'#d93900', color:'#fff', padding:'8px 16px'}}
             onClick={()=>{ const p1=new Player(selectedStyle,false); const p2=new Player(selectedStyle,true); const b=new Board(p1,p2); setBoard(b); setWinner(null); setMode('ai'); }}>
             Play vs AI
@@ -422,6 +604,11 @@ export const App=(context:Devvit.Context)=>{
           <button className="rounded cursor-pointer" style={{background:'#374151', color:'#fff', padding:'8px 16px'}}
             onClick={async()=>{ await loadGames(); setMode('spectate'); }}>
             Spectate
+          </button>
+
+          <button className="rounded cursor-pointer" style={{background:'#6b7280', color:'#fff', padding:'8px 16px'}}
+            onClick={()=>setShowRules(true)}>
+            Rules
           </button>
         </div>
 
@@ -511,10 +698,12 @@ export const App=(context:Devvit.Context)=>{
       setTimeout(refreshStateOnce, 800);
     };
 
+    // Between-scorecards text
     const midText = finalSide
       ? ((finalSide===1 ? p1Name : p2Name) + ' wins!')
       : (spectating ? 'Spectating — read only' : (isMyTurn ? 'Your move' : `Waiting on ${(board.m_turn===0?p1Name:p2Name)}…`));
 
+    // Winner overlay (authoritative when finalSide set; otherwise local placer fallback)
     const decideWinnerSide = () => {
       if (finalSide) return finalSide;
       if (winner) return winner;
@@ -569,10 +758,13 @@ export const App=(context:Devvit.Context)=>{
   if(mode==='ai'){
     if(!board) return <div>Loading...</div>;
 
+    const style=selectedStyle;
     const p1Name='You';
-    const p2Name= selectedStyle===Board.PS_OFFENSIVE ? 'Bot (Offensive)'
-                 : selectedStyle===Board.PS_DEFENSIVE ? 'Bot (Defensive)'
-                 : 'Bot (Casual)';
+    const p2Name=
+      style===Board.PS_BRUTAL ? 'Bot (Brutal)'
+    : style===Board.PS_OFFENSIVE ? 'Bot (Offensive)'
+    : style===Board.PS_DEFENSIVE ? 'Bot (Defensive)'
+    : 'Bot (Casual)';
 
     const onCellClick=(x:number,y:number)=>{
       if(board.m_turn!==0 || board.m_board[y*Board.WIDTH+x]>0 || winner) return;
@@ -582,7 +774,7 @@ export const App=(context:Devvit.Context)=>{
       if(st!==0){ setWinner(st); setBoard(board.clone()); return; }
       board.advanceTurn();
       setTimeout(()=>{
-        board.m_players[1].m_playStyle = selectedStyle;
+        board.m_players[1].m_playStyle = style;
         board.makeMove();
         const st2=board.checkGameOver();
         if(st2!==0) setWinner(st2);
