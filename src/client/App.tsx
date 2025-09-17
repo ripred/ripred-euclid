@@ -154,19 +154,41 @@ class Board {
 }
 
 /* ===== ScoreCard (single declaration!) ===== */
-const ScoreCard:React.FC<{label:string; score:number; align:'left'|'right'; glow?: 'red' | 'blue' | null; avatar?: string}> =
-({ label, score, align, glow=null, avatar }) => (
-  <div className={`flex flex-col ${align==='right'?'items-end':'items-start'}`}>
-    <div className={`flex items-center justify-between px-3 py-1 rounded-md shadow-sm ${glow==='red'?'glow-red':''} ${glow==='blue'?'glow-blue':''}`}
-         style={{width:230, background:'var(--card-bg)', border:`1px solid var(--card-border)`}}>
-      <div className="flex items-center gap-2" style={{color:'var(--text)'}}>
-        {avatar ? <img src={avatar} alt="" style={{width:22,height:22,borderRadius:'50%'}}/> : <span className="inline-block w-[22px] h-[22px] rounded-full" style={{background:'var(--empty-stroke)'}}/>}
-        <span className="font-medium">{label}</span>
+const ScoreCard:React.FC<{
+  label:string;
+  score:number;
+  align:'left'|'right';
+  glow?: 'red' | 'blue' | null;
+  avatar?: string;
+  compact?: boolean;
+}> =
+({ label, score, align, glow=null, avatar, compact=false }) => {
+  const width = compact ? 'clamp(160px, 44vw, 210px)' : 'clamp(200px, 42vw, 230px)';
+  return (
+    <div className={`flex flex-col ${align==='right'?'items-end':'items-start'}`}>
+      <div
+        className={`flex items-center justify-between px-3 py-1 rounded-md shadow-sm ${glow==='red'?'glow-red':''} ${glow==='blue'?'glow-blue':''}`}
+        style={{width, background:'var(--card-bg)', border:`1px solid var(--card-border)`}}
+      >
+        <div className="flex items-center gap-2" style={{color:'var(--text)', minWidth:0}}>
+          {avatar ? (
+            <img src={avatar} alt="" style={{width:22,height:22,borderRadius:'50%'}}/>
+          ) : (
+            <span className="inline-block" style={{width:22,height:22,borderRadius:'50%',background:'var(--empty-stroke)'}}/>
+          )}
+          <span
+            className="font-medium"
+            style={{display:'inline-block', overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis', maxWidth: compact ? 120 : 150}}
+            title={label}
+          >
+            {label}
+          </span>
+        </div>
+        <span className="font-semibold" style={{color:'var(--text)'}}>{score}</span>
       </div>
-      <span className="font-semibold" style={{color:'var(--text)'}}>{score}</span>
     </div>
-  </div>
-);
+  );
+};
 
 /* ===== App ===== */
 type Mode='ai'|'multiplayer'|'spectate'|null;
@@ -567,22 +589,32 @@ const GameScreen:React.FC<{
       {overlay}
       <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid</h1>
 
-      <div className="w-full flex flex-col gap-2">
+      {/* Scoreboard */}
+      {!isMobile ? (
         <div className="w-full flex justify-between gap-4 items-start">
           <div className="flex-1 flex justify-start" style={{opacity:leftDim}}>
             <ScoreCard label={p1Name} score={board.m_players[0].m_score} align="left" glow={leftGlow} avatar={p1Avatar} />
           </div>
-          {!isMobile && (
-            <div className="flex flex-col items-center justify-start" style={{minWidth:260, color:'var(--text)'}}>
-              <div style={{fontWeight:800}}>{midText}</div>
-            </div>
-          )}
+          <div className="flex flex-col items-center justify-start" style={{minWidth:260, color:'var(--text)'}}>
+            <div style={{fontWeight:800}}>{midText}</div>
+          </div>
           <div className="flex-1 flex justify-end" style={{opacity:rightDim}}>
             <ScoreCard label={p2Name} score={board.m_players[1].m_score} align="right" glow={rightGlow} avatar={p2Avatar} />
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="w-full flex flex-col items-center gap-2">
+          <div style={{opacity:leftDim}}>
+            <ScoreCard label={p1Name} score={board.m_players[0].m_score} align="left" glow={leftGlow} avatar={p1Avatar} compact />
+          </div>
+          <div style={{color:'var(--text)', fontWeight:800}}>{midText}</div>
+          <div style={{opacity:rightDim}}>
+            <ScoreCard label={p2Name} score={board.m_players[1].m_score} align="right" glow={rightGlow} avatar={p2Avatar} compact />
+          </div>
+        </div>
+      )}
 
+      {/* Board */}
       <div className="relative" style={{width:bw, height:bh, margin:'0 auto'}}>
         <svg className="absolute top-0 left-0 w-full h-full pointer-events-none z-10" viewBox={`0 0 ${bw} ${bh}`}>{lines}</svg>
 
@@ -603,7 +635,8 @@ const GameScreen:React.FC<{
         </div>
       </div>
 
-      <div className="flex gap-2 mt-2 mb-6">
+      {/* Moved up to avoid footer overlap */}
+      <div className="flex gap-2 mt-2" style={{ marginBottom: isMobile ? 96 : 56 }}>
         <button className="rounded cursor-pointer" style={{background:'#d93900', color:'#fff', padding:'6px 12px'}} onClick={onLeave}>
           {modeName==='Multiplayer' ? 'Leave Game' : 'Back'}
         </button>
