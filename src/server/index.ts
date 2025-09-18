@@ -25,15 +25,23 @@ const AVAKEY  = (uid: string) => `euclid:avatar:${uid}`;
 const GAMEKEY = (gid: string) => `euclid:game:${gid}`;
 const USERMAP = (uid: string) => `euclid:user:${uid}:game`;
 const ACTIVE_GAMES = 'euclid:active_games';
-// NOTE: We are not creating or updating Reddit posts for now.
-// const GAMEPOST = (gid: string) => `euclid:gamepost:${gid}`;
-const ELOKEY = (uid: string) => `euclid:elo:${uid}`;
+
+// ELO & players (bucketed: hvh = human vs human, hva = human vs AI)
+const PLAYERS_KEY = (bucket: 'hvh'|'hva') => `euclid:players:${bucket}`;
+const OLD_ELOKEY = (uid: string) => `euclid:elo:${uid}`;                       // legacy (pre-bucket)
+const ELOKEY = (uid: string, bucket: 'hvh'|'hva') => `euclid:elo:${bucket}:${uid}`;
 
 const MAX_IDLE_MS = 10 * 60 * 1000; // 10m
-
-// ELO
 const ELO_START = 1200;
 const ELO_K = 32;
+
+// AI baselines per difficulty
+const AI_BASE: Record<'casual'|'offensive'|'defensive'|'brutal', number> = {
+  casual: 1000,
+  offensive: 1200,
+  defensive: 1350,
+  brutal: 1600,
+};
 
 /* =========================
    TYPES
@@ -69,7 +77,6 @@ type BoardJSON = {
   ended?: boolean;
   endedReason?: string;   // 'game_over' | 'player_left' | 'opponent_left'
   endedBy?: string;       // userId who left (if any)
-  postId?: string;        // UNUSED for now
 };
 
 /* =========================
@@ -78,7 +85,7 @@ type BoardJSON = {
 function makeInitialBoardJson(
   user1: string,
   user2: string,
-  opts: { names?: Record<string, string>, avatars?: Record<string,string>, postId?: string } = {}
+  opts: { names?: Record<string, string>, avatars?: Record<string,string> } = {}
 ): BoardJSON {
   return {
     m_board: Array(BOARD_W * BOARD_H).fill(0),
@@ -99,8 +106,7 @@ function makeInitialBoardJson(
     lastSaved: Date.now(),
     ended: false,
     endedReason: '',
-    endedBy: '',
-    postId: undefined // explicit: not using posts for now
+    endedBy: ''
   };
 }
 
@@ -154,12 +160,39 @@ async function cleanupIfStale(gid: string): Promise<boolean> {
 
 // ELO storage
 type EloRecord = { rating: number; games: number; wins: number; losses: number; draws: number };
-async function getElo(uid: string): Promise<EloRecord> {
-  const s = await redis.get(ELOKEY(uid));
+async function getPlayers(bucket: 'hvh'|'hva'): Promise<string[]> {
+  const s = await redis.get(PLAYERS_KEY(bucket));
+  if (!s) return [];
+  try { return JSON.parse(s) as string[]; } catch { return []; }
+}
+async function addPlayer(bucket: 'hvh'|'hva', uid: string): Promise<void> {
+  const list = await getPlayers(bucket);
+  if (!list.includes(uid)) {
+    list.push(uid);
+    await redis.set(PLAYERS_KEY(bucket), JSON.stringify(list));
+  }
+}
+async function getElo(uid: string, bucket: 'hvh'|'hva'): Promise<EloRecord> {
+  // Migrate legacy single-bucket ratings to hvh on first access
+  if (bucket === 'hvh') {
+    const legacy = await redis.get(OLD_ELOKEY(uid));
+    if (legacy) {
+      try {
+        const parsed = JSON.parse(legacy) as EloRecord;
+        await redis.set(ELOKEY(uid, 'hvh'), legacy);
+        await redis.del(OLD_ELOKEY(uid));
+        await addPlayer('hvh', uid);
+      } catch {}
+    }
+  }
+  const s = await redis.get(ELOKEY(uid, bucket));
   if (!s) return { rating: ELO_START, games: 0, wins: 0, losses: 0, draws: 0 };
   try { return JSON.parse(s) as EloRecord; } catch { return { rating: ELO_START, games: 0, wins: 0, losses: 0, draws: 0 }; }
 }
-async function setElo(uid: string, rec: EloRecord) { await redis.set(ELOKEY(uid), JSON.stringify(rec)); }
+async function setElo(uid: string, bucket: 'hvh'|'hva', rec: EloRecord) {
+  await redis.set(ELOKEY(uid, bucket), JSON.stringify(rec));
+  await addPlayer(bucket, uid);
+}
 function updateEloPair(a: EloRecord, b: EloRecord, resultForA: 1 | 0 | 0.5): [EloRecord, EloRecord] {
   const Ra = a.rating, Rb = b.rating;
   const Ea = 1 / (1 + Math.pow(10, (Rb - Ra) / 400));
@@ -168,38 +201,6 @@ function updateEloPair(a: EloRecord, b: EloRecord, resultForA: 1 | 0 | 0.5): [El
   const newA = { ...a, rating: Math.round(Ra + ELO_K * (Sa - Ea)), games: a.games + 1, wins: a.wins + (Sa === 1 ? 1 : 0), losses: a.losses + (Sa === 0 ? 1 : 0), draws: a.draws + (Sa === 0.5 ? 1 : 0) };
   const newB = { ...b, rating: Math.round(Rb + ELO_K * (Sb - Eb)), games: b.games + 1, wins: b.wins + (Sb === 1 ? 1 : 0), losses: b.losses + (Sb === 0 ? 1 : 0), draws: b.draws + (Sb === 0.5 ? 1 : 0) };
   return [newA, newB];
-}
-
-/* ===== Reddit post helpers (DISABLED) ===== */
-// For now, we do not create or update game posts.
-async function createGamePostWithTitle(_title: string, _body?: string): Promise<string> {
-  return '';
-}
-async function updateGamePostStatus(_postFullname?: string, _opts: { flairText?: string; body?: string; title?: string } = {}) {
-  return;
-}
-function formatResultBody(board: BoardJSON, reason: string, extra?: { winnerUid?: string; loserUid?: string; afterWinner?: number; afterLoser?: number }) {
-  const u1 = board.m_players[0].userId, u2 = board.m_players[1].userId;
-  const names = board.playerNames || {};
-  const n1 = names[u1] || 'Player 1';
-  const n2 = names[u2] || 'Player 2';
-  const s1 = board.m_players[0].m_score ?? 0;
-  const s2 = board.m_players[1].m_score ?? 0;
-
-  const winnerName = s1 > s2 ? n1 : (s2 > s1 ? n2 : 'Tie');
-  const lines = [
-    `**Result:** ${winnerName} (${s1}–${s2})`,
-    `**Reason:** ${reason === 'game_over' ? 'Score reached 150' : reason === 'player_left' ? 'Player left' : reason === 'opponent_left' ? 'Opponent left' : reason}`,
-    `**Players:** ${n1} vs ${n2}`,
-    `**Final Score:** ${n1} ${s1} — ${s2} ${n2}`
-  ];
-
-  if (extra?.afterWinner != null && extra?.afterLoser != null && extra?.winnerUid && extra?.loserUid) {
-    const wn = names[extra.winnerUid] || 'Winner';
-    const ln = names[extra.loserUid] || 'Loser';
-    lines.push(`**ELO:** ${wn} ${extra.afterWinner}, ${ln} ${extra.afterLoser}`);
-  }
-  return lines.join('\n\n');
 }
 
 /* =========================
@@ -321,7 +322,6 @@ router.post('/api/h2h/queue', async (_req, res) => {
       if (a1) avatars[user1] = a1!;
       if (a2) avatars[user2] = a2!;
 
-      // No post creation
       const gid = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
       const board = makeInitialBoardJson(user1, user2, { names, avatars });
 
@@ -463,7 +463,7 @@ router.get('/api/h2h/state', async (req, res) => {
   }
 });
 
-// save — server-authoritative validation; on game over update ELO (no post updates)
+// save — server-authoritative validation; on game over update ELO (H2H bucket)
 router.post('/api/h2h/save', async (req, res) => {
   try {
     const uid = context.userId;
@@ -514,7 +514,7 @@ router.post('/api/h2h/save', async (req, res) => {
     serverBoard.m_history = serverBoard.m_history || [];
     serverBoard.m_history.push({ x, y, index: idx });
 
-    // Merge completed squares (dedup) for overlay fidelity across clients
+    // Merge completed squares (dedup)
     const playerSquares = serverBoard.m_players[callerSide].m_squares || [];
     const existing = new Set<string>(playerSquares.map(s => squareKey(s.p1, s.p2, s.p3, s.p4)));
     let added = 0;
@@ -546,16 +546,12 @@ router.post('/api/h2h/save', async (req, res) => {
     await saveBoard(gameId, serverBoard);
 
     if (gameEnded) {
-      let afterW: number | undefined, afterL: number | undefined;
       if (winnerUid && loserUid) {
-        const [aRec, bRec] = await Promise.all([getElo(winnerUid), getElo(loserUid)]);
+        const [aRec, bRec] = await Promise.all([getElo(winnerUid, 'hvh'), getElo(loserUid, 'hvh')]);
         const [na, nb] = updateEloPair(aRec, bRec, 1);
-        await Promise.all([setElo(winnerUid, na), setElo(loserUid, nb)]);
-        afterW = na.rating; afterL = nb.rating;
+        await Promise.all([setElo(winnerUid, 'hvh', na), setElo(loserUid, 'hvh', nb)]);
       }
       await removeActiveGame(gameId);
-    } else {
-      // keep in active list (already there from pairing/rematch)
     }
 
     slog('[H2H] save', { gameId, by: uid, x, y, points, gameEnded });
@@ -566,7 +562,7 @@ router.post('/api/h2h/save', async (req, res) => {
   }
 });
 
-// rematch — restrict to participants and only after end (no post updates)
+// rematch — restrict to participants and only after end
 router.post('/api/h2h/rematch', async (req, res) => {
   try {
     const uid = context.userId;
@@ -597,7 +593,7 @@ router.post('/api/h2h/rematch', async (req, res) => {
   }
 });
 
-// leave — participant only; spectators are no-ops (no post updates)
+// leave — participant only; spectators are no-ops
 router.post('/api/h2h/leave', async (_req, res) => {
   try {
     const uid = context.userId;
@@ -628,7 +624,7 @@ router.post('/api/h2h/leave', async (_req, res) => {
   }
 });
 
-// live-only spectator list
+// live-only spectator list (sorted by lastSaved desc)
 router.get('/api/games/list', async (_req, res) => {
   try {
     const ids = await getActiveGames();
@@ -649,20 +645,80 @@ router.get('/api/games/list', async (_req, res) => {
         lastSaved: b.lastSaved ?? 0
       });
     }
+    live.sort((a, b) => (b.lastSaved ?? 0) - (a.lastSaved ?? 0));
     res.json({ games: live });
   } catch (e: any) {
     res.status(500).json({ status: 'error', message: e?.message || String(e) });
   }
 });
 
-// user stats (ELO + record)
+// user stats (both buckets)
 router.get('/api/user/stats', async (_req, res) => {
   try {
     const uid = context.userId;
     if (!uid) return res.status(400).json({ status: 'error', message: 'userId missing' });
-    const rec = await getElo(uid);
-    res.json(rec);
+    const [hvh, hva] = await Promise.all([getElo(uid, 'hvh'), getElo(uid, 'hva')]);
+    res.json({ hvh, hva });
   } catch (e: any) {
+    res.status(500).json({ status: 'error', message: e?.message || String(e) });
+  }
+});
+
+/* =========================
+   Solo (Human vs AI) — record result into HVA bucket
+   ========================= */
+router.post('/api/solo/record', async (req, res) => {
+  try {
+    const uid = context.userId;
+    if (!uid) return res.status(401).json({ status: 'error', message: 'userId missing' });
+
+    const { difficulty, youScore, botScore } = (req.body || {}) as { difficulty: 'casual'|'offensive'|'defensive'|'brutal'; youScore:number; botScore:number };
+    if (!difficulty || !(difficulty in AI_BASE)) return res.status(400).json({ status: 'error', message: 'invalid difficulty' });
+    const ys = Number(youScore) || 0;
+    const bs = Number(botScore) || 0;
+
+    const result: 1|0|0.5 = ys>bs ? 1 : ys<bs ? 0 : 0.5;
+    const me = await getElo(uid, 'hva');
+    const bot: EloRecord = { rating: AI_BASE[difficulty], games: 0, wins: 0, losses: 0, draws: 0 };
+    const [meAfter] = updateEloPair(me, bot, result);
+    await setElo(uid, 'hva', meAfter);
+
+    slog('[SOLO] record', { uid, difficulty, ys, bs, rating: meAfter.rating });
+    res.json({ ok: true, rating: meAfter.rating });
+  } catch (e:any) {
+    console.error('[SOLO] record error', e);
+    res.status(500).json({ status: 'error', message: e?.message || String(e) });
+  }
+});
+
+/* =========================
+   Rankings (both buckets, sorted desc by rating then games)
+   ========================= */
+router.get('/api/rankings', async (_req, res) => {
+  try {
+    const toRows = async (bucket: 'hvh'|'hva') => {
+      const ids = await getPlayers(bucket);
+      const rows = await Promise.all(ids.map(async uid => {
+        const rec = await getElo(uid, bucket);
+        const [name, avatar] = await Promise.all([redis.get(NAMEKEY(uid)), redis.get(AVAKEY(uid))]);
+        return {
+          userId: uid,
+          name: name || 'anonymous',
+          avatar: avatar || '',
+          rating: rec.rating,
+          games: rec.games,
+          wins: rec.wins,
+          losses: rec.losses,
+          draws: rec.draws
+        };
+      }));
+      rows.sort((a,b)=> b.rating - a.rating || b.games - a.games || (a.name||'').localeCompare(b.name||''));
+      return rows;
+    };
+    const [hvh, hva] = await Promise.all([toRows('hvh'), toRows('hva')]);
+    res.json({ hvh, hva });
+  } catch (e:any) {
+    console.error('[RANKINGS] error', e);
     res.status(500).json({ status: 'error', message: e?.message || String(e) });
   }
 });
