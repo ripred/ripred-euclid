@@ -328,10 +328,10 @@ class Board {
     const style=this.m_players[this.m_turn].m_playStyle;
     switch(style){
       case Board.PS_BRUTAL:    return this.chooseUnifiedMove(-1, -1);
-      case Board.PS_OFFENSIVE: return this.chooseUnifiedMove(7,  -1);
-      case Board.PS_DEFENSIVE: return this.chooseUnifiedMove(-1, 7);
-      case Board.PS_CASUAL:    return this.chooseUnifiedMove(7,   7);
-      default:                 return this.chooseUnifiedMove(7,   7);
+      case Board.PS_OFFENSIVE: return this.chooseUnifiedMove( 3, -1);
+      case Board.PS_DEFENSIVE: return this.chooseUnifiedMove(-1,  3);
+      case Board.PS_CASUAL:    return this.chooseUnifiedMove( 3,  3);
+      default:                 return this.chooseUnifiedMove( 3,  3);
     }
   }
 
