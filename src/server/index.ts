@@ -172,7 +172,6 @@ function updateEloPair(a: EloRecord, b: EloRecord, resultForA: 1 | 0 | 0.5): [El
 
 /* ===== Reddit post helpers (DISABLED) ===== */
 // For now, we do not create or update game posts.
-// These stubs intentionally no-op to avoid side effects and errors.
 async function createGamePostWithTitle(_title: string, _body?: string): Promise<string> {
   return '';
 }
@@ -343,6 +342,39 @@ router.post('/api/h2h/queue', async (_req, res) => {
   }
 });
 
+// NEW: cancel queue for the current user
+router.post('/api/h2h/cancelQueue', async (_req, res) => {
+  try {
+    const uid = context.userId;
+    if (!uid) return res.status(401).json({ status: 'error', message: 'userId missing' });
+
+    // Remove from queue atomically-ish
+    const s = await redis.get(QKEY);
+    let removed = false;
+    if (s) {
+      try {
+        const q = JSON.parse(s) as string[];
+        const idx = q.indexOf(uid);
+        if (idx >= 0) {
+          q.splice(idx, 1);
+          removed = true;
+          await redis.set(QKEY, JSON.stringify(q));
+        }
+      } catch {}
+    }
+
+    // Clear any stale mapping (shouldn't exist while waiting, but safe)
+    const mapped = await redis.get(USERMAP(uid));
+    if (mapped) await redis.del(USERMAP(uid));
+
+    slog('[H2H] cancelQueue', { uid, removed, wasMapped: !!mapped });
+    res.json({ ok: true, removed });
+  } catch (e: any) {
+    console.error('[H2H] cancelQueue error', e);
+    res.status(500).json({ status: 'error', message: e?.message || String(e) });
+  }
+});
+
 // mapping (refresh caller's name/avatar)
 router.get('/api/h2h/mapping', async (_req, res) => {
   try {
@@ -415,13 +447,6 @@ router.get('/api/h2h/state', async (req, res) => {
         board.endedBy = endedBy;
         await saveBoard(gid, board);
         await removeActiveGame(gid);
-
-        // Post updates disabled
-        // const names = board.playerNames || {};
-        // const n1 = names[u1||''] || 'Player 1';
-        // const n2 = names[u2||''] || 'Player 2';
-        // const body = formatResultBody(board, endedReason);
-        // await updateGamePostStatus(board.postId, { flairText: 'Game Over', title: `${n1} vs ${n2} — Game Over`, body });
       }
     } else if (ended) {
       const s1 = board.m_players[0].m_score ?? 0;
@@ -529,13 +554,6 @@ router.post('/api/h2h/save', async (req, res) => {
         afterW = na.rating; afterL = nb.rating;
       }
       await removeActiveGame(gameId);
-
-      // Post updates disabled:
-      // const names = serverBoard.playerNames || {};
-      // const n1 = names[u1||''] || 'Player 1';
-      // const n2 = names[u2||''] || 'Player 2';
-      // const body = formatResultBody(serverBoard, 'game_over', { winnerUid, loserUid, afterWinner: afterW!, afterLoser: afterL! });
-      // await updateGamePostStatus(serverBoard.postId, { flairText: 'Game Over', title: `${n1} vs ${n2} — Game Over`, body });
     } else {
       // keep in active list (already there from pairing/rematch)
     }
@@ -571,12 +589,6 @@ router.post('/api/h2h/rematch', async (req, res) => {
     await saveBoard(gameId, board);
     await addActiveGame(gameId);
 
-    // Post updates disabled
-    // const names = board.playerNames || {};
-    // const n1 = names[u1||''] || 'Player 1';
-    // const n2 = names[u2||''] || 'Player 2';
-    // await updateGamePostStatus(board.postId, { flairText: 'Playing Now', title: `${n1} vs ${n2} — Playing Now` });
-
     slog('[H2H] rematch', { gameId, by: uid });
     return res.json({ ok: true, board });
   } catch (e: any) {
@@ -603,13 +615,6 @@ router.post('/api/h2h/leave', async (_req, res) => {
           board.endedBy = uid;
           await saveBoard(gid, board);
           await removeActiveGame(gid);
-
-          // Post updates disabled
-          // const names = board.playerNames || {};
-          // const n1 = names[u1||''] || 'Player 1';
-          // const n2 = names[u2||''] || 'Player 2';
-          // const body = formatResultBody(board, 'player_left');
-          // await updateGamePostStatus(board.postId, { flairText: 'Game Over', title: `${n1} vs ${n2} — Game Over`, body });
         }
       }
       await redis.del(USERMAP(uid));
