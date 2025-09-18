@@ -107,8 +107,9 @@ const GlobalStyles = () => (
       }
     }
 
-    /* Let the UA know we support both */
-    body { color-scheme: light dark; }
+    /* Let the UA know we support both, and lock viewport scrolling */
+    html, body, #root { height: 100%; }
+    body { color-scheme: light dark; margin: 0; overflow: hidden; }
 
     .glow-red { box-shadow: 0 0 0 3px rgba(239,68,68,.6), 0 0 18px rgba(239,68,68,.45); }
     .glow-blue{ box-shadow: 0 0 0 3px rgba(59,130,246,.6), 0 0 18px rgba(59,130,246,.45); }
@@ -397,7 +398,7 @@ const ScoreCard:React.FC<{
 };
 
 /* ===== App ===== */
-type Mode='ai'|'multiplayer'|'spectate'|null;
+type Mode='ai'|'multiplayer'|'spectate'|'rankings'|null;
 
 export const App=(context:Devvit.Context)=>{
   const [mode,setMode]=useState<Mode>(null);
@@ -411,10 +412,32 @@ export const App=(context:Devvit.Context)=>{
   const [notice,setNotice]=useState<string>('');
   const [showRules,setShowRules]=useState(false);
   const [glintOn,setGlintOn]=useState(false); // waiting shimmer
+  const soloRecordedRef = useRef(false);      // ensure we record solo result once
 
   useEffect(()=>{ const onResize=()=>setIsMobile(typeof window!=='undefined'&&window.innerWidth<=768); onResize(); window.addEventListener('resize',onResize); return()=>window.removeEventListener('resize',onResize);},[]);
   useEffect(()=>{ (async()=>{ try{ await fetch('/api/init'); }catch{} })(); },[]);
   useEffect(()=>{ const id=setInterval(()=>{ setGlintOn(true); setTimeout(()=>setGlintOn(false), 2200); }, 15000) as unknown as number; return ()=>clearInterval(id); },[]);
+
+  /* ✅ ALWAYS-CALLED effect (fixes error #310): record solo result when AI game ends */
+  useEffect(()=>{
+    if(mode!=='ai' || !winner || !board || soloRecordedRef.current) return;
+    const you = board.m_players?.[0]?.m_score ?? 0;
+    const bot = board.m_players?.[1]?.m_score ?? 0;
+    const diff =
+      selectedStyle===Board.PS_BRUTAL ? 'brutal' :
+      selectedStyle===Board.PS_OFFENSIVE ? 'offensive' :
+      selectedStyle===Board.PS_DEFENSIVE ? 'defensive' : 'casual';
+    (async ()=>{
+      try{
+        await fetch('/api/solo/record', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ difficulty: diff, youScore: you, botScore: bot })
+        });
+      }catch{}
+      soloRecordedRef.current = true;
+    })();
+  },[mode,winner,board,selectedStyle]);
 
   // H2H
   const [gameId,setGameId]=useState<string|null>(null);
@@ -501,7 +524,25 @@ export const App=(context:Devvit.Context)=>{
 
   /* ===== Spectate list ===== */
   const [games,setGames]=useState<{gameId:string; names:Record<string,string>; scores:number[]; lastSaved:number; ended:boolean}[]>([]);
-  const loadGames = async () => { try { const r=await fetch('/api/games/list'); const j=await r.json(); setGames(j.games||[]); } catch {} };
+  const loadGames = async () => {
+    try {
+      const r=await fetch('/api/games/list');
+      const j=await r.json();
+      const list=(j.games||[]).slice().sort((a:any,b:any)=> (b.lastSaved||0)-(a.lastSaved||0));
+      setGames(list);
+    } catch {}
+  };
+
+  /* ===== Rankings ===== */
+  type RankingRow = { userId:string; name:string; avatar?:string; rating:number; games:number; wins:number; losses:number; draws:number };
+  const [rankings,setRankings]=useState<{hvh:RankingRow[]; hva:RankingRow[]}>({hvh:[],hva:[]});
+  const loadRankings = async () => {
+    try {
+      const r=await fetch('/api/rankings');
+      const j=await r.json();
+      setRankings({ hvh:(j.hvh||[]), hva:(j.hva||[]) });
+    } catch {}
+  };
 
   /* ===== Rules Overlay ===== */
   const RulesOverlay = showRules ? (
@@ -537,7 +578,8 @@ export const App=(context:Devvit.Context)=>{
   /* ===== Intro ===== */
   if(mode===null){
     return (
-      <div className="flex flex-col justify-center items-center min-h-screen gap-6" style={{background:'var(--bg)'}}>
+      <div className="flex flex-col justify-center items-center gap-6"
+           style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
         <GlobalStyles />
         {RulesOverlay}
         <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid</h1>
@@ -559,7 +601,7 @@ export const App=(context:Devvit.Context)=>{
 
         <div className="flex gap-3 flex-wrap items-center justify-center">
           <button className="rounded cursor-pointer" style={{background:'#d93900', color:'#fff', padding:'8px 16px'}}
-            onClick={()=>{ const p1=new Player(selectedStyle,false); const p2=new Player(selectedStyle,true); const b=new Board(p1,p2); setBoard(b); setWinner(null); setMode('ai'); }}>
+            onClick={()=>{ const p1=new Player(selectedStyle,false); const p2=new Player(selectedStyle,true); const b=new Board(p1,p2); setBoard(b); setWinner(null); soloRecordedRef.current=false; setMode('ai'); }}>
             Play vs AI
           </button>
 
@@ -589,6 +631,11 @@ export const App=(context:Devvit.Context)=>{
             Spectate
           </button>
 
+          <button className="rounded cursor-pointer" style={{background:'#16a34a', color:'#fff', padding:'8px 16px'}}
+            onClick={async()=>{ await loadRankings(); setMode('rankings'); }}>
+            Rankings
+          </button>
+
           <button className="rounded cursor-pointer" style={{background:'#6b7280', color:'#fff', padding:'8px 16px'}}
             onClick={()=>setShowRules(true)}>
             Rules
@@ -603,7 +650,8 @@ export const App=(context:Devvit.Context)=>{
   /* ===== Spectate ===== */
   if(mode==='spectate'){
     return (
-      <div className="flex flex-col justify-center items-center min-h-screen gap-4" style={{background:'var(--bg)'}}>
+      <div className="flex flex-col justify-center items-center gap-4"
+           style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
         <GlobalStyles />
         <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — Spectate</h1>
         <div className="w-[min(640px,92vw)] flex flex-col gap-2" style={{color:'var(--text)'}}>
@@ -635,11 +683,67 @@ export const App=(context:Devvit.Context)=>{
     );
   }
 
+  /* ===== Rankings ===== */
+  if(mode==='rankings'){
+    const Section = ({title, rows, accent}:{title:string; rows:RankingRow[]; accent:'red'|'blue'}) => (
+      <div className="w-[min(720px,92vw)]">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-xl font-extrabold" style={{color:'var(--text)'}}>{title}</h2>
+        </div>
+        <div className="rounded-lg overflow-hidden" style={{border:`1px solid var(--card-border)`}}>
+          <div className="grid grid-cols-[56px_1fr_90px_80px] md:grid-cols-[56px_1fr_120px_90px_90px_90px] gap-0" style={{background:'var(--card-bg)'}}>
+            <div className="px-3 py-2 font-bold" style={{color:'var(--muted)'}}>Rank</div>
+            <div className="px-3 py-2 font-bold" style={{color:'var(--muted)'}}>Player</div>
+            <div className="px-3 py-2 font-bold hidden md:block" style={{color:'var(--muted)'}}>Rating</div>
+            <div className="px-3 py-2 font-bold" style={{color:'var(--muted)'}}>Games</div>
+            <div className="px-3 py-2 font-bold hidden md:block" style={{color:'var(--muted)'}}>Wins</div>
+            <div className="px-3 py-2 font-bold hidden md:block" style={{color:'var(--muted)'}}>Losses</div>
+          </div>
+          <div style={{maxHeight:'55vh', overflowY:'auto'}}>
+            {rows.map((r, i)=>{
+              const top3 = i<3;
+              const pill = accent==='red' ? 'var(--pill-red)' : 'var(--pill-blue)';
+              return (
+                <div key={r.userId} className="grid grid-cols-[56px_1fr_90px_80px] md:grid-cols-[56px_1fr_120px_90px_90px_90px] items-center"
+                     style={{borderTop:`1px solid var(--card-border)`, background: top3 ? pill : 'transparent'}}>
+                  <div className="px-3 py-2 font-extrabold" style={{color: accent==='red'?'#b91c1c':'#1d4ed8'}}>{i+1}</div>
+                  <div className="px-3 py-2 flex items-center gap-2" style={{color:'var(--text)'}}>
+                    {r.avatar ? <img src={r.avatar} alt="" style={{width:24,height:24,borderRadius:'50%'}}/> : <span style={{width:24,height:24,borderRadius:'50%',background:'var(--empty-stroke)'}}/>}
+                    <span className="truncate" title={r.name||r.userId}>{r.name||r.userId}</span>
+                  </div>
+                  <div className="px-3 py-2 hidden md:block" style={{color:'var(--text)'}}>{r.rating}</div>
+                  <div className="px-3 py-2" style={{color:'var(--text)'}}>{r.games}</div>
+                  <div className="px-3 py-2 hidden md:block" style={{color:'var(--text)'}}>{r.wins}</div>
+                  <div className="px-3 py-2 hidden md:block" style={{color:'var(--text)'}}>{r.losses}</div>
+                </div>
+              );
+            })}
+            {rows.length===0 && <div className="px-3 py-4" style={{color:'var(--muted)'}}>No ranked players yet.</div>}
+          </div>
+        </div>
+      </div>
+    );
+
+    return (
+      <div className="flex flex-col justify-start items-center gap-6 py-8"
+           style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
+        <GlobalStyles />
+        <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — Rankings</h1>
+        <Section title="Head-to-Head (Human vs Human)" rows={rankings.hvh} accent="red" />
+        <Section title="Human vs Computer (All Difficulties)" rows={rankings.hva} accent="blue" />
+        <button className="rounded cursor-pointer" style={{background:'#6b7280', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setMode(null); }}>
+          Back
+        </button>
+      </div>
+    );
+  }
+
   /* ===== Multiplayer ===== */
   if(mode==='multiplayer'){
     if(!board){
       return (
-        <div className="flex flex-col justify-center items-center min-h-screen gap-5" style={{background:'var(--bg)'}}>
+        <div className="flex flex-col justify-center items-center gap-5"
+             style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
           <GlobalStyles />
           <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid</h1>
           <div className="glint-wrap text-sm" style={{color:'var(--muted)', position:'relative'}}>
@@ -739,10 +843,7 @@ export const App=(context:Devvit.Context)=>{
         isMobile={isMobile}
         board={board}
         onCellClick={onCellClick}
-        onLeave={()=>{
-          // Keep current working behavior (no server leave change requested)
-          setMode(null); setStatus(''); setNotice('');
-        }}
+        onLeave={leaveMultiplayer}
         p1Name={p1Name}
         p2Name={p2Name}
         yourTurn={isMyTurn}
@@ -793,7 +894,7 @@ export const App=(context:Devvit.Context)=>{
            style={{position:'fixed', inset:0, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50, background:'rgba(0,0,0,.55)'}}>
         <div style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`, borderRadius:12, padding:'16px 22px', textAlign:'center'}}>
           <div style={{fontSize:'1.2rem', fontWeight:800, marginBottom:8}}>{winner===1?'You win!':'Bot wins!'}</div>
-          <button className="rounded cursor-pointer" style={{background:'#d93900', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setWinner(null); setBoard(null); setMode(null); setStatus(''); setNotice(''); }}>
+          <button className="rounded cursor-pointer" style={{background:'#d93900', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setWinner(null); setBoard(null); soloRecordedRef.current=false; setMode(null); setStatus(''); setNotice(''); }}>
             Close
           </button>
         </div>
@@ -806,7 +907,7 @@ export const App=(context:Devvit.Context)=>{
         isMobile={isMobile}
         board={board}
         onCellClick={onCellClick}
-        onLeave={()=>{ setWinner(null); setBoard(null); setMode(null); setStatus(''); setNotice(''); }}
+        onLeave={()=>{ setWinner(null); setBoard(null); soloRecordedRef.current=false; setMode(null); setStatus(''); setNotice(''); }}
         p1Name={p1Name}
         p2Name={p2Name}
         yourTurn={board.m_turn===0}
@@ -857,7 +958,8 @@ const GameScreen:React.FC<{
   const rightDim = dimSide==='blue'? .5 : 1;
 
   return (
-    <div className="flex flex-col justify-center items-center min-h-screen gap-4 p-4" style={{background:'var(--bg)'}}>
+    <div className="flex flex-col justify-center items-center gap-4 p-4"
+         style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
       <GlobalStyles />
       {overlay}
       <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid</h1>
@@ -888,7 +990,7 @@ const GameScreen:React.FC<{
       )}
 
       {/* Board */}
-      <div className="relative" style={{width:bw, height:bh, margin:'0 auto'}}>
+      <div className="relative" style={{width:bw, height:bh, margin:'0 auto', maxWidth:'100vw'}}>
         <svg className="absolute top-0 left-0 w-full h-full pointer-events-none z-10" viewBox={`0 0 ${bw} ${bh}`}>{lines}</svg>
 
         <div className="grid" style={{gridTemplateColumns:`repeat(8, ${cell}px)`, gridAutoRows:`${cell}px`, gap:0}}>
@@ -933,7 +1035,7 @@ const GameScreen:React.FC<{
         </div>
       </div>
 
-      {/* Moved button up by +20px (more bottom spacing) */}
+      {/* Leave/Back */}
       <div className="flex gap-2 mt-2" style={{ marginBottom: isMobile ? 116 : 76 }}>
         <button className="rounded cursor-pointer" style={{background:'#d93900', color:'#fff', padding:'6px 12px'}} onClick={onLeave}>
             {modeName==='Multiplayer' ? 'Leave Game' : 'Back'}
