@@ -940,13 +940,6 @@ const GameScreen:React.FC<{
         </button>
       </div>
 
-      <footer className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-3 text-[0.9em]" style={{color:'var(--muted)'}}>
-        <button className="cursor-pointer" onClick={()=>navigateTo('https://developers.reddit.com/docs')}>Docs</button>
-        <span>|</span>
-        <button className="cursor-pointer" onClick={()=>navigateTo('https://www.reddit.com/r/Devvit')}>r/Devvit</button>
-        <span>|</span>
-        <button className="cursor-pointer" onClick={()=>navigateTo('https://discord.com/invite/R7yu2wh9Qz')}>Discord</button>
-      </footer>
     </div>
   );
 };
