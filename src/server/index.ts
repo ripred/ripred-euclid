@@ -1,5 +1,5 @@
 import express from 'express';
-import { InitResponse, IncrementResponse, DecrementResponse } from '../shared/types/api';
+import { InitResponse } from '../shared/types/api';
 import { redis, reddit, createServer, context, getServerPort } from '@devvit/web/server';
 
 const app = express();
@@ -43,6 +43,41 @@ const AI_BASE: Record<'casual'|'offensive'|'defensive'|'brutal', number> = {
   brutal: 1600,
 };
 
+/* ===== Metrics helpers ===== */
+const MSET = (name:string) => `euclid:metric:set:${name}`;
+const MCOUNT = (name:string) => `euclid:metric:count:${name}`;
+
+async function addUserToSet(name:string, uid: string | undefined | null) {
+  if (!uid) return;
+  const key = MSET(name);
+  const s = await redis.get(key);
+  let arr: string[] = [];
+  if (s) { try { arr = JSON.parse(s) as string[]; } catch { arr = []; } }
+  if (!arr.includes(uid)) {
+    arr.push(uid);
+    await redis.set(key, JSON.stringify(arr));
+  }
+}
+async function scard(name:string): Promise<number> {
+  const s = await redis.get(MSET(name));
+  if (!s) return 0;
+  try { return (JSON.parse(s) as any[]).length; } catch { return 0; }
+}
+async function sget(name:string): Promise<Set<string>> {
+  const s = await redis.get(MSET(name));
+  if (!s) return new Set<string>();
+  try { return new Set(JSON.parse(s) as string[]); } catch { return new Set<string>(); }
+}
+async function incrCount(name:string, n=1): Promise<number> {
+  const key = MCOUNT(name);
+  const v = parseInt((await redis.get(key)) || '0', 10) + n;
+  await redis.set(key, String(v));
+  return v;
+}
+async function getCount(name:string): Promise<number> {
+  return parseInt((await redis.get(MCOUNT(name))) || '0', 10);
+}
+
 /* =========================
    TYPES
    ========================= */
@@ -74,9 +109,10 @@ type BoardJSON = {
   playerNames?: Record<string, string>;
   playerAvatars?: Record<string, string>;
   lastSaved?: number;
+  createdAt?: number;
   ended?: boolean;
-  endedReason?: string;   // 'game_over' | 'player_left' | 'opponent_left'
-  endedBy?: string;       // userId who left (if any)
+  endedReason?: string;   // 'game_over' | 'player_left' | 'opponent_left' | 'tie'
+  endedBy?: string;
 };
 
 /* =========================
@@ -104,6 +140,7 @@ function makeInitialBoardJson(
     playerNames: opts.names ?? {},
     playerAvatars: opts.avatars ?? {},
     lastSaved: Date.now(),
+    createdAt: Date.now(),
     ended: false,
     endedReason: '',
     endedBy: ''
@@ -163,7 +200,8 @@ type EloRecord = { rating: number; games: number; wins: number; losses: number; 
 async function getPlayers(bucket: 'hvh'|'hva'): Promise<string[]> {
   const s = await redis.get(PLAYERS_KEY(bucket));
   if (!s) return [];
-  try { return JSON.parse(s) as string[]; } catch { return []; }
+  try { return JSON.parse(s) as string[]; } catch { return [];
+  }
 }
 async function addPlayer(bucket: 'hvh'|'hva', uid: string): Promise<void> {
   const list = await getPlayers(bucket);
@@ -173,7 +211,6 @@ async function addPlayer(bucket: 'hvh'|'hva', uid: string): Promise<void> {
   }
 }
 async function getElo(uid: string, bucket: 'hvh'|'hva'): Promise<EloRecord> {
-  // Migrate legacy single-bucket ratings to hvh on first access
   if (bucket === 'hvh') {
     const legacy = await redis.get(OLD_ELOKEY(uid));
     if (legacy) {
@@ -204,7 +241,7 @@ function updateEloPair(a: EloRecord, b: EloRecord, resultForA: 1 | 0 | 0.5): [El
 }
 
 /* =========================
-   SERVER-SIDE MOVE/POINTS (no geometry changes)
+   SERVER-SIDE MOVE/POINTS
    ========================= */
 function squareKey(p1: SquarePoint, p2: SquarePoint, p3: SquarePoint, p4: SquarePoint): string {
   const arr = [p1.index, p2.index, p3.index, p4.index].slice().sort((a, b) => a - b);
@@ -248,7 +285,6 @@ function computeSquaresAndPoints(boardArr: number[], x: number, y: number, clr: 
       }
     }
   }
-  // Dedup any duplicates due to symmetric iterations
   const seen = new Set<string>();
   const deduped: SquareJSON[] = [];
   for (const s of squares) {
@@ -268,6 +304,11 @@ router.get<{ postId: string }, InitResponse | { status: string; message: string 
     if (!postId) return res.status(400).json({ status: 'error', message: 'postId is required but missing from context' });
     try {
       const [count, username] = await Promise.all([redis.get('count'), reddit.getCurrentUsername()]);
+      // metrics: app start
+      const uid = context.userId || '';
+      await addUserToSet('app_start_users', uid);
+      await incrCount('app_start_count', 1);
+
       res.json({ type: 'init', postId, count: count ? parseInt(count) : 0, username: username ?? 'anonymous' });
     } catch (error: any) { res.status(400).json({ status: 'error', message: error?.message || 'Unknown init error' }); }
   }
@@ -277,13 +318,12 @@ router.get<{ postId: string }, InitResponse | { status: string; message: string 
    H2H: queue / pair / mapping / state / save / rematch / leave / list / stats
    ========================= */
 
-// Enqueue & pair (NO automatic post creation)
 router.post('/api/h2h/queue', async (_req, res) => {
   try {
     const uid = context.userId;
     if (!uid) return res.status(400).json({ status: 'error', message: 'userId missing' });
 
-    // remember caller's name + avatar (for pairing)
+    // remember caller's name + avatar
     try {
       const nm = await reddit.getCurrentUsername();
       if (nm) await redis.set(NAMEKEY(uid), nm);
@@ -293,7 +333,11 @@ router.post('/api/h2h/queue', async (_req, res) => {
       if (icon) await redis.set(AVAKEY(uid), icon);
     } catch {}
 
-    // Clear stale mapping if any
+    // metrics: H2H click
+    await addUserToSet('h2h_click_users', uid);
+    await incrCount('h2h_click_count', 1);
+
+    // Clear stale mapping
     const stale = await redis.get(USERMAP(uid));
     if (stale) await redis.del(USERMAP(uid));
 
@@ -332,6 +376,11 @@ router.post('/api/h2h/queue', async (_req, res) => {
         addActiveGame(gid)
       ]);
 
+      // metrics: H2H started
+      await addUserToSet('h2h_started_users', user1);
+      await addUserToSet('h2h_started_users', user2);
+      await incrCount('h2h_started_count', 1);
+
       return res.json({ queued: true, paired: true, gameId: gid, board, me: uid, isPlayer1: uid === user1 });
     }
 
@@ -342,13 +391,11 @@ router.post('/api/h2h/queue', async (_req, res) => {
   }
 });
 
-// NEW: cancel queue for the current user
 router.post('/api/h2h/cancelQueue', async (_req, res) => {
   try {
     const uid = context.userId;
     if (!uid) return res.status(401).json({ status: 'error', message: 'userId missing' });
 
-    // Remove from queue atomically-ish
     const s = await redis.get(QKEY);
     let removed = false;
     if (s) {
@@ -363,10 +410,10 @@ router.post('/api/h2h/cancelQueue', async (_req, res) => {
       } catch {}
     }
 
-    // Clear any stale mapping (shouldn't exist while waiting, but safe)
     const mapped = await redis.get(USERMAP(uid));
     if (mapped) await redis.del(USERMAP(uid));
 
+    await incrCount('h2h_cancel_queue_count', 1);
     slog('[H2H] cancelQueue', { uid, removed, wasMapped: !!mapped });
     res.json({ ok: true, removed });
   } catch (e: any) {
@@ -375,7 +422,6 @@ router.post('/api/h2h/cancelQueue', async (_req, res) => {
   }
 });
 
-// mapping (refresh caller's name/avatar)
 router.get('/api/h2h/mapping', async (_req, res) => {
   try {
     const uid = context.userId;
@@ -413,7 +459,6 @@ router.get('/api/h2h/mapping', async (_req, res) => {
   }
 });
 
-// state (detect opponent-left; prune)
 router.get('/api/h2h/state', async (req, res) => {
   try {
     const gid = String(req.query.gameId || '');
@@ -447,13 +492,15 @@ router.get('/api/h2h/state', async (req, res) => {
         board.endedBy = endedBy;
         await saveBoard(gid, board);
         await removeActiveGame(gid);
+        await incrCount('h2h_opponent_left_count', 1);
       }
     } else if (ended) {
       const s1 = board.m_players[0].m_score ?? 0;
       const s2 = board.m_players[1].m_score ?? 0;
-      if (endedReason === 'game_over') victorSide = s1 >= s2 ? 1 : 2;
+      if (endedReason === 'game_over') victorSide = s1 > s2 ? 1 : s2 > s1 ? 2 : undefined;
       else if (endedReason === 'player_left') victorSide = endedBy === u1 ? 2 : 1;
       else if (endedReason === 'opponent_left') victorSide = meIsP1 ? 1 : 2;
+      // tie -> no victorSide
     }
 
     return res.json({ gameId: gid, board, ended, endedReason, endedBy, victorSide });
@@ -463,7 +510,6 @@ router.get('/api/h2h/state', async (req, res) => {
   }
 });
 
-// save — server-authoritative validation; on game over update ELO (H2H bucket)
 router.post('/api/h2h/save', async (req, res) => {
   try {
     const uid = context.userId;
@@ -486,7 +532,6 @@ router.post('/api/h2h/save', async (req, res) => {
 
     if (serverBoard.m_turn !== callerSide) return res.status(409).json({ status: 'error', message: 'not your turn' });
 
-    // Validate single-cell diff: exactly one 0->(current_player) change
     const expectedClr = serverBoard.m_turn + 1;
     const diffs: number[] = [];
     const a = serverBoard.m_board;
@@ -504,17 +549,14 @@ router.post('/api/h2h/save', async (req, res) => {
 
     const x = idx % BOARD_W, y = Math.floor(idx / BOARD_W);
 
-    // Compute points & completed squares for THIS move (no geometry changes)
     const { points, squares } = computeSquaresAndPoints(a, x, y, expectedClr);
 
-    // Apply move server-side authoritatively
     serverBoard.m_board[idx] = expectedClr;
     serverBoard.m_last = { x, y, index: idx };
     serverBoard.m_lastPoints = points;
     serverBoard.m_history = serverBoard.m_history || [];
     serverBoard.m_history.push({ x, y, index: idx });
 
-    // Merge completed squares (dedup)
     const playerSquares = serverBoard.m_players[callerSide].m_squares || [];
     const existing = new Set<string>(playerSquares.map(s => squareKey(s.p1, s.p2, s.p3, s.p4)));
     let added = 0;
@@ -526,10 +568,9 @@ router.post('/api/h2h/save', async (req, res) => {
     serverBoard.m_players[callerSide].m_lastNumSquares = added;
     serverBoard.m_players[callerSide].m_score = (serverBoard.m_players[callerSide].m_score || 0) + points;
 
-    // Advance turn
     serverBoard.m_turn = (serverBoard.m_turn + 1) % 2;
 
-    // Detect winner
+    // Determine end state
     let gameEnded = false;
     let winnerUid = '';
     let loserUid = '';
@@ -539,22 +580,37 @@ router.post('/api/h2h/save', async (req, res) => {
       gameEnded = true;
       serverBoard.ended = true;
       serverBoard.endedReason = 'game_over';
-      winnerUid = s1 >= s2 ? serverBoard.m_players[0].userId : serverBoard.m_players[1].userId;
-      loserUid  = s1 >= s2 ? serverBoard.m_players[1].userId : serverBoard.m_players[0].userId;
+      winnerUid = s1 > s2 ? serverBoard.m_players[0].userId : s2 > s1 ? serverBoard.m_players[1].userId : '';
+      loserUid  = s1 > s2 ? serverBoard.m_players[1].userId : s2 > s1 ? serverBoard.m_players[0].userId : '';
+    }
+
+    // Tie if the board is now full and no one reached 150 (no winner)
+    if (!gameEnded) {
+      const anyEmpty = serverBoard.m_board.some(v=>v===0);
+      if (!anyEmpty) {
+        gameEnded = true;
+        serverBoard.ended = true;
+        serverBoard.endedReason = 'tie';
+      }
     }
 
     await saveBoard(gameId, serverBoard);
 
     if (gameEnded) {
-      if (winnerUid && loserUid) {
+      if (serverBoard.endedReason === 'game_over' && winnerUid && loserUid) {
         const [aRec, bRec] = await Promise.all([getElo(winnerUid, 'hvh'), getElo(loserUid, 'hvh')]);
         const [na, nb] = updateEloPair(aRec, bRec, 1);
         await Promise.all([setElo(winnerUid, 'hvh', na), setElo(loserUid, 'hvh', nb)]);
       }
+      if (serverBoard.endedReason === 'game_over') {
+        await incrCount('h2h_game_over_count', 1);
+        await addUserToSet('h2h_completed_users', serverBoard.m_players[0].userId);
+        await addUserToSet('h2h_completed_users', serverBoard.m_players[1].userId);
+      }
       await removeActiveGame(gameId);
     }
 
-    slog('[H2H] save', { gameId, by: uid, x, y, points, gameEnded });
+    slog('[H2H] save', { gameId, by: uid, x, y, points, gameEnded, reason: serverBoard.endedReason });
     return res.json({ ok: true, ended: gameEnded });
   } catch (e: any) {
     console.error('[H2H] save error', e);
@@ -562,7 +618,6 @@ router.post('/api/h2h/save', async (req, res) => {
   }
 });
 
-// rematch — restrict to participants and only after end
 router.post('/api/h2h/rematch', async (req, res) => {
   try {
     const uid = context.userId;
@@ -593,7 +648,6 @@ router.post('/api/h2h/rematch', async (req, res) => {
   }
 });
 
-// leave — participant only; spectators are no-ops
 router.post('/api/h2h/leave', async (_req, res) => {
   try {
     const uid = context.userId;
@@ -603,12 +657,12 @@ router.post('/api/h2h/leave', async (_req, res) => {
     if (gid) {
       const board = await loadBoard(gid);
       if (board && !board.ended) {
-        // ensure caller is a participant
         const u1 = board.m_players?.[0]?.userId, u2 = board.m_players?.[1]?.userId;
         if (uid === u1 || uid === u2) {
           board.ended = true;
           board.endedReason = 'player_left';
           board.endedBy = uid;
+          await incrCount('h2h_player_left_count', 1);
           await saveBoard(gid, board);
           await removeActiveGame(gid);
         }
@@ -624,7 +678,6 @@ router.post('/api/h2h/leave', async (_req, res) => {
   }
 });
 
-// live-only spectator list (sorted by lastSaved desc)
 router.get('/api/games/list', async (_req, res) => {
   try {
     const ids = await getActiveGames();
@@ -652,7 +705,6 @@ router.get('/api/games/list', async (_req, res) => {
   }
 });
 
-// user stats (both buckets)
 router.get('/api/user/stats', async (_req, res) => {
   try {
     const uid = context.userId;
@@ -665,7 +717,7 @@ router.get('/api/user/stats', async (_req, res) => {
 });
 
 /* =========================
-   Solo (Human vs AI) — record result into HVA bucket
+   Solo (Human vs AI) — record result into HVA bucket + metrics
    ========================= */
 router.post('/api/solo/record', async (req, res) => {
   try {
@@ -683,6 +735,11 @@ router.post('/api/solo/record', async (req, res) => {
     const [meAfter] = updateEloPair(me, bot, result);
     await setElo(uid, 'hva', meAfter);
 
+    // metrics
+    await addUserToSet('ai_completed_users', uid);
+    await incrCount('ai_completed_count', 1);
+    await incrCount(`ai_diff_${difficulty}_count`, 1);
+
     slog('[SOLO] record', { uid, difficulty, ys, bs, rating: meAfter.rating });
     res.json({ ok: true, rating: meAfter.rating });
   } catch (e:any) {
@@ -692,7 +749,27 @@ router.post('/api/solo/record', async (req, res) => {
 });
 
 /* =========================
-   Rankings (both buckets, sorted desc by rating then games)
+   Simple metrics endpoints for clicks/first move
+   ========================= */
+router.post('/api/metrics/ai-click', async (_req, res) => {
+  try {
+    const uid = context.userId || '';
+    await addUserToSet('ai_click_users', uid);
+    await incrCount('ai_click_count', 1);
+    res.json({ ok: true });
+  } catch (e:any) { res.status(500).json({ status:'error', message:e?.message||String(e) }); }
+});
+router.post('/api/metrics/ai-first', async (_req, res) => {
+  try {
+    const uid = context.userId || '';
+    await addUserToSet('ai_first_users', uid);
+    await incrCount('ai_first_count', 1);
+    res.json({ ok: true });
+  } catch (e:any) { res.status(500).json({ status:'error', message:e?.message||String(e) }); }
+});
+
+/* =========================
+   Rankings (both buckets)
    ========================= */
 router.get('/api/rankings', async (_req, res) => {
   try {
@@ -720,6 +797,71 @@ router.get('/api/rankings', async (_req, res) => {
   } catch (e:any) {
     console.error('[RANKINGS] error', e);
     res.status(500).json({ status: 'error', message: e?.message || String(e) });
+  }
+});
+
+/* =========================
+   Admin metrics summary
+   ========================= */
+router.get('/api/admin/metrics', async (_req, res) => {
+  try {
+    const uniques = {
+      app_start_users: await scard('app_start_users'),
+      h2h_click_users: await scard('h2h_click_users'),
+      h2h_started_users: await scard('h2h_started_users'),
+      h2h_completed_users: await scard('h2h_completed_users'),
+      ai_click_users: await scard('ai_click_users'),
+      ai_first_users: await scard('ai_first_users'),
+      ai_completed_users: await scard('ai_completed_users'),
+    };
+
+    const [h2h_click_set, h2h_started_set, h2h_completed_set, ai_click_set, ai_first_set, ai_completed_set] = await Promise.all([
+      sget('h2h_click_users'),
+      sget('h2h_started_users'),
+      sget('h2h_completed_users'),
+      sget('ai_click_users'),
+      sget('ai_first_users'),
+      sget('ai_completed_users'),
+    ]);
+
+    const diffCount = (a: Set<string>, b: Set<string>) => {
+      let n = 0; for (const v of a) if (!b.has(v)) n++; return n;
+    };
+
+    const computed = {
+      h2h_clicked_never_started: diffCount(h2h_click_set, h2h_started_set),
+      h2h_started_never_finished: diffCount(h2h_started_set, h2h_completed_set),
+      ai_clicked_never_started: diffCount(ai_click_set, ai_first_set),
+      ai_started_never_finished: diffCount(ai_first_set, ai_completed_set),
+    };
+
+    const counts = {
+      app_start_count: await getCount('app_start_count'),
+      h2h_click_count: await getCount('h2h_click_count'),
+      h2h_started_count: await getCount('h2h_started_count'),
+      h2h_game_over_count: await getCount('h2h_game_over_count'),
+      h2h_cancel_queue_count: await getCount('h2h_cancel_queue_count'),
+      h2h_opponent_left_count: await getCount('h2h_opponent_left_count'),
+      h2h_player_left_count: await getCount('h2h_player_left_count'),
+      ai_click_count: await getCount('ai_click_count'),
+      ai_first_count: await getCount('ai_first_count'),
+      ai_completed_count: await getCount('ai_completed_count'),
+    };
+
+    const aiDiffs = {
+      casual: await getCount('ai_diff_casual_count'),
+      offensive: await getCount('ai_diff_offensive_count'),
+      defensive: await getCount('ai_diff_defensive_count'),
+      brutal: await getCount('ai_diff_brutal_count'),
+    };
+
+    const activeGames = (await getActiveGames()).length;
+    const rankedPlayers = { hvh: (await getPlayers('hvh')).length, hva: (await getPlayers('hva')).length };
+
+    res.json({ uniques, counts, computed, aiDiffs, activeGames, rankedPlayers });
+  } catch (e:any) {
+    console.error('[ADMIN] metrics error', e);
+    res.status(500).json({ status:'error', message:e?.message||String(e) });
   }
 });
 
