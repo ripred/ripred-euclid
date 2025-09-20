@@ -2,6 +2,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import { navigateTo } from '@devvit/web/client';
 import { Devvit } from '@devvit/public-api';
 
+/* ===== app version (tiny watermark) ===== */
+const APP_VERSION = 'v2025.09.19.2';
+const VersionStamp: React.FC = () => (
+  <div style={{position:'fixed', top:6, right:8, fontSize:10, lineHeight:1, opacity:.6, color:'var(--muted)', zIndex:80}}>
+    {APP_VERSION}
+  </div>
+);
+
 /* ===== theme (light/dark aware) ===== */
 const GlobalStyles = () => (
   <style>{`
@@ -33,12 +41,12 @@ const GlobalStyles = () => (
       --last-red-glow: rgba(185, 28, 28, .45);
       --last-blue-glow: rgba(29, 78, 216, .45);
 
-      /* glint */
-      --glint-light: rgba(255,255,255,.28);
-      --glint-mid: rgba(255,255,255,.12);
+      /* glint (eye-catching in light mode) */
+      --glint-light: rgba(217,57,0,.30);
+      --glint-mid:   rgba(217,57,0,.14);
     }
 
-    /* Dark: match common host toggles */
+    /* Dark */
     :root[data-theme="dark"],
     .dark,
     .theme-dark,
@@ -63,18 +71,16 @@ const GlobalStyles = () => (
       --pill-red: rgba(239, 68, 68, .20);
       --pill-blue: rgba(59, 130, 246, .20);
 
-      /* last move highlight (dark) */
       --last-red-ring: rgba(239, 68, 68, .80);
       --last-blue-ring: rgba(59, 130, 246, .80);
       --last-red-glow: rgba(239, 68, 68, .50);
       --last-blue-glow: rgba(59, 130, 246, .50);
 
-      /* glint */
+      /* glint (white pops on dark) */
       --glint-light: rgba(255,255,255,.36);
-      --glint-mid: rgba(255,255,255,.16);
+      --glint-mid:   rgba(255,255,255,.16);
     }
 
-    /* Fallback to OS theme if host doesn't set attributes */
     @media (prefers-color-scheme: dark){
       :root{
         --bg: #0b1220;
@@ -103,11 +109,10 @@ const GlobalStyles = () => (
         --last-blue-glow: rgba(59, 130, 246, .50);
 
         --glint-light: rgba(255,255,255,.36);
-        --glint-mid: rgba(255,255,255,.16);
+        --glint-mid:   rgba(255,255,255,.16);
       }
     }
 
-    /* Let the UA know we support both, and lock viewport scrolling */
     html, body, #root { height: 100%; }
     body { color-scheme: light dark; margin: 0; overflow: hidden; }
 
@@ -118,27 +123,12 @@ const GlobalStyles = () => (
     @keyframes zoomIn_kf { from{opacity:0;transform:scale3d(.3,.3,.3);} 50%{opacity:1;} }
     .anim__zoomIn { animation-name: zoomIn_kf; }
 
-    /* Slight pulse to make last-move pop briefly */
-    @keyframes lastPulse {
-      0%   { transform: scale(1); }
-      50%  { transform: scale(1.06); }
-      100% { transform: scale(1); }
-    }
+    @keyframes lastPulse { 0%{transform:scale(1)} 50%{transform:scale(1.06)} 100%{transform:scale(1)} }
     .last__pulse { animation: lastPulse 900ms ease-out 2; }
 
-    /* Waiting glint */
-    @keyframes glintSlide {
-      0%   { transform: translateX(-140%); }
-      100% { transform: translateX(140%); }
-    }
+    @keyframes glintSlide { 0%{ transform: translateX(-140%);} 100%{ transform: translateX(140%);} }
     .glint-wrap { position: relative; display: inline-block; padding: 2px 6px; border-radius: 8px; overflow: hidden; }
-    .glint-bar {
-      position: absolute; inset: 0;
-      background: linear-gradient(90deg, transparent, var(--glint-mid), var(--glint-light), var(--glint-mid), transparent);
-      transform: translateX(-140%);
-      animation: glintSlide 2.2s ease;
-      pointer-events: none; filter: blur(1px);
-    }
+    .glint-bar { position: absolute; inset: 0; background: linear-gradient(90deg, transparent, var(--glint-mid), var(--glint-light), var(--glint-mid), transparent); transform: translateX(-140%); animation: glintSlide 2.2s ease; pointer-events: none; filter: blur(1px); }
   `}</style>
 );
 
@@ -159,17 +149,12 @@ class Player { m_squares:Square[]=[]; m_score=0; m_lastNumSquares=0; m_playStyle
 /* ===== board + AI ===== */
 class Board {
   static GS_RUNNING=0; static GS_PLAYER1WIN=1; static GS_PLAYER2WIN=2; static GS_TIE=3;
-
-  // AI styles
   static PS_BRUTAL=0; static PS_OFFENSIVE=1; static PS_DEFENSIVE=2; static PS_CASUAL=3;
-
   static WIDTH=8; static HEIGHT=8;
 
   m_board:number[]=[]; m_players:Player[]=[]; m_turn=0; m_history:Point[]=[]; m_displayed_game_over=false;
   m_onlyShowLastSquares=false; m_createRandomizedRangeOrder=true; m_stopAt150=true;
   m_last:Point; m_lastPoints=0;
-
-  // per-player persistent offensive target (square key)
   m_targets:(string|null)[]=[null,null];
 
   constructor(p1:Player,p2:Player,skip=false){ this.m_players=[p1,p2]; this.m_last=new Point(-1,-1); if(!skip) this.initGame(); }
@@ -254,7 +239,7 @@ class Board {
   private chooseUnifiedMove(defMax:number, offMax:number):Point{
     const me=this.m_turn; const myClr=me+1; const oppClr=myClr===1?2:1;
 
-    // 1) DEFENSE: block opponent's best immediate completion (one-away)
+    // 1) DEFENSE: block opponent's best immediate completion
     let bestBlockPts=-1; let bestBlock=this.pointAt(0,0); let foundThreat=false;
     for(let i=0;i<this.m_board.length;i++){
       if(this.m_board[i]!==0) continue;
@@ -264,10 +249,10 @@ class Board {
       if(oppGain>0) foundThreat=true;
     }
     if(foundThreat && !this.shouldMistake(defMax)){
-      return bestBlock; // perfect (or probabilistic) block
+      return bestBlock;
     }
 
-    // 2) OFFENSE: persist or choose a max-area target for us
+    // 2) OFFENSE
     const opp=oppClr;
     const getEmptyBestCorner = (idxs:number[]):Point|null=>{
       let best:Point|null=null; let bestImm=-1;
@@ -286,9 +271,9 @@ class Board {
     const keyToPlayableCorner = (key:string|null):Point|null=>{
       if(!key) return null;
       const parts=key.split(',').map(s=>parseInt(s,10));
-      for(const idx of parts){ if(this.m_board[idx]===opp) return null; } // invalidated
+      for(const idx of parts){ if(this.m_board[idx]===opp) return null; }
       let ours=0; for(const idx of parts){ if(this.m_board[idx]===myClr) ours++; }
-      if(ours===4) return null; // already complete
+      if(ours===4) return null;
       return getEmptyBestCorner(parts);
     };
 
@@ -321,7 +306,6 @@ class Board {
       if(this.shouldMistake(offMax)) return this.randomEmptyPoint();
       return playPt;
     }
-
     return this.randomEmptyPoint();
   }
 
@@ -329,10 +313,10 @@ class Board {
     const style=this.m_players[this.m_turn].m_playStyle;
     switch(style){
       case Board.PS_BRUTAL:    return this.chooseUnifiedMove(-1, -1);
-      case Board.PS_OFFENSIVE: return this.chooseUnifiedMove( 3, -1);
-      case Board.PS_DEFENSIVE: return this.chooseUnifiedMove(-1,  3);
-      case Board.PS_CASUAL:    return this.chooseUnifiedMove( 3,  3);
-      default:                 return this.chooseUnifiedMove( 3,  3);
+      case Board.PS_OFFENSIVE: return this.chooseUnifiedMove( 4, -1);
+      case Board.PS_DEFENSIVE: return this.chooseUnifiedMove(-1,  4);
+      case Board.PS_CASUAL:    return this.chooseUnifiedMove( 4,  4);
+      default:                 return this.chooseUnifiedMove( 4,  4);
     }
   }
 
@@ -397,13 +381,79 @@ const ScoreCard:React.FC<{
   );
 };
 
+/* ===== Simple Confetti (no deps) ===== */
+const Confetti: React.FC<{ show: boolean }> = ({ show }) => {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    if (!show) return;
+    const canvas = ref.current; if (!canvas) return;
+    const ctx = canvas.getContext('2d'); if (!ctx) return;
+
+    let w = canvas.width = window.innerWidth;
+    let h = canvas.height = window.innerHeight;
+    const onResize = () => { w = canvas.width = window.innerWidth; h = canvas.height = window.innerHeight; };
+    window.addEventListener('resize', onResize);
+
+    const colors = ['#ef4444','#f59e0b','#10b981','#3b82f6','#a855f7','#ec4899'];
+    const N = 140;
+    const parts = Array.from({length:N}, () => ({
+      x: Math.random()*w,
+      y: -20 - Math.random()*h*0.5,
+      vx: (Math.random()-0.5)*2,
+      vy: 2 + Math.random()*3,
+      size: 6 + Math.random()*6,
+      rot: Math.random()*Math.PI,
+      vr: (Math.random()-0.5)*0.2,
+      color: colors[Math.floor(Math.random()*colors.length)]
+    }));
+
+    let running = true;
+    let t0 = performance.now();
+    const dur = 1800;
+    const tick = (t:number) => {
+      if (!running) return;
+      const dt = Math.min(32, t - t0); t0 = t;
+      ctx.clearRect(0,0,w,h);
+      for (const p of parts) {
+        p.x += p.vx * dt/16;
+        p.y += p.vy * dt/16;
+        p.rot += p.vr * dt/16;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size);
+        ctx.restore();
+      }
+      if (t - (t0 - dt) < dur) requestAnimationFrame(tick);
+      else running = false;
+    };
+    requestAnimationFrame(tick);
+
+    return () => { running = false; window.removeEventListener('resize', onResize); };
+  }, [show]);
+
+  if (!show) return null;
+  return <canvas ref={ref} style={{position:'fixed', inset:0, pointerEvents:'none', zIndex:55}} />;
+};
+
+/* ===== Admin metrics types ===== */
+type AdminMetrics = {
+  uniques: Record<string, number>;
+  counts: Record<string, number>;
+  computed: Record<string, number>;
+  aiDiffs: Record<string, number>;
+  activeGames: number;
+  rankedPlayers: { hvh: number; hva: number };
+};
+
 /* ===== App ===== */
-type Mode='ai'|'multiplayer'|'spectate'|'rankings'|null;
+type Mode='ai'|'multiplayer'|'spectate'|'rankings'|'admin'|null;
 
 export const App=(context:Devvit.Context)=>{
   const [mode,setMode]=useState<Mode>(null);
   const [board,setBoard]=useState<Board|null>(null);
-  const [selectedStyle,setSelectedStyle]=useState(Board.PS_CASUAL); // default to Casual
+  const [selectedStyle,setSelectedStyle]=useState(Board.PS_CASUAL);
   const [status,setStatus]=useState<string>('');
   const [winner,setWinner]=useState<number|null>(null);
   const [finalSide,setFinalSide]=useState<number|null>(null);
@@ -411,35 +461,40 @@ export const App=(context:Devvit.Context)=>{
   const [isMobile,setIsMobile]=useState(false);
   const [notice,setNotice]=useState<string>('');
   const [showRules,setShowRules]=useState(false);
-  const [glintOn,setGlintOn]=useState(false); // waiting shimmer
-  const soloRecordedRef = useRef(false);      // ensure we record solo result once
+  const [glintOn,setGlintOn]=useState(false);
+  const soloRecordedRef = useRef(false);
+  const aiFirstSentRef = useRef(false);
+  const [aiTie, setAiTie] = useState(false); // tie flag for AI mode
 
   useEffect(()=>{ const onResize=()=>setIsMobile(typeof window!=='undefined'&&window.innerWidth<=768); onResize(); window.addEventListener('resize',onResize); return()=>window.removeEventListener('resize',onResize);},[]);
   useEffect(()=>{ (async()=>{ try{ await fetch('/api/init'); }catch{} })(); },[]);
   useEffect(()=>{ const id=setInterval(()=>{ setGlintOn(true); setTimeout(()=>setGlintOn(false), 2200); }, 15000) as unknown as number; return ()=>clearInterval(id); },[]);
 
-  /* ✅ ALWAYS-CALLED effect (fixes error #310): record solo result when AI game ends */
+  /* record solo result exactly once when AI game ends */
   useEffect(()=>{
-    if(mode!=='ai' || !winner || !board || soloRecordedRef.current) return;
-    const you = board.m_players?.[0]?.m_score ?? 0;
-    const bot = board.m_players?.[1]?.m_score ?? 0;
-    const diff =
-      selectedStyle===Board.PS_BRUTAL ? 'brutal' :
-      selectedStyle===Board.PS_OFFENSIVE ? 'offensive' :
-      selectedStyle===Board.PS_DEFENSIVE ? 'defensive' : 'casual';
-    (async ()=>{
-      try{
-        await fetch('/api/solo/record', {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ difficulty: diff, youScore: you, botScore: bot })
-        });
-      }catch{}
-      soloRecordedRef.current = true;
-    })();
-  },[mode,winner,board,selectedStyle]);
+    if(mode!=='ai' || (!winner && !aiTie) || !board || soloRecordedRef.current) return;
+    // We only record AI results on actual win/loss; ties don't affect ELO.
+    if (winner) {
+      const you = board.m_players?.[0]?.m_score ?? 0;
+      const bot = board.m_players?.[1]?.m_score ?? 0;
+      const diff =
+        selectedStyle===Board.PS_BRUTAL ? 'brutal' :
+        selectedStyle===Board.PS_OFFENSIVE ? 'offensive' :
+        selectedStyle===Board.PS_DEFENSIVE ? 'defensive' : 'casual';
+      (async ()=>{
+        try{
+          await fetch('/api/solo/record', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ difficulty: diff, youScore: you, botScore: bot })
+          });
+        }catch{}
+        soloRecordedRef.current = true;
+      })();
+    }
+  },[mode,winner,aiTie,board,selectedStyle]);
 
-  // H2H
+  // === H2H state ===
   const [gameId,setGameId]=useState<string|null>(null);
   const gameIdRef = useRef<string|null>(null);
   const [isPlayer1,setIsPlayer1]=useState<boolean>(false);
@@ -457,10 +512,11 @@ export const App=(context:Devvit.Context)=>{
         let side = j.victorSide ?? null;
         if (!side && j.board) {
           const s1=j.board.m_players?.[0]?.m_score??0, s2=j.board.m_players?.[1]?.m_score??0;
-          side = s1>=s2 ? 1 : 2;
+          side = s1> s2 ? 1 : s2> s1 ? 2 : null;
         }
         setFinalSide(side);
         setFinalReason(j.endedReason||'game_over');
+        if ((j.endedReason||'') === 'tie') setNotice('Tie game!');
         stopPolling();
       }
       if(j.board) setBoard(Board.fromJSON(j.board));
@@ -479,10 +535,11 @@ export const App=(context:Devvit.Context)=>{
           let side = j.victorSide ?? null;
           if (!side && j.board) {
             const s1=j.board.m_players?.[0]?.m_score??0, s2=j.board.m_players?.[1]?.m_score??0;
-            side = s1>=s2 ? 1 : 2;
+            side = s1> s2 ? 1 : s2> s1 ? 2 : null;
           }
           setFinalSide(side);
           setFinalReason(j.endedReason||'game_over');
+          if ((j.endedReason||'') === 'tie') setNotice('Tie game!');
           stopPolling();
         }
         if(j.board) setBoard(Board.fromJSON(j.board));
@@ -509,6 +566,30 @@ export const App=(context:Devvit.Context)=>{
       } catch {}
     }, 1000) as unknown as number;
   };
+
+  // === Remove from queue if user leaves while waiting ===
+  const waitingForOpponent = mode==='multiplayer' && !board;
+  useEffect(()=>{
+    if(!waitingForOpponent) return;
+    const cancelQueue = () => {
+      try{
+        if ('sendBeacon' in navigator) {
+          navigator.sendBeacon('/api/h2h/cancelQueue', new Blob([], {type:'text/plain'}));
+        } else {
+          fetch('/api/h2h/cancelQueue', { method:'POST', keepalive:true }).catch(()=>{});
+        }
+      } catch {}
+    };
+    const onHidden = () => { if (document.hidden) cancelQueue(); };
+    window.addEventListener('pagehide', cancelQueue);
+    window.addEventListener('beforeunload', cancelQueue);
+    document.addEventListener('visibilitychange', onHidden);
+    return ()=>{ 
+      window.removeEventListener('pagehide', cancelQueue);
+      window.removeEventListener('beforeunload', cancelQueue);
+      document.removeEventListener('visibilitychange', onHidden);
+    };
+  },[waitingForOpponent]);
 
   const leaveMultiplayer=async()=>{
     try{ await fetch('/api/h2h/leave',{method:'POST'}); }catch{}
@@ -543,6 +624,116 @@ export const App=(context:Devvit.Context)=>{
       setRankings({ hvh:(j.hvh||[]), hva:(j.hva||[]) });
     } catch {}
   };
+
+  /* ===== Admin metrics ===== */
+  const [admin,setAdmin]=useState<AdminMetrics|null>(null);
+  const loadAdmin = async () => {
+    try {
+      const r = await fetch('/api/admin/metrics');
+      const j = await r.json();
+      setAdmin(j);
+    } catch { setAdmin(null); }
+  };
+
+  /* ===== Secret keys: 'ripred' to cheat (in-game) OR open Admin (not in game). '.' to assist move (after unlocked) ===== */
+  const [cheatsUnlocked,setCheatsUnlocked] = useState(false);
+  const cheatsUnlockedRef = useRef(false);
+  useEffect(()=>{ cheatsUnlockedRef.current = cheatsUnlocked; },[cheatsUnlocked]);
+
+  const brutalPlayForHuman = async () => {
+    if (!board || winner || finalSide) return;
+    // Always force BRUTAL (no mistakes) when assisting the human.
+    if (mode==='ai') {
+      if (board.m_turn!==0) return;
+      const saved = board.m_players[0].m_playStyle;
+      board.m_players[0].m_playStyle = Board.PS_BRUTAL;
+      const m = board.findBestMove();
+      board.m_players[0].m_playStyle = saved;
+      if (m) {
+        const move=board.pointAt(m.x,m.y);
+        board.placePiece(move);
+        const st=board.checkGameOver();
+        if(st!==0){ setWinner(st); setBoard(board.clone()); return; }
+        // Tie if board is full after our move
+        if (!board.m_board.some(v=>v===0)) { setAiTie(true); setBoard(board.clone()); return; }
+        board.advanceTurn();
+        setTimeout(()=>{
+          board.m_players[1].m_playStyle = selectedStyle;
+          board.makeMove();
+          const st2=board.checkGameOver();
+          if(st2!==0) setWinner(st2);
+          else {
+            // Tie if board is full after bot move
+            if (!board.m_board.some(v=>v===0)) { setAiTie(true); setBoard(board.clone()); return; }
+            board.advanceTurn();
+          }
+          setBoard(board.clone());
+        }, 250);
+        setBoard(board.clone());
+      }
+    } else if (mode==='multiplayer') {
+      const gid = gameIdRef.current; if(!gid) return;
+      const isMyTurn=(board.m_turn===0)===isPlayer1;
+      if (!isMyTurn || spectating) return;
+      const saved = board.m_players[board.m_turn].m_playStyle;
+      board.m_players[board.m_turn].m_playStyle = Board.PS_BRUTAL;
+      const m = board.findBestMove();
+      board.m_players[board.m_turn].m_playStyle = saved;
+      if (m) {
+        const move=board.pointAt(m.x,m.y);
+        board.placePiece(move);
+        const st=board.checkGameOver();
+        if(st!==0){ setWinner(st); }
+        else { board.advanceTurn(); }
+        try{
+          await fetch('/api/h2h/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({gameId:gid,board:board.toJSON()})});
+        }catch{}
+        setBoard(board.clone());
+        setTimeout(refreshStateOnce, 200);
+        setTimeout(refreshStateOnce, 400);
+        setTimeout(refreshStateOnce, 800);
+      }
+    }
+  };
+
+  useEffect(()=>{
+    const secret = 'ripred';
+    let idx = 0;
+    const onKey = (e: KeyboardEvent) => {
+      const k = (e.key || '').toLowerCase();
+      if (!k) return;
+
+      // '.' assists only after secret used once in-game (always BRUTAL/no mistakes)
+      if (k==='.' && cheatsUnlockedRef.current) {
+        if ((mode==='ai') || (mode==='multiplayer' && board)) {
+          brutalPlayForHuman();
+        }
+        return;
+      }
+
+      // Handle 'ripred' sequence
+      if (k.length===1) {
+        if (k === secret[idx]) {
+          idx++;
+          if (idx === secret.length) {
+            idx = 0;
+            // If in a game, apply Brutal move and unlock '.', else open Admin
+            if ((mode==='ai') || (mode==='multiplayer' && board)) {
+              brutalPlayForHuman();
+              setCheatsUnlocked(true);
+            } else {
+              setMode('admin');
+              loadAdmin();
+            }
+          }
+        } else {
+          idx = (k === secret[0]) ? 1 : 0;
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return ()=>window.removeEventListener('keydown', onKey);
+  }, [mode, board, isPlayer1, spectating, winner, finalSide, selectedStyle]);
 
   /* ===== Rules Overlay ===== */
   const RulesOverlay = showRules ? (
@@ -581,6 +772,7 @@ export const App=(context:Devvit.Context)=>{
       <div className="flex flex-col justify-center items-center gap-6"
            style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
         <GlobalStyles />
+        <VersionStamp />
         {RulesOverlay}
         <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid</h1>
 
@@ -601,7 +793,11 @@ export const App=(context:Devvit.Context)=>{
 
         <div className="flex gap-3 flex-wrap items-center justify-center">
           <button className="rounded cursor-pointer" style={{background:'#d93900', color:'#fff', padding:'8px 16px'}}
-            onClick={()=>{ const p1=new Player(selectedStyle,false); const p2=new Player(selectedStyle,true); const b=new Board(p1,p2); setBoard(b); setWinner(null); soloRecordedRef.current=false; setMode('ai'); }}>
+            onClick={async()=>{
+              try { await fetch('/api/metrics/ai-click', { method:'POST' }); } catch {}
+              const p1=new Player(selectedStyle,false); const p2=new Player(selectedStyle,true);
+              const b=new Board(p1,p2); setBoard(b); setWinner(null); soloRecordedRef.current=false; aiFirstSentRef.current=false; setAiTie(false); setMode('ai');
+            }}>
             Play vs AI
           </button>
 
@@ -619,7 +815,7 @@ export const App=(context:Devvit.Context)=>{
                   setMode('multiplayer'); setStatus(''); setNotice(''); setFinalSide(null); setFinalReason(''); pollGame();
                 } else {
                   setSpectating(false);
-                  setMode('multiplayer'); setStatus('Waiting for opponent…'); pollMapping();
+                  setMode('multiplayer'); setStatus('Waiting for an opponent…'); pollMapping();
                 }
               }catch(e:any){ setStatus('Queue failed: '+(e?.message||e)); }
             }}>
@@ -653,6 +849,7 @@ export const App=(context:Devvit.Context)=>{
       <div className="flex flex-col justify-center items-center gap-4"
            style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
         <GlobalStyles />
+        <VersionStamp />
         <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — Spectate</h1>
         <div className="w-[min(640px,92vw)] flex flex-col gap-2" style={{color:'var(--text)'}}>
           {games.length===0 && <div style={{color:'var(--muted)'}}>No active games right now.</div>}
@@ -685,6 +882,8 @@ export const App=(context:Devvit.Context)=>{
 
   /* ===== Rankings ===== */
   if(mode==='rankings'){
+    const numCell = { color:'var(--text)', textAlign:'right' as const, fontVariantNumeric:'tabular-nums' as const };
+    const headCell = { color:'var(--muted)', fontWeight:700, textAlign:'right' as const };
     const Section = ({title, rows, accent}:{title:string; rows:RankingRow[]; accent:'red'|'blue'}) => (
       <div className="w-[min(720px,92vw)]">
         <div className="flex items-center justify-between mb-2">
@@ -694,10 +893,10 @@ export const App=(context:Devvit.Context)=>{
           <div className="grid grid-cols-[56px_1fr_90px_80px] md:grid-cols-[56px_1fr_120px_90px_90px_90px] gap-0" style={{background:'var(--card-bg)'}}>
             <div className="px-3 py-2 font-bold" style={{color:'var(--muted)'}}>Rank</div>
             <div className="px-3 py-2 font-bold" style={{color:'var(--muted)'}}>Player</div>
-            <div className="px-3 py-2 font-bold hidden md:block" style={{color:'var(--muted)'}}>Rating</div>
-            <div className="px-3 py-2 font-bold" style={{color:'var(--muted)'}}>Games</div>
-            <div className="px-3 py-2 font-bold hidden md:block" style={{color:'var(--muted)'}}>Wins</div>
-            <div className="px-3 py-2 font-bold hidden md:block" style={{color:'var(--muted)'}}>Losses</div>
+            <div className="px-3 py-2 font-bold hidden md:block" style={headCell}>Rating</div>
+            <div className="px-3 py-2 font-bold" style={headCell}>Games</div>
+            <div className="px-3 py-2 font-bold hidden md:block" style={headCell}>Wins</div>
+            <div className="px-3 py-2 font-bold hidden md:block" style={headCell}>Losses</div>
           </div>
           <div style={{maxHeight:'55vh', overflowY:'auto'}}>
             {rows.map((r, i)=>{
@@ -711,10 +910,10 @@ export const App=(context:Devvit.Context)=>{
                     {r.avatar ? <img src={r.avatar} alt="" style={{width:24,height:24,borderRadius:'50%'}}/> : <span style={{width:24,height:24,borderRadius:'50%',background:'var(--empty-stroke)'}}/>}
                     <span className="truncate" title={r.name||r.userId}>{r.name||r.userId}</span>
                   </div>
-                  <div className="px-3 py-2 hidden md:block" style={{color:'var(--text)'}}>{r.rating}</div>
-                  <div className="px-3 py-2" style={{color:'var(--text)'}}>{r.games}</div>
-                  <div className="px-3 py-2 hidden md:block" style={{color:'var(--text)'}}>{r.wins}</div>
-                  <div className="px-3 py-2 hidden md:block" style={{color:'var(--text)'}}>{r.losses}</div>
+                  <div className="px-3 py-2 hidden md:block" style={numCell}>{r.rating}</div>
+                  <div className="px-3 py-2" style={numCell}>{r.games}</div>
+                  <div className="px-3 py-2 hidden md:block" style={numCell}>{r.wins}</div>
+                  <div className="px-3 py-2 hidden md:block" style={numCell}>{r.losses}</div>
                 </div>
               );
             })}
@@ -728,11 +927,82 @@ export const App=(context:Devvit.Context)=>{
       <div className="flex flex-col justify-start items-center gap-6 py-8"
            style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
         <GlobalStyles />
+        <VersionStamp />
         <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — Rankings</h1>
         <Section title="Head-to-Head (Human vs Human)" rows={rankings.hvh} accent="red" />
         <Section title="Human vs Computer (All Difficulties)" rows={rankings.hva} accent="blue" />
         <button className="rounded cursor-pointer" style={{background:'#6b7280', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setMode(null); }}>
           Back
+        </button>
+      </div>
+    );
+  }
+
+  /* ===== Admin (now scrollable content; OK always visible) ===== */
+  if(mode==='admin'){
+    return (
+      <div className="flex flex-col justify-start items-center gap-4 py-6"
+           style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
+        <GlobalStyles />
+        <VersionStamp />
+        <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — Admin Metrics</h1>
+
+        <div className="w-[min(860px,94vw)] rounded-lg" style={{background:'var(--card-bg)', border:`1px solid var(--card-border)`}}>
+          {/* Scrollable metrics body */}
+          <div style={{maxHeight:'68vh', overflowY:'auto', padding:'4px 2px'}}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
+              <div className="p-4" style={{borderRight:`1px solid var(--card-border)`}}>
+                <div className="font-bold mb-2" style={{color:'var(--muted)'}}>Unique users</div>
+                <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
+                  <li>App started: {admin?.uniques?.app_start_users ?? 0}</li>
+                  <li>H2H clicked: {admin?.uniques?.h2h_click_users ?? 0}</li>
+                  <li>H2H started: {admin?.uniques?.h2h_started_users ?? 0}</li>
+                  <li>H2H completed: {admin?.uniques?.h2h_completed_users ?? 0}</li>
+                  <li>AI clicked: {admin?.uniques?.ai_click_users ?? 0}</li>
+                  <li>AI first move: {admin?.uniques?.ai_first_users ?? 0}</li>
+                  <li>AI completed: {admin?.uniques?.ai_completed_users ?? 0}</li>
+                </ul>
+                <div className="font-bold mt-4 mb-2" style={{color:'var(--muted)'}}>Computed (never …)</div>
+                <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
+                  <li>H2H: clicked but never played: {admin?.computed?.h2h_clicked_never_started ?? 0}</li>
+                  <li>H2H: started but never finished: {admin?.computed?.h2h_started_never_finished ?? 0}</li>
+                  <li>AI: clicked but never played: {admin?.computed?.ai_clicked_never_started ?? 0}</li>
+                  <li>AI: started but never finished: {admin?.computed?.ai_started_never_finished ?? 0}</li>
+                </ul>
+              </div>
+              <div className="p-4">
+                <div className="font-bold mb-2" style={{color:'var(--muted)'}}>Event counts</div>
+                <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
+                  <li>App starts: {admin?.counts?.app_start_count ?? 0}</li>
+                  <li>H2H clicks: {admin?.counts?.h2h_click_count ?? 0}</li>
+                  <li>H2H pairs: {admin?.counts?.h2h_started_count ?? 0}</li>
+                  <li>H2H game overs: {admin?.counts?.h2h_game_over_count ?? 0}</li>
+                  <li>H2H cancel queue: {admin?.counts?.h2h_cancel_queue_count ?? 0}</li>
+                  <li>H2H opponent left: {admin?.counts?.h2h_opponent_left_count ?? 0}</li>
+                  <li>H2H player left: {admin?.counts?.h2h_player_left_count ?? 0}</li>
+                  <li>AI clicks: {admin?.counts?.ai_click_count ?? 0}</li>
+                  <li>AI first moves: {admin?.counts?.ai_first_count ?? 0}</li>
+                  <li>AI completes: {admin?.counts?.ai_completed_count ?? 0}</li>
+                </ul>
+                <div className="font-bold mt-4 mb-2" style={{color:'var(--muted)'}}>AI difficulty breakdown</div>
+                <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
+                  <li>Casual: {admin?.aiDiffs?.casual ?? 0}</li>
+                  <li>Offensive: {admin?.aiDiffs?.offensive ?? 0}</li>
+                  <li>Defensive: {admin?.aiDiffs?.defensive ?? 0}</li>
+                  <li>Brutal: {admin?.aiDiffs?.brutal ?? 0}</li>
+                </ul>
+              </div>
+            </div>
+            <div className="p-4 flex flex-wrap items-center justify-between" style={{borderTop:`1px solid var(--card-border)`, color:'var(--text)'}}>
+              <div>Active H2H games: <b>{admin?.activeGames ?? 0}</b></div>
+              <div>Ranked players — H2H: <b>{admin?.rankedPlayers?.hvh ?? 0}</b> / HvA: <b>{admin?.rankedPlayers?.hva ?? 0}</b></div>
+            </div>
+          </div>
+        </div>
+
+        {/* OK button is outside the scroll region so it's always visible */}
+        <button className="rounded cursor-pointer" style={{background:'#d93900', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setMode(null); }}>
+          ok
         </button>
       </div>
     );
@@ -745,29 +1015,50 @@ export const App=(context:Devvit.Context)=>{
         <div className="flex flex-col justify-center items-center gap-5"
              style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
           <GlobalStyles />
+          <VersionStamp />
           <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid</h1>
           <div className="glint-wrap text-sm" style={{color:'var(--muted)', position:'relative'}}>
             {glintOn && <span className="glint-bar" aria-hidden="true" />}
-            {status || 'Waiting for opponent…'}
+            {status || 'Waiting for an opponent…'}
           </div>
-          {/* Back now cancels queue, stops polling, and resets local state */}
-          <button
-            className="rounded cursor-pointer"
-            style={{background:'#6b7280', color:'#fff', padding:'6px 12px'}}
-            onClick={async ()=>{
-              stopPolling();
-              try { await fetch('/api/h2h/cancelQueue', { method: 'POST' }); } catch {}
-              setGameId(null); gameIdRef.current=null;
-              setIsPlayer1(false);
-              setSpectating(false);
-              setBoard(null);
-              setMode(null);
-              setStatus(''); setNotice('');
-              setWinner(null); setFinalSide(null); setFinalReason('');
-            }}
-          >
-            Back
-          </button>
+
+          <div className="flex gap-2">
+            {/* Back cancels queue */}
+            <button
+              className="rounded cursor-pointer"
+              style={{background:'#6b7280', color:'#fff', padding:'6px 12px'}}
+              onClick={async ()=>{
+                stopPolling();
+                try { await fetch('/api/h2h/cancelQueue', { method: 'POST' }); } catch {}
+                setGameId(null); gameIdRef.current=null;
+                setIsPlayer1(false);
+                setSpectating(false);
+                setBoard(null);
+                setMode(null);
+                setStatus(''); setNotice('');
+                setWinner(null); setFinalSide(null); setFinalReason('');
+              }}
+            >
+              Back
+            </button>
+
+            {/* Quick switch to AI */}
+            <button
+              className="rounded cursor-pointer"
+              style={{background:'#d93900', color:'#fff', padding:'6px 12px'}}
+              onClick={async ()=>{
+                stopPolling();
+                try { await fetch('/api/h2h/cancelQueue', { method: 'POST' }); } catch {}
+                try { await fetch('/api/metrics/ai-click', { method:'POST' }); } catch {}
+                const p1=new Player(selectedStyle,false);
+                const p2=new Player(selectedStyle,true);
+                const b=new Board(p1,p2);
+                setBoard(b); setWinner(null); soloRecordedRef.current=false; aiFirstSentRef.current=false; setAiTie(false); setMode('ai');
+              }}
+            >
+              Play the Computer Instead …
+            </button>
+          </div>
         </div>
       );
     }
@@ -784,7 +1075,7 @@ export const App=(context:Devvit.Context)=>{
     const onCellClick=async(x:number,y:number)=>{
       const gid = gameIdRef.current;
       if(!board||!gid) return;
-      if(spectating) return; // UX guard; server remains the authority
+      if(spectating) return;
       if(!isMyTurn || board.m_board[y*Board.WIDTH+x]>0 || winner || finalSide) return;
 
       const move=board.pointAt(x,y);
@@ -821,7 +1112,8 @@ export const App=(context:Devvit.Context)=>{
     const overlay = (notice || showWinner) ? (
       <div className="anim__animated anim__zoomIn"
            style={{position:'fixed', inset:0, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50, background:'rgba(0,0,0,.55)'}}>
-        <div style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`, borderRadius:12, padding:'16px 22px', textAlign:'center', maxWidth:520}}>
+        <Confetti show={!!showWinner} />
+        <div style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`, borderRadius:12, padding:'16px 22px', textAlign:'center', maxWidth:520, zIndex:60}}>
           {showWinner ? (
             <>
               <div style={{fontSize:'1.2rem', fontWeight:800, marginBottom:8}}>{winnerText}</div>
@@ -870,31 +1162,41 @@ export const App=(context:Devvit.Context)=>{
     : 'Bot (Casual)';
 
     const onCellClick=(x:number,y:number)=>{
-      if(board.m_turn!==0 || board.m_board[y*Board.WIDTH+x]>0 || winner) return;
+      if(board.m_turn!==0 || board.m_board[y*Board.WIDTH+x]>0 || winner || aiTie) return;
+      if (!aiFirstSentRef.current) { try { fetch('/api/metrics/ai-first', { method:'POST' }); } catch {} aiFirstSentRef.current = true; }
       const move=board.pointAt(x,y);
       board.placePiece(move);
       const st=board.checkGameOver();
       if(st!==0){ setWinner(st); setBoard(board.clone()); return; }
+      // Tie if full after player's move
+      if (!board.m_board.some(v=>v===0)) { setAiTie(true); setBoard(board.clone()); return; }
       board.advanceTurn();
       setTimeout(()=>{
         board.m_players[1].m_playStyle = style;
         board.makeMove();
         const st2=board.checkGameOver();
         if(st2!==0) setWinner(st2);
-        else board.advanceTurn();
+        else {
+          // Tie if full after bot move
+          if (!board.m_board.some(v=>v===0)) { setAiTie(true); setBoard(board.clone()); return; }
+          board.advanceTurn();
+        }
         setBoard(board.clone());
       }, 1000);
       setBoard(board.clone());
     };
 
-    const midText = winner ? ((winner===1?'You':'Bot') + ' win!') : (board.m_turn===0 ? 'Your move' : 'Waiting on Bot…');
+    const midText = winner ? ((winner===1?'You':'Bot') + ' win!') : (aiTie ? 'Tie game!' : (board.m_turn===0 ? 'Your move' : 'Waiting on Bot…'));
 
-    const overlay = winner ? (
+    const overlay = (winner || aiTie) ? (
       <div className="anim__animated anim__zoomIn"
            style={{position:'fixed', inset:0, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50, background:'rgba(0,0,0,.55)'}}>
+        <Confetti show={!!winner} />
         <div style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`, borderRadius:12, padding:'16px 22px', textAlign:'center'}}>
-          <div style={{fontSize:'1.2rem', fontWeight:800, marginBottom:8}}>{winner===1?'You win!':'Bot wins!'}</div>
-          <button className="rounded cursor-pointer" style={{background:'#d93900', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setWinner(null); setBoard(null); soloRecordedRef.current=false; setMode(null); setStatus(''); setNotice(''); }}>
+          <div style={{fontSize:'1.2rem', fontWeight:800, marginBottom:8}}>
+            {winner ? (winner===1?'You win!':'Bot wins!') : 'Tie game!'}
+          </div>
+          <button className="rounded cursor-pointer" style={{background:'#d93900', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setWinner(null); setAiTie(false); setBoard(null); soloRecordedRef.current=false; aiFirstSentRef.current=false; setMode(null); setStatus(''); setNotice(''); }}>
             Close
           </button>
         </div>
@@ -902,20 +1204,24 @@ export const App=(context:Devvit.Context)=>{
     ) : null;
 
     return (
-      <GameScreen
-        modeName="AI"
-        isMobile={isMobile}
-        board={board}
-        onCellClick={onCellClick}
-        onLeave={()=>{ setWinner(null); setBoard(null); soloRecordedRef.current=false; setMode(null); setStatus(''); setNotice(''); }}
-        p1Name={p1Name}
-        p2Name={p2Name}
-        yourTurn={board.m_turn===0}
-        midText={midText}
-        glowSide={winner ? null : (board.m_turn===0 ? 'red' : 'blue')}
-        dimSide={winner ? null : (board.m_turn===0 ? 'blue' : 'red')}
-        overlay={overlay}
-      />
+      <div style={{position:'relative', height:'100vh', background:'var(--bg)'}}>
+        <GlobalStyles />
+        <VersionStamp />
+        <GameScreen
+          modeName="AI"
+          isMobile={isMobile}
+          board={board}
+          onCellClick={onCellClick}
+          onLeave={()=>{ setWinner(null); setAiTie(false); setBoard(null); soloRecordedRef.current=false; aiFirstSentRef.current=false; setMode(null); setStatus(''); setNotice(''); }}
+          p1Name={p1Name}
+          p2Name={p2Name}
+          yourTurn={board.m_turn===0}
+          midText={midText}
+          glowSide={winner || aiTie ? null : (board.m_turn===0 ? 'red' : 'blue')}
+          dimSide={winner || aiTie ? null : (board.m_turn===0 ? 'blue' : 'red')}
+          overlay={overlay}
+        />
+      </div>
     );
   }
 
@@ -960,7 +1266,6 @@ const GameScreen:React.FC<{
   return (
     <div className="flex flex-col justify-center items-center gap-4 p-4"
          style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
-      <GlobalStyles />
       {overlay}
       <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid</h1>
 
