@@ -26,6 +26,11 @@ const GAMEKEY = (gid: string) => `euclid:game:${gid}`;
 const USERMAP = (uid: string) => `euclid:user:${uid}:game`;
 const ACTIVE_GAMES = 'euclid:active_games';
 
+// Chat helpers
+const CHAT_LAST = (uid: string) => `euclid:chat:last:${uid}`;
+const CHAT_RATE_MS = 1000;
+const CHAT_MAX_LEN = 140;
+
 // ELO & players (bucketed: hvh = human vs human, hva = human vs AI)
 const PLAYERS_KEY = (bucket: 'hvh'|'hva') => `euclid:players:${bucket}`;
 const OLD_ELOKEY = (uid: string) => `euclid:elo:${uid}`;                       // legacy (pre-bucket)
@@ -95,6 +100,7 @@ type PlayerJSON = {
   m_computer: boolean;
   userId: string;
 };
+type ChatItem = { id:number; ts:number; sender:string; text:string };
 type BoardJSON = {
   m_board: number[];
   m_players: PlayerJSON[];
@@ -113,6 +119,9 @@ type BoardJSON = {
   ended?: boolean;
   endedReason?: string;   // 'game_over' | 'player_left' | 'opponent_left' | 'tie'
   endedBy?: string;
+
+  // Chat log
+  chat?: { seq:number; items: ChatItem[] };
 };
 
 /* =========================
@@ -143,7 +152,8 @@ function makeInitialBoardJson(
     createdAt: Date.now(),
     ended: false,
     endedReason: '',
-    endedBy: ''
+    endedBy: '',
+    chat: { seq: 0, items: [] }
   };
 }
 
@@ -241,7 +251,7 @@ function updateEloPair(a: EloRecord, b: EloRecord, resultForA: 1 | 0 | 0.5): [El
 }
 
 /* =========================
-   SERVER-SIDE MOVE/POINTS
+   SERVER-SIDE MOVE/POINTS (still 8x8 for H2H)
    ========================= */
 function squareKey(p1: SquarePoint, p2: SquarePoint, p3: SquarePoint, p4: SquarePoint): string {
   const arr = [p1.index, p2.index, p3.index, p4.index].slice().sort((a, b) => a - b);
@@ -309,7 +319,7 @@ router.get<{ postId: string }, InitResponse | { status: string; message: string 
       await addUserToSet('app_start_users', uid);
       await incrCount('app_start_count', 1);
 
-      res.json({ type: 'init', postId, count: count ? parseInt(count) : 0, username: username ?? 'anonymous' });
+      res.json({ type: 'init', postId, count: count ? parseInt(count) : 0, username: username ?? '' });
     } catch (error: any) { res.status(400).json({ status: 'error', message: error?.message || 'Unknown init error' }); }
   }
 );
@@ -323,10 +333,10 @@ router.post('/api/h2h/queue', async (_req, res) => {
     const uid = context.userId;
     if (!uid) return res.status(400).json({ status: 'error', message: 'userId missing' });
 
-    // remember caller's name + avatar
+    // remember caller's name + avatar (skip anonymous names)
     try {
       const nm = await reddit.getCurrentUsername();
-      if (nm) await redis.set(NAMEKEY(uid), nm);
+      if (nm && nm.toLowerCase() !== 'anonymous') await redis.set(NAMEKEY(uid), nm);
       let icon = '';
       try { icon = (await (reddit as any)?.getCurrentUserIcon?.()) ?? ''; } catch {}
       if (!icon) try { icon = (await (reddit as any)?.getCurrentUserAvatar?.()) ?? ''; } catch {}
@@ -360,8 +370,8 @@ router.post('/api/h2h/queue', async (_req, res) => {
       ]);
 
       const names: Record<string,string> = {};
-      if (n1) names[user1] = n1!;
-      if (n2) names[user2] = n2!;
+      if (n1 && n1.toLowerCase()!=='anonymous') names[user1] = n1;
+      if (n2 && n2.toLowerCase()!=='anonymous') names[user2] = n2;
       const avatars: Record<string,string> = {};
       if (a1) avatars[user1] = a1!;
       if (a2) avatars[user2] = a2!;
@@ -439,7 +449,7 @@ router.get('/api/h2h/mapping', async (_req, res) => {
     board.playerAvatars = board.playerAvatars || {};
     try {
       const myName = await reddit.getCurrentUsername();
-      if (myName) board.playerNames[uid] = board.playerNames[uid] || myName;
+      if (myName && myName.toLowerCase()!=='anonymous') board.playerNames[uid] = board.playerNames[uid] || myName;
       let icon = await redis.get(AVAKEY(uid));
       if (!icon) {
         try { icon = (await (reddit as any)?.getCurrentUserIcon?.()) ?? ''; } catch {}
@@ -584,13 +594,18 @@ router.post('/api/h2h/save', async (req, res) => {
       loserUid  = s1 > s2 ? serverBoard.m_players[1].userId : s2 > s1 ? serverBoard.m_players[0].userId : '';
     }
 
-    // Tie if the board is now full and no one reached 150 (no winner)
+    // If board is now full and nobody hit 150:
     if (!gameEnded) {
       const anyEmpty = serverBoard.m_board.some(v=>v===0);
       if (!anyEmpty) {
         gameEnded = true;
         serverBoard.ended = true;
-        serverBoard.endedReason = 'tie';
+        // Not a tie if scores differ
+        serverBoard.endedReason = (s1===s2) ? 'tie' : 'game_over';
+        if (s1!==s2){
+          winnerUid = s1 > s2 ? serverBoard.m_players[0].userId : serverBoard.m_players[1].userId;
+          loserUid  = s1 > s2 ? serverBoard.m_players[1].userId : serverBoard.m_players[0].userId;
+        }
       }
     }
 
@@ -769,18 +784,18 @@ router.post('/api/metrics/ai-first', async (_req, res) => {
 });
 
 /* =========================
-   Rankings (both buckets)
+   Rankings (both buckets) — exclude anonymous entries
    ========================= */
 router.get('/api/rankings', async (_req, res) => {
   try {
     const toRows = async (bucket: 'hvh'|'hva') => {
       const ids = await getPlayers(bucket);
-      const rows = await Promise.all(ids.map(async uid => {
+      const rowsRaw = await Promise.all(ids.map(async uid => {
         const rec = await getElo(uid, bucket);
         const [name, avatar] = await Promise.all([redis.get(NAMEKEY(uid)), redis.get(AVAKEY(uid))]);
         return {
           userId: uid,
-          name: name || 'anonymous',
+          name: name || '',
           avatar: avatar || '',
           rating: rec.rating,
           games: rec.games,
@@ -789,6 +804,7 @@ router.get('/api/rankings', async (_req, res) => {
           draws: rec.draws
         };
       }));
+      const rows = rowsRaw.filter(r => r.name && r.name.toLowerCase()!=='anonymous');
       rows.sort((a,b)=> b.rating - a.rating || b.games - a.games || (a.name||'').localeCompare(b.name||''));
       return rows;
     };
@@ -861,6 +877,52 @@ router.get('/api/admin/metrics', async (_req, res) => {
     res.json({ uniques, counts, computed, aiDiffs, activeGames, rankedPlayers });
   } catch (e:any) {
     console.error('[ADMIN] metrics error', e);
+    res.status(500).json({ status:'error', message:e?.message||String(e) });
+  }
+});
+
+/* =========================
+   H2H Chat
+   ========================= */
+router.post('/api/h2h/chat', async (req, res) => {
+  try {
+    const uid = context.userId;
+    if (!uid) return res.status(401).json({ status:'error', message:'userId missing' });
+
+    const { gameId, text } = (req.body||{}) as { gameId:string; text:string };
+    if (!gameId || typeof text !== 'string') return res.status(400).json({ status:'error', message:'gameId and text required' });
+
+    const gidMapped = await redis.get(USERMAP(uid));
+    if (gidMapped !== gameId) return res.status(403).json({ status:'error', message:'not mapped to this game' });
+
+    const board = await loadBoard(gameId);
+    if (!board) return res.status(404).json({ status:'error', message:'game not found' });
+    if (board.ended) return res.status(409).json({ status:'error', message:'game ended' });
+
+    const trimmed = text.replace(/\r?\n/g, ' ').trim().slice(0, CHAT_MAX_LEN);
+    if (!trimmed) return res.json({ ok:true, ignored:true });
+
+    const lastStr = await redis.get(CHAT_LAST(uid));
+    const now = Date.now();
+    const last = lastStr ? parseInt(lastStr,10) : 0;
+    if (now - last < CHAT_RATE_MS) {
+      return res.status(429).json({ status:'error', message:'Too fast' });
+    }
+
+    board.chat = board.chat || { seq:0, items: [] };
+    const id = (board.chat.seq||0) + 1;
+    board.chat.seq = id;
+    board.chat.items.push({ id, ts: now, sender: uid, text: trimmed });
+    if (board.chat.items.length > 100) board.chat.items = board.chat.items.slice(-100);
+
+    await Promise.all([
+      saveBoard(gameId, board),
+      redis.set(CHAT_LAST(uid), String(now))
+    ]);
+
+    return res.json({ ok:true, id });
+  } catch (e:any) {
+    console.error('[H2H] chat error', e);
     res.status(500).json({ status:'error', message:e?.message||String(e) });
   }
 });
