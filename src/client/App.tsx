@@ -2,17 +2,68 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Devvit } from '@devvit/public-api';
 
 /* ===== app version (tiny watermark) ===== */
-const APP_VERSION = 'v2025.09.20.01';
+const APP_VERSION = 'v2025.09.20.05';
 const VersionStamp: React.FC = () => (
   <div style={{position:'fixed', top:6, right:8, fontSize:10, lineHeight:1, opacity:.6, color:'var(--muted)', zIndex:80}}>
     {APP_VERSION}
   </div>
 );
 
-/* ===== theme (FORCE DARK MODE globally) ===== */
+/* ===== theme (FOLLOW user/Devvit light/dark) ===== */
 const GlobalStyles = () => (
   <style>{`
+    /* --- Light theme defaults --- */
     :root{
+      --bg:#f8fafc; --text:#111827; --muted:#4b5563;
+      --card-bg:#ffffff; --card-border:#e5e7eb;
+
+      --empty-fill:#f3f4f6; --empty-stroke:#9ca3af;
+
+      --dot-red-stroke:#ef4444; --dot-red-fill:#fee2e2;
+      --dot-blue-stroke:#3b82f6; --dot-blue-fill:#dbeafe;
+
+      --line-red:252,97,97; --line-blue:96,165,250;
+
+      --pill-red:rgba(239,68,68,.10); --pill-blue:rgba(59,130,246,.10);
+
+      --last-red-ring:rgba(239,68,68,.65);
+      --last-blue-ring:rgba(59,130,246,.65);
+      --last-red-glow:rgba(239,68,68,.35);
+      --last-blue-glow:rgba(59,130,246,.35);
+
+      --glint-light:rgba(255,255,255,.50);
+      --glint-mid:rgba(255,255,255,.20);
+    }
+
+    /* --- Prefer dark: OS/browser choice --- */
+    @media (prefers-color-scheme: dark) {
+      :root{
+        --bg:#0b1220; --text:#f3f4f6; --muted:#9ca3af;
+        --card-bg:#111827; --card-border:#374151;
+
+        --empty-fill:#1f2937; --empty-stroke:#d1d5db;
+
+        --dot-red-stroke:#ef4444; --dot-red-fill:#7f1d1d;
+        --dot-blue-stroke:#3b82f6; --dot-blue-fill:#1e3a8a;
+
+        --line-red:252,97,97; --line-blue:96,165,250;
+
+        --pill-red:rgba(239,68,68,.20); --pill-blue:rgba(59,130,246,.20);
+
+        --last-red-ring:rgba(239,68,68,.80);
+        --last-blue-ring:rgba(59,130,246,.80);
+        --last-red-glow:rgba(239,68,68,.50);
+        --last-blue-glow:rgba(59,130,246,.50);
+
+        --glint-light:rgba(255,255,255,.36);
+        --glint-mid:rgba(255,255,255,.16);
+      }
+    }
+
+    /* --- Explicit Dev/host toggles (classes/attributes) override OS --- */
+    html.dark, body.dark,
+    html[data-theme="dark"], body[data-theme="dark"],
+    html[data-color-scheme="dark"], body[data-color-scheme="dark"]{
       --bg:#0b1220; --text:#f3f4f6; --muted:#9ca3af;
       --card-bg:#111827; --card-border:#374151;
 
@@ -33,9 +84,32 @@ const GlobalStyles = () => (
       --glint-light:rgba(255,255,255,.36);
       --glint-mid:rgba(255,255,255,.16);
     }
+    html.light, body.light,
+    html[data-theme="light"], body[data-theme="light"],
+    html[data-color-scheme="light"], body[data-color-scheme="light"]{
+      --bg:#f8fafc; --text:#111827; --muted:#4b5563;
+      --card-bg:#ffffff; --card-border:#e5e7eb;
 
-    html, body, #root { height: 100%; background:#0b1220; }
-    body { color-scheme: dark !important; margin: 0; overflow: hidden; }
+      --empty-fill:#f3f4f6; --empty-stroke:#9ca3af;
+
+      --dot-red-stroke:#ef4444; --dot-red-fill:#fee2e2;
+      --dot-blue-stroke:#3b82f6; --dot-blue-fill:#dbeafe;
+
+      --line-red:252,97,97; --line-blue:96,165,250;
+
+      --pill-red:rgba(239,68,68,.10); --pill-blue:rgba(59,130,246,.10);
+
+      --last-red-ring:rgba(239,68,68,.65);
+      --last-blue-ring:rgba(59,130,246,.65);
+      --last-red-glow:rgba(239,68,68,.35);
+      --last-blue-glow:rgba(59,130,246,.35);
+
+      --glint-light:rgba(255,255,255,.50);
+      --glint-mid:rgba(255,255,255,.20);
+    }
+
+    html, body, #root { height: 100%; background: var(--bg); }
+    body { color-scheme: light dark; margin: 0; overflow: hidden; }
 
     .glow-red { box-shadow: 0 0 0 3px rgba(239,68,68,.6), 0 0 18px rgba(239,68,68,.45); }
     .glow-blue{ box-shadow: 0 0 0 3px rgba(59,130,246,.6), 0 0 18px rgba(59,130,246,.45); }
@@ -227,10 +301,10 @@ class Board {
     const style=this.m_players[this.m_turn].m_playStyle;
     switch(style){
       case Board.PS_BRUTAL:    return this.chooseUnifiedMove(-1, -1);
-      case Board.PS_OFFENSIVE: return this.chooseUnifiedMove( 4, -1);
-      case Board.PS_DEFENSIVE: return this.chooseUnifiedMove(-1,  4);
-      case Board.PS_CASUAL:    return this.chooseUnifiedMove( 3,  2);
-      default:                 return this.chooseUnifiedMove( 3,  2);
+      case Board.PS_OFFENSIVE: return this.chooseUnifiedMove( 3, -1);
+      case Board.PS_DEFENSIVE: return this.chooseUnifiedMove(-1,  3);
+      case Board.PS_CASUAL:    return this.chooseUnifiedMove( 2,  2);
+      default:                 return this.chooseUnifiedMove( 2,  2); // <- default to Casual
     }
   }
 
@@ -645,8 +719,8 @@ export const App=(context:Devvit.Context)=>{
                   </div>
                   <div className="px-3 py-2 hidden md:block" style={numCell}>{r.rating}</div>
                   <div className="px-3 py-2" style={numCell}>{r.games}</div>
-                  <div className="px-3 py-2 hidden md:block" style={numCell}>{r.wins}</div>
-                  <div className="px-3 py-2 hidden md:block" style={numCell}>{r.losses}</div>
+                  <div className="px-3 py-2 hidden md.block" style={numCell as any}>{r.wins}</div>
+                  <div className="px-3 py-2 hidden md.block" style={numCell as any}>{r.losses}</div>
                 </div>
               );
             })}
@@ -661,13 +735,13 @@ export const App=(context:Devvit.Context)=>{
         <div style={{paddingTop:16, paddingBottom:8}}>
           <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — Rankings</h1>
         </div>
-        <div className="flex-1 overflow-y-auto w-full flex flex-col items-center gap-6" style={{paddingBottom:8}}>
+        <div className="flex-1 overflow-y-auto w-full flex flex-col items.center gap-6" style={{paddingBottom:8}}>
           <Section title="Head-to-Head (Human vs Human)" rows={rankings.hvh} accent="red" />
           <Section title="Human vs Computer (All Difficulties)" rows={rankings.hva} accent="blue" />
         </div>
         {/* Back button always visible; rankings content scrolls above */}
         <div style={{padding:12}}>
-          <button className="rounded cursor-pointer" style={{background:'#6b7280', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setMode(null); }}>
+          <button className="rounded cursor.pointer" style={{background:'#6b7280', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setMode(null); }}>
             Back
           </button>
         </div>
@@ -678,16 +752,16 @@ export const App=(context:Devvit.Context)=>{
   /* ===== Admin (scrollable body; OK always visible) ===== */
   else if(mode==='admin'){
     content = (
-      <div className="flex flex-col items-center" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
+      <div className="flex flex.col items.center" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
         <div style={{paddingTop:16, paddingBottom:8}}>
-          <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — Admin Metrics</h1>
+          <h1 className="text-2xl font.bold text.center" style={{color:'var(--text)'}}>Euclid — Admin Metrics</h1>
         </div>
 
-        <div className="w-[min(860px,94vw)] rounded-lg flex-1 overflow-y-auto"
+        <div className="w-[min(860px,94vw)] rounded-lg flex-1 overflow.y-auto"
              style={{background:'var(--card-bg)', border:`1px solid var(--card-border)`, padding:'4px 2px'}}>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
+          <div className="grid grid.cols-1 md:grid.cols-2 gap-0">
             <div className="p-4" style={{borderRight:`1px solid var(--card-border)`}}>
-              <div className="font-bold mb-2" style={{color:'var(--muted)'}}>Unique users</div>
+              <div className="font.bold mb-2" style={{color:'var(--muted)'}}>Unique users</div>
               <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
                 <li>App started: {admin?.uniques?.app_start_users ?? 0}</li>
                 <li>H2H clicked: {admin?.uniques?.h2h_click_users ?? 0}</li>
@@ -697,7 +771,7 @@ export const App=(context:Devvit.Context)=>{
                 <li>AI first move: {admin?.uniques?.ai_first_users ?? 0}</li>
                 <li>AI completed: {admin?.uniques?.ai_completed_users ?? 0}</li>
               </ul>
-              <div className="font-bold mt-4 mb-2" style={{color:'var(--muted)'}}>Computed (never …)</div>
+              <div className="font.bold mt-4 mb-2" style={{color:'var(--muted)'}}>Computed (never …)</div>
               <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
                 <li>H2H: clicked but never played: {admin?.computed?.h2h_clicked_never_started ?? 0}</li>
                 <li>H2H: started but never finished: {admin?.computed?.h2h_started_never_finished ?? 0}</li>
@@ -706,7 +780,7 @@ export const App=(context:Devvit.Context)=>{
               </ul>
             </div>
             <div className="p-4">
-              <div className="font-bold mb-2" style={{color:'var(--muted)'}}>Event counts</div>
+              <div className="font.bold mb-2" style={{color:'var(--muted)'}}>Event counts</div>
               <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
                 <li>App starts: {admin?.counts?.app_start_count ?? 0}</li>
                 <li>H2H clicks: {admin?.counts?.h2h_click_count ?? 0}</li>
@@ -719,7 +793,7 @@ export const App=(context:Devvit.Context)=>{
                 <li>AI first moves: {admin?.counts?.ai_first_count ?? 0}</li>
                 <li>AI completes: {admin?.counts?.ai_completed_count ?? 0}</li>
               </ul>
-              <div className="font-bold mt-4 mb-2" style={{color:'var(--muted)'}}>AI difficulty breakdown</div>
+              <div className="font.bold mt-4 mb-2" style={{color:'var(--muted)'}}>AI difficulty breakdown</div>
               <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
                 <li>Casual: {admin?.aiDiffs?.casual ?? 0}</li>
                 <li>Offensive: {admin?.aiDiffs?.offensive ?? 0}</li>
@@ -728,7 +802,7 @@ export const App=(context:Devvit.Context)=>{
               </ul>
             </div>
           </div>
-          <div className="p-4 flex flex-wrap items-center justify-between" style={{borderTop:`1px solid var(--card-border)`, color:'var(--text)'}}>
+          <div className="p-4 flex flex.wrap items.center justify.between" style={{borderTop:`1px solid var(--card-border)`, color:'var(--text)'}}>
             <div>Active H2H games: <b>{admin?.activeGames ?? 0}</b></div>
             <div>Ranked players — H2H: <b>{admin?.rankedPlayers?.hvh ?? 0}</b> / HvA: <b>{admin?.rankedPlayers?.hva ?? 0}</b></div>
           </div>
@@ -736,7 +810,7 @@ export const App=(context:Devvit.Context)=>{
 
         {/* OK button always visible below the scroll area */}
         <div style={{padding:12}}>
-          <button className="rounded cursor-pointer" style={{background:'#d93900', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setMode(null); }}>
+          <button className="rounded cursor.pointer" style={{background:'#d93900', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setMode(null); }}>
             ok
           </button>
         </div>
@@ -748,8 +822,8 @@ export const App=(context:Devvit.Context)=>{
   else if(mode==='multiplayer' && !isBoardValid(board)){
     // Waiting view (paired, or finding match) — mapping poll runs in background
     content = (
-      <div className="flex flex-col justify-center items-center gap-5" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
-        <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid</h1>
+      <div className="flex flex.col justify.center items.center gap-5" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
+        <h1 className="text-2xl font.bold text.center" style={{color:'var(--text)'}}>Euclid</h1>
         <div className="glint-wrap text-sm" style={{color:'var(--muted)', position:'relative'}}>
           {glintOn && <span className="glint-bar" aria-hidden="true" />}
           {status || 'Paired — loading board…'}
@@ -757,7 +831,7 @@ export const App=(context:Devvit.Context)=>{
 
         <div className="flex gap-2">
           {/* Back cancels queue */}
-          <button className="rounded cursor-pointer" style={{background:'#6b7280', color:'#fff', padding:'6px 12px'}}
+          <button className="rounded cursor.pointer" style={{background:'#6b7280', color:'#fff', padding:'6px 12px'}}
             onClick={async ()=>{
               stopPolling(); pollActiveRef.current='none';
               try { await fetch('/api/h2h/cancelQueue', { method: 'POST' }); } catch {}
@@ -769,7 +843,7 @@ export const App=(context:Devvit.Context)=>{
           </button>
 
           {/* Quick switch to AI */}
-          <button className="rounded cursor-pointer" style={{background:'#d93900', color:'#fff', padding:'6px 12px'}}
+          <button className="rounded cursor.pointer" style={{background:'#d93900', color:'#fff', padding:'6px 12px'}}
             onClick={async ()=>{
               stopPolling(); pollActiveRef.current='none';
               try { await fetch('/api/h2h/cancelQueue', { method: 'POST' }); } catch {}
@@ -834,7 +908,7 @@ export const App=(context:Devvit.Context)=>{
           ) : (
             <div style={{fontSize:'1.1rem', fontWeight:800, marginBottom:8}}>{notice}</div>
           )}
-          <button className="rounded cursor-pointer" style={{background:'#d93900', color:'#fff', padding:'6px 12px'}}
+          <button className="rounded cursor.pointer" style={{background:'#d93900', color:'#fff', padding:'6px 12px'}}
             onClick={()=>{ setMode(null); setBoard(null); setStatus(''); setNotice(''); setWinner(null); setFinalSide(null); setFinalReason(''); }}>
             Close
           </button>
@@ -872,7 +946,11 @@ export const App=(context:Devvit.Context)=>{
   else if(mode==='ai' && isBoardValid(board)){
     const style=selectedStyle;
     const p1Name='You';
-    const p2Name=style===Board.PS_BRUTAL?'Bot (Brutal)':style===Board.PS_OFFENSIVE?'Bot (Offensive)':style===Board.PS_DEFENSIVE?'Bot (Defensive)':'Bot (Casual)';
+    const p2Name =
+      style===Board.PS_BRUTAL    ? 'Bot (Brutal)'    :
+      style===Board.PS_OFFENSIVE ? 'Bot (Offensive)' :
+      style===Board.PS_DEFENSIVE ? 'Bot (Defensive)' :
+                                   'Bot (Casual)';
 
     const onCellClick=(x:number,y:number)=>{
       if(board.m_turn!==0 || board.m_board[y*Board.WIDTH+x]>0 || winner || aiTie) return;
@@ -904,7 +982,7 @@ export const App=(context:Devvit.Context)=>{
         <Confetti show={!!winner} />
         <div style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`, borderRadius:12, padding:'16px 22px', textAlign:'center'}}>
           <div style={{fontSize:'1.2rem', fontWeight:800, marginBottom:8}}>{winner ? (winner===1?'You win!':'Bot wins!') : 'Tie game!'}</div>
-          <button className="rounded cursor-pointer" style={{background:'#d93900', color:'#fff', padding:'6px 12px'}}
+          <button className="rounded cursor.pointer" style={{background:'#d93900', color:'#fff', padding:'6px 12px'}}
             onClick={()=>{ setWinner(null); setAiTie(false); setBoard(null); soloRecordedRef.current=false; aiFirstSentRef.current=false; setMode(null); setStatus(''); setNotice(''); }}>
             Close
           </button>
@@ -935,7 +1013,7 @@ export const App=(context:Devvit.Context)=>{
   // fallback
   else {
     content = (
-      <div className="flex flex-col justify-center items-center gap-5" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
+      <div className="flex flex.col justify.center items.center gap-5" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
         <div style={{color:'var(--text)'}}>Loading…</div>
       </div>
     );
@@ -986,26 +1064,26 @@ const GameScreen:React.FC<{
   const rightDim = dimSide==='blue'? .5 : 1;
 
   return (
-    <div className="flex flex-col justify-center items-center gap-4 p-4" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
+    <div className="flex flex.col justify.center items.center gap-4 p-4" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
       {/* overlay (winner/notice) */}
       {overlay}
-      <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid</h1>
+      <h1 className="text-2xl font.bold text.center" style={{color:'var(--text)'}}>Euclid</h1>
 
       {/* Scoreboard */}
       {!isMobile ? (
-        <div className="w-full flex justify-between gap-4 items-start">
-          <div className="flex-1 flex justify-start" style={{opacity:leftDim}}>
+        <div className="w.full flex justify.between gap-4 items.start">
+          <div className="flex-1 flex justify.start" style={{opacity:leftDim}}>
             <ScoreCard label={p1Name} score={board.m_players[0].m_score} align="left" glow={leftGlow} avatar={p1Avatar} />
           </div>
-          <div className="flex flex-col items-center justify-start" style={{minWidth:260, color:'var(--text)'}}>
+          <div className="flex flex.col items.center justify.start" style={{minWidth:260, color:'var(--text)'}}>
             <div style={{fontWeight:800}}>{midText}</div>
           </div>
-          <div className="flex-1 flex justify-end" style={{opacity:rightDim}}>
+          <div className="flex-1 flex justify.end" style={{opacity:rightDim}}>
             <ScoreCard label={p2Name} score={board.m_players[1].m_score} align="right" glow={rightGlow} avatar={p2Avatar} />
           </div>
         </div>
       ) : (
-        <div className="w-full flex flex-col items-center gap-2">
+        <div className="w.full flex flex.col items.center gap-2">
           <div style={{opacity:leftDim}}>
             <ScoreCard label={p1Name} score={board.m_players[0].m_score} align="left" glow={leftGlow} avatar={p1Avatar} compact />
           </div>
@@ -1019,7 +1097,7 @@ const GameScreen:React.FC<{
       {/* Board */}
       <div className="relative" style={{width:bw, height:bh, margin:'0 auto', maxWidth:'100vw'}}>
         {/* Overlay lines — do not intercept clicks */}
-        <svg className="absolute top-0 left-0 w-full h-full z-10" style={{ pointerEvents:'none' }} viewBox={`0 0 ${bw} ${bh}`}>{lines}</svg>
+        <svg className="absolute top-0 left-0 w.full h.full z-10" style={{ pointerEvents:'none' }} viewBox={`0 0 ${bw} ${bh}`}>{lines}</svg>
 
         <div className="grid" style={{gridTemplateColumns:`repeat(8, ${cell}px)`, gridAutoRows:`${cell}px`, gap:0}}>
           {Array.from({length:8},(_,y)=>
@@ -1036,7 +1114,7 @@ const GameScreen:React.FC<{
                 if (isLast) { shadow = '0 0 0 5px var(--last-blue-ring), 0 0 18px var(--last-blue-glow)'; extraClass = 'last__pulse'; }
               }
               return (
-                <div key={`${y}-${x}`} className="flex items-center justify-center" onClick={()=>onCellClick(x,y)}>
+                <div key={`${y}-${x}`} className="flex items.center justify.center" onClick={()=>onCellClick(x,y)}>
                   <div className={`rounded-full ${extraClass}`}
                     style={{ width:DOT, height:DOT, background:fill, border:`2px solid ${stroke}`, boxShadow: shadow }}
                     aria-label={isLast ? 'Last move' : undefined}
@@ -1051,7 +1129,7 @@ const GameScreen:React.FC<{
 
       {/* Leave/Back */}
       <div className="flex gap-2 mt-2" style={{ marginBottom: isMobile ? 116 : 76 }}>
-        <button className="rounded cursor-pointer" style={{background:'#d93900', color:'#fff', padding:'6px 12px'}} onClick={onLeave}>
+        <button className="rounded cursor.pointer" style={{background:'#d93900', color:'#fff', padding:'6px 12px'}} onClick={onLeave}>
           {modeName==='Multiplayer' ? 'Leave Game' : 'Back'}
         </button>
       </div>
