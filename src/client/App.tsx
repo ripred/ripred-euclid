@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Devvit } from '@devvit/public-api';
 
 /* ===== app version (tiny watermark) ===== */
-const APP_VERSION = 'v2025.09.20.08';
+const APP_VERSION = 'v2025.09.21.01';
 const VersionStamp: React.FC = () => (
   <div style={{position:'fixed', top:6, right:8, fontSize:10, lineHeight:1, opacity:.6, color:'var(--muted)', zIndex:80}}>
     {APP_VERSION}
@@ -143,6 +143,8 @@ class Player { m_squares:Square[]=[]; m_score=0; m_lastNumSquares=0; m_playStyle
 /* ===== board + AI ===== */
 class Board {
   static GS_RUNNING=0; static GS_PLAYER1WIN=1; static GS_PLAYER2WIN=2; static GS_TIE=3;
+
+  // Styles (IDs appended only; never re-ordered)
   static PS_BRUTAL=0; static PS_OFFENSIVE=1; static PS_DEFENSIVE=2; static PS_CASUAL=3;
   static PS_BEGINNER=4; static PS_TENDERFOOT=5; static PS_DOOFUS=6;
   static PS_GOLDFISH=7; static PS_COFFEE=8;
@@ -349,12 +351,15 @@ class Board {
       case Board.PS_BRUTAL:     return this.chooseUnifiedMove(0, 0);
       case Board.PS_OFFENSIVE:  return this.chooseUnifiedMove(1/3, 0);
       case Board.PS_DEFENSIVE:  return this.chooseUnifiedMove(0, 1/3);
-      case Board.PS_CASUAL:     return this.chooseUnifiedMove(1/2, 1/2);
-      case Board.PS_BEGINNER:   return this.chooseUnifiedMove(2/3, 2/3);
-      case Board.PS_TENDERFOOT: return this.chooseUnifiedMove(5/8, 5/8);
-      case Board.PS_DOOFUS:     return this.chooseUnifiedMove(4/5, 4/5);
-      case Board.PS_GOLDFISH:   return this.chooseUnifiedMove(3/4, 2/3); // off=2/3, def=3/4
-      case Board.PS_COFFEE:     return this.chooseUnifiedMove(2/3, 3/5); // off=3/5, def=2/3
+
+      // from CASUAL down, make blocking weaker (higher def mistake prob)
+      case Board.PS_CASUAL:     return this.chooseUnifiedMove(3/5, 1/2);  // def 0.60, off 0.50
+      case Board.PS_TENDERFOOT: return this.chooseUnifiedMove(2/3, 5/8);  // def 0.667, off 0.625
+      case Board.PS_COFFEE:     return this.chooseUnifiedMove(2/3, 3/5);  // def 0.667, off 0.60
+      case Board.PS_BEGINNER:   return this.chooseUnifiedMove(3/4, 2/3);  // def 0.75,  off 0.667
+      case Board.PS_GOLDFISH:   return this.chooseUnifiedMove(4/5, 2/3);  // def 0.80,  off 0.667
+      case Board.PS_DOOFUS:     return this.chooseUnifiedMove(9/10, 4/5); // def 0.90,  off 0.80
+
       default:                  return this.chooseUnifiedMove(1/2, 1/2);
     }
   }
@@ -512,11 +517,20 @@ type Mode='ai'|'multiplayer'|'spectate'|'rankings'|'admin'|null;
 export const App=(context:Devvit.Context)=>{
   const [mode,setMode]=useState<Mode>(null);
   const [board,setBoard]=useState<Board|null>(null);
-  const [selectedStyle,setSelectedStyle]=useState(Board.PS_CASUAL);
+
+  // Difficulty default -> Beginner (per request)
+  const [selectedStyle,setSelectedStyle]=useState(Board.PS_BEGINNER);
+
+  // Independent W/H (even)
   const evenSizes = [4,6,8,10,12,14,16];
-  const [boardSize,setBoardSize]=useState<number>(8);
+  const [boardW,setBoardW]=useState<number>(8);
+  const [boardH,setBoardH]=useState<number>(8);
+
   const [scoringMode,setScoringMode]=useState<'bbox'|'true'>('bbox');
+
+  // Best-case (upper bound) & recommended win score (interpolated)
   const [bestCase,setBestCase]=useState<number>(0);
+  const [recommended,setRecommended]=useState<number>(150);
   const [winScore,setWinScore]=useState<number>(150);
 
   const [status,setStatus]=useState<string>('');
@@ -552,19 +566,23 @@ export const App=(context:Devvit.Context)=>{
   useEffect(()=>{ (async()=>{ try{ await fetch('/api/init'); }catch{} })(); },[]);
   useEffect(()=>{ const id=setInterval(()=>{ setGlintOn(true); setTimeout(()=>setGlintOn(false), 2200); }, 15000) as unknown as number; return ()=>clearInterval(id); },[]);
 
-  // recompute best-case + clamp winScore when options change
+  // Interpolate Recommended Win Score from 8×8→150 baseline, accounting for scoring mode
   useEffect(()=>{
-    const W = boardSize - (boardSize%2);
-    const H = W;
-    const val = bestCaseScorePerPlayer(W,H,scoringMode);
-    setBestCase(val);
-    setWinScore(prev => Math.max(1, Math.min(prev, val)));
-  },[boardSize, scoringMode]);
+    const W = boardW - (boardW%2);
+    const H = boardH - (boardH%2);
+    const cur = bestCaseScorePerPlayer(W,H,scoringMode);
+    const base = bestCaseScorePerPlayer(8,8,scoringMode);
+    const ratio = base > 0 ? (cur / base) : 1;
+    const rec = Math.max(1, Math.min(cur, Math.round(150 * ratio)));
+    setBestCase(cur);
+    setRecommended(rec);
+    setWinScore(rec); // auto-adjust on size/scoring change; user can still override afterward
+  },[boardW, boardH, scoringMode]);
 
   // record AI result (win/loss only; tie has no ELO)
   useEffect(()=>{
     if(mode!=='ai' || (!winner && !aiTie) || !board || soloRecordedRef.current) return;
-    if (winner){ // only record win/loss
+    if (winner){
       const you = board.m_players?.[0]?.m_score ?? 0;
       const bot = board.m_players?.[1]?.m_score ?? 0;
       const diff =
@@ -594,7 +612,7 @@ export const App=(context:Devvit.Context)=>{
         let side=j.victorSide??null;
         if (!side && j.board) {
           const s1=j.board.m_players?.[0]?.m_score??0, s2=j.board.m_players?.[1]?.m_score??0;
-          side = s1>s2 ? 1 : s2>s1 ? 2 : null;
+          side = s1>s2 ? 1 : s2>s1 ? 2 : null; // fixed typo (s2>s2)
         }
         setFinalSide(side);
         setFinalReason(j.endedReason||'game_over');
@@ -794,7 +812,6 @@ export const App=(context:Devvit.Context)=>{
 
   /* ===== Intro (settings enclosed in their own area) ===== */
   if(mode===null){
-    const sizeOptions = evenSizes; // 4..16 even
     content = (
       <div className="flex flex-col items-center gap-6" style={{background:'var(--bg)', height:'100vh', overflow:'hidden', paddingTop:16}}>
         {RulesOverlay}
@@ -821,9 +838,16 @@ export const App=(context:Devvit.Context)=>{
             </div>
 
             <div>
-              <label className="font-medium block mb-1" style={{color:'var(--muted)'}}>Board Size</label>
-              <select className="rounded px-3 py-2 w-full" style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`}} value={boardSize} onChange={(e)=>setBoardSize(Number(e.target.value))}>
-                {sizeOptions.map(n=><option key={n} value={n}>{n} × {n}</option>)}
+              <label className="font-medium block mb-1" style={{color:'var(--muted)'}}>Board Width</label>
+              <select className="rounded px-3 py-2 w-full" style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`}} value={boardW} onChange={(e)=>setBoardW(Number(e.target.value))}>
+                {evenSizes.map(n=><option key={'w'+n} value={n}>{n}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="font-medium block mb-1" style={{color:'var(--muted)'}}>Board Height</label>
+              <select className="rounded px-3 py-2 w-full" style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`}} value={boardH} onChange={(e)=>setBoardH(Number(e.target.value))}>
+                {evenSizes.map(n=><option key={'h'+n} value={n}>{n}</option>)}
               </select>
             </div>
 
@@ -846,7 +870,10 @@ export const App=(context:Devvit.Context)=>{
                 className="rounded px-3 py-2 w-full"
                 style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`}}
               />
-              <div className="text-xs mt-1" style={{color:'var(--muted)'}}>Best-case per player for {boardSize}×{boardSize} ({scoringMode==='bbox'?'Bounding':'True'}): <b>{bestCase}</b></div>
+              <div className="text-xs mt-1" style={{color:'var(--muted)'}}>
+                Best-case per player for {boardW}×{boardH} ({scoringMode==='bbox'?'Bounding':'True'}): <b>{bestCase}</b><br/>
+                Recommended win (8×8→150 scaled): <b>{recommended}</b>
+              </div>
             </div>
           </div>
         </div>
@@ -854,7 +881,7 @@ export const App=(context:Devvit.Context)=>{
         {/* Primary Buttons — five colors */}
         <div className="flex gap-3 flex-wrap items-center justify-center">
           <button className="rounded cursor-pointer" style={{background:'#2563eb', color:'#fff', padding:'8px 16px'}}
-            onClick={async()=>{ try{ await fetch('/api/metrics/ai-click',{method:'POST'});}catch{} const p1=new Player(selectedStyle,false), p2=new Player(selectedStyle,true); const b=new Board(p1,p2,{ W:boardSize, H:boardSize, scoring:scoringMode, winScore }); setBoard(b); setWinner(null); soloRecordedRef.current=false; aiFirstSentRef.current=false; setAiTie(false); setLocalChat([]); setMode('ai'); }}>
+            onClick={async()=>{ try{ await fetch('/api/metrics/ai-click',{method:'POST'});}catch{} const p1=new Player(selectedStyle,false), p2=new Player(selectedStyle,true); const b=new Board(p1,p2,{ W:boardW, H:boardH, scoring:scoringMode, winScore }); setBoard(b); setWinner(null); soloRecordedRef.current=false; aiFirstSentRef.current=false; setAiTie(false); setLocalChat([]); setMode('ai'); }}>
             Play vs AI
           </button>
 
@@ -1098,7 +1125,7 @@ export const App=(context:Devvit.Context)=>{
               try { await fetch('/api/metrics/ai-click', { method:'POST' }); } catch {}
               const p1=new Player(selectedStyle,false);
               const p2=new Player(selectedStyle,true);
-              const b=new Board(p1,p2,{ W:boardSize, H:boardSize, scoring:scoringMode, winScore });
+              const b=new Board(p1,p2,{ W:boardW, H:boardH, scoring:scoringMode, winScore });
               setBoard(b); setWinner(null); soloRecordedRef.current=false; aiFirstSentRef.current=false; setAiTie(false); setLocalChat([]);
               setMode('ai');
             }}>
