@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Devvit } from '@devvit/public-api';
 
 /* ===== app version (tiny watermark) ===== */
-const APP_VERSION = 'v2025.09.21.01';
+const APP_VERSION = 'v2025.09.21.02';
 const VersionStamp: React.FC = () => (
   <div style={{position:'fixed', top:6, right:8, fontSize:10, lineHeight:1, opacity:.6, color:'var(--muted)', zIndex:80}}>
     {APP_VERSION}
@@ -33,6 +33,10 @@ const GlobalStyles = () => (
 
       --glint-light:rgba(255,255,255,.50);
       --glint-mid:rgba(255,255,255,.20);
+
+      /* Assist highlight */
+      --assist-ring:rgba(234,179,8,.72);
+      --assist-glow:rgba(234,179,8,.50);
     }
 
     /* --- Prefer dark: OS/browser choice --- */
@@ -57,6 +61,9 @@ const GlobalStyles = () => (
 
         --glint-light:rgba(255,255,255,.36);
         --glint-mid:rgba(255,255,255,.16);
+
+        --assist-ring:rgba(250,204,21,.80);
+        --assist-glow:rgba(250,204,21,.55);
       }
     }
 
@@ -83,6 +90,9 @@ const GlobalStyles = () => (
 
       --glint-light:rgba(255,255,255,.36);
       --glint-mid:rgba(255,255,255,.16);
+
+      --assist-ring:rgba(250,204,21,.80);
+      --assist-glow:rgba(250,204,21,.55);
     }
     html.light, body.light,
     html[data-theme="light"], body[data-theme="light"],
@@ -106,6 +116,9 @@ const GlobalStyles = () => (
 
       --glint-light:rgba(255,255,255,.50);
       --glint-mid:rgba(255,255,255,.20);
+
+      --assist-ring:rgba(234,179,8,.72);
+      --assist-glow:rgba(234,179,8,.50);
     }
 
     html, body, #root { height: 100%; background: var(--bg); }
@@ -113,6 +126,9 @@ const GlobalStyles = () => (
 
     .glow-red { box-shadow: 0 0 0 3px rgba(239,68,68,.6), 0 0 18px rgba(239,68,68,.45); }
     .glow-blue{ box-shadow: 0 0 0 3px rgba(59,130,246,.6), 0 0 18px rgba(59,130,246,.45); }
+
+    .assist__glow { box-shadow: 0 0 0 4px var(--assist-ring), 0 0 18px var(--assist-glow); }
+    .assist__dim  { opacity:.35; }
 
     .anim__animated{animation-duration:.6s;animation-fill-mode:both;}
     @keyframes zoomIn_kf{from{opacity:0;transform:scale3d(.3,.3,.3)}50%{opacity:1}}
@@ -143,8 +159,6 @@ class Player { m_squares:Square[]=[]; m_score=0; m_lastNumSquares=0; m_playStyle
 /* ===== board + AI ===== */
 class Board {
   static GS_RUNNING=0; static GS_PLAYER1WIN=1; static GS_PLAYER2WIN=2; static GS_TIE=3;
-
-  // Styles (IDs appended only; never re-ordered)
   static PS_BRUTAL=0; static PS_OFFENSIVE=1; static PS_DEFENSIVE=2; static PS_CASUAL=3;
   static PS_BEGINNER=4; static PS_TENDERFOOT=5; static PS_DOOFUS=6;
   static PS_GOLDFISH=7; static PS_COFFEE=8;
@@ -159,7 +173,6 @@ class Board {
   constructor(p1:Player,p2:Player, opts?: { W?:number; H?:number; scoring?:'bbox'|'true'; winScore?:number; skipInit?: boolean }){
     const rawW = Math.max(4, Math.min(16, opts?.W ?? 8));
     const rawH = Math.max(4, Math.min(16, opts?.H ?? rawW));
-    // enforce even sizes
     this.W = rawW - (rawW % 2);
     this.H = rawH - (rawH % 2);
     this.scoring = opts?.scoring ?? 'bbox';
@@ -180,7 +193,6 @@ class Board {
       const bottom = Math.max(p1.y,p2.y,p3.y,p4.y);
       return (right-left+1)*(bottom-top+1);
     } else {
-      // True Area: side^2 = min positive of pairwise distance^2 (integer on grid)
       const pts=[p1,p2,p3,p4];
       let minD2=Infinity;
       for(let i=0;i<4;i++) for(let j=i+1;j<4;j++){
@@ -214,7 +226,6 @@ class Board {
           this.m_players[this.m_turn].m_lastNumSquares++;
         }
       } else if(potential){
-        // assign points for potential for stable sorting, use bbox
         const left=Math.min(x,col,x1,x2), top=Math.min(y,row,y1,y2), right=Math.max(x,col,x1,x2), bottom=Math.max(y,row,y1,y2);
         sq.points=(right-left+1)*(bottom-top+1);
         if(!potential.some(s=>s.p1.index===sq.p1.index&&s.p2.index===sq.p2.index&&s.p3.index===sq.p3.index&&s.p4.index===sq.p4.index&&s.points===sq.points&&s.remain===sq.remain&&s.clr===sq.clr)){
@@ -264,23 +275,13 @@ class Board {
     return all;
   }
 
-  private shouldMistake(prob:number):boolean{
-    if(prob<=0) return false;
-    if(prob>=1) return true;
-    return Math.random() < prob;
-  }
-
-  private randomEmptyPoint():Point{
-    const empties:number[]=[]; for(let i=0;i<this.m_board.length;i++){ if(this.m_board[i]===0) empties.push(i); }
-    if(empties.length===0) return this.pointAt(0,0);
-    const pick=empties[Math.floor(Math.random()*empties.length)];
-    return this.pointAt(pick%this.W, Math.floor(pick/this.W));
-  }
+  private shouldMistake(prob:number){ if(prob<=0) return false; if(prob>=1) return true; return Math.random()<prob; }
+  private randomEmptyPoint():Point{ const empties:number[]=[]; for(let i=0;i<this.m_board.length;i++){ if(this.m_board[i]===0) empties.push(i); } if(empties.length===0) return this.pointAt(0,0); const pick=empties[Math.floor(Math.random()*empties.length)]; return this.pointAt(pick%this.W, Math.floor(pick/this.W)); }
 
   private chooseUnifiedMove(defProb:number, offProb:number):Point{
     const me=this.m_turn; const myClr=me+1; const oppClr=myClr===1?2:1;
 
-    // 1) DEFENSE: block opponent's best immediate completion
+    // 1) DEFENSE
     let bestBlockPts=-1; let bestBlock=this.pointAt(0,0); let foundThreat=false;
     for(let i=0;i<this.m_board.length;i++){
       if(this.m_board[i]!==0) continue;
@@ -289,11 +290,9 @@ class Board {
       if(oppGain>bestBlockPts){ bestBlockPts=oppGain; bestBlock=pt; }
       if(oppGain>0) foundThreat=true;
     }
-    if(foundThreat && !this.shouldMistake(defProb)){
-      return bestBlock;
-    }
+    if(foundThreat && !this.shouldMistake(defProb)) return bestBlock;
 
-    // 2) OFFENSE: persist/choose max-area target
+    // 2) OFFENSE
     const opp=oppClr;
     const getEmptyBestCorner=(idxs:number[]):Point|null=>{
       let best:Point|null=null, bestImm=-1;
@@ -307,7 +306,6 @@ class Board {
     };
 
     const currentKey=this.m_targets[me]; let targetKey:string|null=currentKey;
-
     const keyToPlayableCorner=(key:string|null):Point|null=>{
       if(!key) return null;
       const parts=key.split(',').map(s=>parseInt(s,10));
@@ -351,29 +349,18 @@ class Board {
       case Board.PS_BRUTAL:     return this.chooseUnifiedMove(0, 0);
       case Board.PS_OFFENSIVE:  return this.chooseUnifiedMove(1/3, 0);
       case Board.PS_DEFENSIVE:  return this.chooseUnifiedMove(0, 1/3);
-
-      // from CASUAL down, make blocking weaker (higher def mistake prob)
-      case Board.PS_CASUAL:     return this.chooseUnifiedMove(3/5, 1/2);  // def 0.60, off 0.50
-      case Board.PS_TENDERFOOT: return this.chooseUnifiedMove(2/3, 5/8);  // def 0.667, off 0.625
-      case Board.PS_COFFEE:     return this.chooseUnifiedMove(2/3, 3/5);  // def 0.667, off 0.60
-      case Board.PS_BEGINNER:   return this.chooseUnifiedMove(3/4, 2/3);  // def 0.75,  off 0.667
-      case Board.PS_GOLDFISH:   return this.chooseUnifiedMove(4/5, 2/3);  // def 0.80,  off 0.667
-      case Board.PS_DOOFUS:     return this.chooseUnifiedMove(9/10, 4/5); // def 0.90,  off 0.80
-
+      case Board.PS_CASUAL:     return this.chooseUnifiedMove(3/5, 1/2);
+      case Board.PS_TENDERFOOT: return this.chooseUnifiedMove(2/3, 5/8);
+      case Board.PS_COFFEE:     return this.chooseUnifiedMove(2/3, 3/5);
+      case Board.PS_BEGINNER:   return this.chooseUnifiedMove(3/4, 2/3);
+      case Board.PS_GOLDFISH:   return this.chooseUnifiedMove(4/5, 2/3);
+      case Board.PS_DOOFUS:     return this.chooseUnifiedMove(9/10, 4/5);
       default:                  return this.chooseUnifiedMove(1/2, 1/2);
     }
   }
 
   makeMove(){ const m=this.findBestMove(); this.placePiece(m); return m; }
-  placePiece(pt:Point){
-    if(!pt.valid(this.W,this.H)||this.m_board[pt.index]>0) return 0;
-    this.m_board[pt.index]=this.m_turn+1;
-    this.m_history.push(pt);
-    this.m_last=this.pointAt(pt.x,pt.y);
-    const points=this.analyze(pt,null);
-    this.m_players[this.m_turn].m_score+=points;
-    return points;
-  }
+  placePiece(pt:Point){ if(!pt.valid(this.W,this.H)||this.m_board[pt.index]>0) return 0; this.m_board[pt.index]=this.m_turn+1; this.m_history.push(pt); this.m_last=this.pointAt(pt.x,pt.y); const points=this.analyze(pt,null); this.m_players[this.m_turn].m_score+=points; return points; }
   advanceTurn(){ this.m_turn=(this.m_turn+1)%2; }
   checkGameOver(){ const win=this.winScore||150; if(this.m_players[0].m_score>=win) return 1; if(this.m_players[1].m_score>=win) return 2; return 0; }
   toJSON(){
@@ -512,13 +499,13 @@ type AdminMetrics = {
 };
 
 /* ===== App ===== */
-type Mode='ai'|'multiplayer'|'spectate'|'rankings'|'admin'|null;
+type Mode='ai'|'multiplayer'|'spectate'|'rankings'|'admin'|'options'|null;
 
 export const App=(context:Devvit.Context)=>{
   const [mode,setMode]=useState<Mode>(null);
   const [board,setBoard]=useState<Board|null>(null);
 
-  // Difficulty default -> Beginner (per request)
+  // Difficulty default -> Beginner
   const [selectedStyle,setSelectedStyle]=useState(Board.PS_BEGINNER);
 
   // Independent W/H (even)
@@ -527,6 +514,9 @@ export const App=(context:Devvit.Context)=>{
   const [boardH,setBoardH]=useState<number>(8);
 
   const [scoringMode,setScoringMode]=useState<'bbox'|'true'>('bbox');
+
+  // Assist highlights toggle
+  const [assistOn,setAssistOn]=useState<boolean>(false);
 
   // Best-case (upper bound) & recommended win score (interpolated)
   const [bestCase,setBestCase]=useState<number>(0);
@@ -576,7 +566,7 @@ export const App=(context:Devvit.Context)=>{
     const rec = Math.max(1, Math.min(cur, Math.round(150 * ratio)));
     setBestCase(cur);
     setRecommended(rec);
-    setWinScore(rec); // auto-adjust on size/scoring change; user can still override afterward
+    setWinScore(rec); // auto-adjust; user can override afterward
   },[boardW, boardH, scoringMode]);
 
   // record AI result (win/loss only; tie has no ELO)
@@ -612,7 +602,7 @@ export const App=(context:Devvit.Context)=>{
         let side=j.victorSide??null;
         if (!side && j.board) {
           const s1=j.board.m_players?.[0]?.m_score??0, s2=j.board.m_players?.[1]?.m_score??0;
-          side = s1>s2 ? 1 : s2>s1 ? 2 : null; // fixed typo (s2>s2)
+          side = s1>s2 ? 1 : s2>s1 ? 2 : null;
         }
         setFinalSide(side);
         setFinalReason(j.endedReason||'game_over');
@@ -644,7 +634,7 @@ export const App=(context:Devvit.Context)=>{
             setSpectating(false);
             setMode('multiplayer'); setStatus(''); setNotice(''); setFinalSide(null); setFinalReason('');
             stopPolling(); pollActiveRef.current='none';
-            pollGame(); // switch to state
+            pollGame();
           } else {
             refreshStateOnce();
           }
@@ -653,7 +643,7 @@ export const App=(context:Devvit.Context)=>{
     }, 1000) as unknown as number;
   };
 
-  // SAFETY NET: if in multiplayer and board invalid/missing, always show waiting view and keep mapping polling alive
+  // SAFETY NET
   useEffect(()=>{ if (mode==='multiplayer' && !isBoardValid(board)) pollMapping(); },[mode,board]);
 
   /* ===== Spectate list ===== */
@@ -745,8 +735,7 @@ export const App=(context:Devvit.Context)=>{
     const onKey=(e:KeyboardEvent)=>{
       const k=(e.key||'');
       if (!k) return;
-
-      if (chatOpen) return; // suspend hotkeys while typing chat
+      if (chatOpen) return;
 
       if (k==='\\') {
         if (mode==='ai' || (mode==='multiplayer' && board)) {
@@ -810,21 +799,102 @@ export const App=(context:Devvit.Context)=>{
      ========================= */
   let content: JSX.Element;
 
-  /* ===== Intro (settings enclosed in their own area) ===== */
+  /* ===== Intro / Home ===== */
   if(mode===null){
+    const styleName =
+      selectedStyle===Board.PS_BRUTAL     ? 'Brutal' :
+      selectedStyle===Board.PS_OFFENSIVE  ? 'Offensive' :
+      selectedStyle===Board.PS_DEFENSIVE  ? 'Defensive' :
+      selectedStyle===Board.PS_DOOFUS     ? 'doofus' :
+      selectedStyle===Board.PS_GOLDFISH   ? 'Goldfish' :
+      selectedStyle===Board.PS_BEGINNER   ? 'Beginner' :
+      selectedStyle===Board.PS_COFFEE     ? 'Coffee-Deprived' :
+      selectedStyle===Board.PS_TENDERFOOT ? 'Tenderfoot' :
+                                            'Casual';
+
     content = (
-      <div className="flex flex-col items-center gap-6" style={{background:'var(--bg)', height:'100vh', overflow:'hidden', paddingTop:16}}>
+      <div className="flex flex-col items-center gap-5" style={{background:'var(--bg)', height:'100vh', overflow:'hidden', paddingTop:16}}>
         {RulesOverlay}
         <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid</h1>
 
-        {/* Settings Card */}
+        {/* Brief settings summary */}
+        <div className="glint-wrap text-sm" style={{color:'var(--muted)'}}>
+          Board: {boardW}×{boardH} • Scoring: {scoringMode==='bbox'?'Bounding':'True'} • Win: {winScore} • Difficulty: {styleName} • Assist: {assistOn?'On':'Off'}
+        </div>
+
+        {/* Primary Buttons */}
+        <div className="flex gap-3 flex-wrap items-center justify-center" style={{paddingTop:4}}>
+          <button className="rounded cursor-pointer" style={{background:'#2563eb', color:'#fff', padding:'8px 16px'}}
+            onClick={async()=>{
+              try{ await fetch('/api/metrics/ai-click',{method:'POST'});}catch{}
+              const p1=new Player(selectedStyle,false), p2=new Player(selectedStyle,true);
+              const b=new Board(p1,p2,{ W:boardW, H:boardH, scoring:scoringMode, winScore });
+              setBoard(b); setWinner(null); soloRecordedRef.current=false; aiFirstSentRef.current=false; setAiTie(false); setLocalChat([]); setMode('ai');
+            }}>
+            Play vs AI
+          </button>
+
+          <button className="rounded cursor-pointer" style={{background:'#ef4444', color:'#fff', padding:'8px 16px'}}
+            onClick={async()=>{
+              setStatus('Queuing…');
+              try{
+                const r=await fetch('/api/h2h/queue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+                const j=JSON.parse(await r.text());
+                if(j.paired && j.gameId){
+                  setGameId(j.gameId); gameIdRef.current=j.gameId;
+                  if(typeof j.isPlayer1==='boolean') setIsPlayer1(j.isPlayer1);
+                  if(j.board && isBoardValid(j.board)){
+                    setBoard(Board.fromJSON(j.board)); setSpectating(false);
+                    setMode('multiplayer'); setStatus(''); setNotice(''); setFinalSide(null); setFinalReason('');
+                    pollGame();
+                  } else {
+                    setSpectating(false); setMode('multiplayer'); setStatus('Paired — loading board…'); pollMapping();
+                  }
+                } else {
+                  setSpectating(false); setMode('multiplayer'); setStatus('Waiting for an opponent…'); pollMapping();
+                }
+              }catch(e:any){ setStatus('Queue failed: '+(e?.message||e)); }
+            }}>
+            Play vs Human
+          </button>
+
+          <button className="rounded cursor-pointer" style={{background:'#7c3aed', color:'#fff', padding:'8px 16px'}}
+            onClick={async()=>{ await loadGames(); setMode('spectate'); }}>
+            Spectate
+          </button>
+
+          <button className="rounded cursor-pointer" style={{background:'#16a34a', color:'#fff', padding:'8px 16px'}}
+            onClick={async()=>{ await loadRankings(); setMode('rankings'); }}>
+            Rankings
+          </button>
+
+          <button className="rounded cursor-pointer" style={{background:'#6b7280', color:'#fff', padding:'8px 16px'}}
+            onClick={()=>setMode('options')}>
+            Options
+          </button>
+
+          <button className="rounded cursor-pointer" style={{background:'#f59e0b', color:'#111827', padding:'8px 16px'}} onClick={()=>setShowRules(true)}>
+            Rules
+          </button>
+        </div>
+
+        {status && <div className="text-sm" style={{color:'var(--muted)'}}>{status}</div>}
+      </div>
+    );
+  }
+
+  /* ===== Options Page ===== */
+  else if(mode==='options'){
+    content = (
+      <div className="flex flex-col items-center gap-4" style={{background:'var(--bg)', height:'100vh', overflow:'hidden', paddingTop:16}}>
+        <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — Options</h1>
+
         <div className="w-[min(760px,96vw)]" style={{background:'var(--card-bg)', border:`1px solid var(--card-border)`, borderRadius:12, padding:'12px 16px'}}>
           <div className="font-bold mb-2" style={{color:'var(--muted)'}}>AI Game Settings</div>
           <div className="grid" style={{gridTemplateColumns:'repeat(auto-fit, minmax(220px,1fr))', gap:12}}>
             <div>
               <label className="font-medium block mb-1" style={{color:'var(--muted)'}}>Difficulty</label>
               <select className="rounded px-3 py-2 w-full" style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`}} value={selectedStyle} onChange={(e)=>setSelectedStyle(Number(e.target.value))}>
-                {/* Easiest → Hardest */}
                 <option value={Board.PS_DOOFUS}>doofus</option>
                 <option value={Board.PS_GOLDFISH}>Goldfish</option>
                 <option value={Board.PS_BEGINNER}>Beginner</option>
@@ -875,56 +945,22 @@ export const App=(context:Devvit.Context)=>{
                 Recommended win (8×8→150 scaled): <b>{recommended}</b>
               </div>
             </div>
+
+            <div>
+              <label className="font-medium block mb-1" style={{color:'var(--muted)'}}>Assist Highlights (hover)</label>
+              <div className="flex items-center gap-2">
+                <input id="assistChk" type="checkbox" checked={assistOn} onChange={(e)=>setAssistOn(e.target.checked)} />
+                <label htmlFor="assistChk" className="text-sm" style={{color:'var(--muted)'}}>Show 1–2 move-away spots when hovering your pieces</label>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Primary Buttons — five colors */}
-        <div className="flex gap-3 flex-wrap items-center justify-center">
-          <button className="rounded cursor-pointer" style={{background:'#2563eb', color:'#fff', padding:'8px 16px'}}
-            onClick={async()=>{ try{ await fetch('/api/metrics/ai-click',{method:'POST'});}catch{} const p1=new Player(selectedStyle,false), p2=new Player(selectedStyle,true); const b=new Board(p1,p2,{ W:boardW, H:boardH, scoring:scoringMode, winScore }); setBoard(b); setWinner(null); soloRecordedRef.current=false; aiFirstSentRef.current=false; setAiTie(false); setLocalChat([]); setMode('ai'); }}>
-            Play vs AI
-          </button>
-
-          <button className="rounded cursor-pointer" style={{background:'#ef4444', color:'#fff', padding:'8px 16px'}}
-            onClick={async()=>{
-              setStatus('Queuing…');
-              try{
-                const r=await fetch('/api/h2h/queue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
-                const j=JSON.parse(await r.text());
-                if(j.paired && j.gameId){
-                  setGameId(j.gameId); gameIdRef.current=j.gameId;
-                  if(typeof j.isPlayer1==='boolean') setIsPlayer1(j.isPlayer1);
-                  if(j.board && isBoardValid(j.board)){
-                    setBoard(Board.fromJSON(j.board)); setSpectating(false);
-                    setMode('multiplayer'); setStatus(''); setNotice(''); setFinalSide(null); setFinalReason('');
-                    pollGame();
-                  } else {
-                    setSpectating(false); setMode('multiplayer'); setStatus('Paired — loading board…'); pollMapping();
-                  }
-                } else {
-                  setSpectating(false); setMode('multiplayer'); setStatus('Waiting for an opponent…'); pollMapping();
-                }
-              }catch(e:any){ setStatus('Queue failed: '+(e?.message||e)); }
-            }}>
-            Play vs Human
-          </button>
-
-          <button className="rounded cursor-pointer" style={{background:'#7c3aed', color:'#fff', padding:'8px 16px'}}
-            onClick={async()=>{ await loadGames(); setMode('spectate'); }}>
-            Spectate
-          </button>
-
-          <button className="rounded cursor-pointer" style={{background:'#16a34a', color:'#fff', padding:'8px 16px'}}
-            onClick={async()=>{ await loadRankings(); setMode('rankings'); }}>
-            Rankings
-          </button>
-
-          <button className="rounded cursor-pointer" style={{background:'#f59e0b', color:'#111827', padding:'8px 16px'}} onClick={()=>setShowRules(true)}>
-            Rules
+        <div className="flex gap-2" style={{paddingBottom:12}}>
+          <button className="rounded cursor-pointer" style={{background:'#6b7280', color:'#fff', padding:'8px 16px'}} onClick={()=>setMode(null)}>
+            Done
           </button>
         </div>
-
-        {status && <div className="text-sm" style={{color:'var(--muted)'}}>{status}</div>}
       </div>
     );
   }
@@ -954,66 +990,6 @@ export const App=(context:Devvit.Context)=>{
           })}
         </div>
         <div style={{paddingTop:8}}>
-          <button className="rounded cursor-pointer" style={{background:'#6b7280', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setMode(null); }}>
-            Back
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  /* ===== Rankings ===== */
-  else if(mode==='rankings'){
-    const numCell = { color:'var(--text)', textAlign:'right' as const, fontVariantNumeric:'tabular-nums' as const };
-    const headCell = { color:'var(--muted)', fontWeight:700, textAlign:'right' as const };
-    const Section = ({title, rows, accent}:{title:string; rows:any[]; accent:'red'|'blue'}) => (
-      <div className="w-[min(720px,92vw)]">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-xl font-extrabold" style={{color:'var(--text)'}}>{title}</h2>
-        </div>
-        <div className="rounded-lg overflow-hidden" style={{border:`1px solid var(--card-border)`}}>
-          <div className="grid grid-cols-[56px_1fr_90px_80px] md:grid-cols-[56px_1fr_120px_90px_90px_90px]" style={{background:'var(--card-bg)'}}>
-            <div className="px-3 py-2 font-bold" style={{color:'var(--muted)'}}>Rank</div>
-            <div className="px-3 py-2 font-bold" style={{color:'var(--muted)'}}>Player</div>
-            <div className="px-3 py-2 font-bold hidden md:block" style={headCell}>Rating</div>
-            <div className="px-3 py-2 font-bold" style={headCell}>Games</div>
-            <div className="px-3 py-2 font-bold hidden md:block" style={headCell}>Wins</div>
-            <div className="px-3 py-2 font-bold hidden md:block" style={headCell}>Losses</div>
-          </div>
-          <div style={{maxHeight:'48vh', overflowY:'auto'}}>
-            {rows.map((r: any, i: number)=>{
-              const top3 = i<3; const pill = accent==='red' ? 'var(--pill-red)' : 'var(--pill-blue)';
-              return (
-                <div key={r.userId} className="grid grid-cols-[56px_1fr_90px_80px] md:grid-cols-[56px_1fr_120px_90px_90px_90px] items-center"
-                     style={{borderTop:`1px solid var(--card-border)`, background: top3 ? pill : 'transparent'}}>
-                  <div className="px-3 py-2 font-extrabold" style={{color: accent==='red'?'#b91c1c':'#1d4ed8'}}>{i+1}</div>
-                  <div className="px-3 py-2 flex items-center gap-2" style={{color:'var(--text)'}}>
-                    {r.avatar ? <img src={r.avatar} alt="" style={{width:24,height:24,borderRadius:'50%'}}/> : <span style={{width:24,height:24,borderRadius:'50%',background:'var(--empty-stroke)'}}/>}
-                    <span className="truncate" title={r.name||r.userId}>{r.name||r.userId}</span>
-                  </div>
-                  <div className="px-3 py-2 hidden md:block" style={numCell}>{r.rating}</div>
-                  <div className="px-3 py-2" style={numCell}>{r.games}</div>
-                  <div className="px-3 py-2 hidden md:block" style={numCell}>{r.wins}</div>
-                  <div className="px-3 py-2 hidden md:block" style={numCell}>{r.losses}</div>
-                </div>
-              );
-            })}
-            {rows.length===0 && <div className="px-3 py-4" style={{color:'var(--muted)'}}>No ranked players yet.</div>}
-          </div>
-        </div>
-      </div>
-    );
-
-    content = (
-      <div className="flex flex-col items-center" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
-        <div style={{paddingTop:16, paddingBottom:8}}>
-          <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — Rankings</h1>
-        </div>
-        <div className="flex-1 overflow-y-auto w-full flex flex-col items-center gap-6" style={{paddingBottom:8}}>
-          <Section title="Head-to-Head (Human vs Human)" rows={rankings.hvh} accent="red" />
-          <Section title="Human vs Computer (All Difficulties)" rows={rankings.hva} accent="blue" />
-        </div>
-        <div style={{padding:12}}>
           <button className="rounded cursor-pointer" style={{background:'#6b7280', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setMode(null); }}>
             Back
           </button>
@@ -1095,9 +1071,8 @@ export const App=(context:Devvit.Context)=>{
     );
   }
 
-  /* ===== Multiplayer ===== */
+  /* ===== Multiplayer (waiting / paired) ===== */
   else if(mode==='multiplayer' && !isBoardValid(board)){
-    // Waiting view (paired, or finding match) — mapping poll runs in background
     content = (
       <div className="flex flex-col justify-center items-center gap-5" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
         <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid</h1>
@@ -1136,6 +1111,7 @@ export const App=(context:Devvit.Context)=>{
     );
   }
 
+  /* ===== Multiplayer (live) ===== */
   else if(mode==='multiplayer' && isBoardValid(board)){
     const p1Id=(board as any).m_players?.[0]?.userId||''; const p2Id=(board as any).m_players?.[1]?.userId||'';
     const names=(board as any).playerNames||{}; const avatars=(board as any).playerAvatars||{};
@@ -1225,6 +1201,8 @@ export const App=(context:Devvit.Context)=>{
         p1Avatar={avatars[p1Id]}
         p2Avatar={avatars[p2Id]}
         chatItems={chatItems}
+        assistOn={assistOn}
+        myColor={isPlayer1?1:2}
       />
     );
   }
@@ -1290,7 +1268,6 @@ export const App=(context:Devvit.Context)=>{
       </div>
     ) : null;
 
-    // Chat items (AI local echo)
     const chatItems = localChat.slice(-8);
 
     content = (
@@ -1309,6 +1286,8 @@ export const App=(context:Devvit.Context)=>{
           dimSide={winner || aiTie ? null : (board.m_turn===0 ? 'blue' : 'red')}
           overlay={overlay}
           chatItems={chatItems}
+          assistOn={assistOn}
+          myColor={1}
         />
       </div>
     );
@@ -1351,17 +1330,17 @@ const GameScreen:React.FC<{
   p1Avatar?: string;
   p2Avatar?: string;
   chatItems?: { id:number; sender:string; text:string }[];
-}> = ({ modeName, isMobile, board, onCellClick, onLeave, p1Name, p2Name, yourTurn, midText, glowSide, dimSide, overlay, p1Avatar, p2Avatar, chatItems })=>{
-  // Responsive cell/dot sizes to favor smaller dots as grid grows, avoid overlap, and keep scoreboard visible
+  assistOn?: boolean;
+  myColor?: 1|2;
+}> = ({ modeName, isMobile, board, onCellClick, onLeave, p1Name, p2Name, yourTurn, midText, glowSide, dimSide, overlay, p1Avatar, p2Avatar, chatItems, assistOn=false, myColor })=>{
+  // Responsive cell/dot sizes
   const vw = typeof window!=='undefined' ? window.innerWidth : 1024;
   const vh = typeof window!=='undefined' ? window.innerHeight : 768;
 
-  // available height leaves room for title, scoreboard/chat, and buttons
   const reservedY = isMobile ? 260 : 240;
   const maxW = Math.floor(vw * 0.96);
   const maxH = Math.max(180, Math.floor((vh - reservedY)));
   let cell = Math.max(16, Math.min(64, Math.floor(Math.min(maxW/board.W, maxH/board.H))));
-  // reduce dot size as grid grows
   const dotScale = Math.max(0.58, Math.min(0.82, 0.82 - Math.max(0, board.W-8)*0.02));
   const DOT = Math.min(cell - 4, Math.floor(cell * dotScale));
   const bw = board.W * cell;
@@ -1383,6 +1362,60 @@ const GameScreen:React.FC<{
   const rightGlow = glowSide==='blue' ? 'blue' : null;
   const leftDim  = dimSide==='red' ? .5 : 1;
   const rightDim = dimSide==='blue'? .5 : 1;
+
+  // ===== Assist highlight logic (hover over your placed piece) =====
+  const [hoverIdx,setHoverIdx] = useState<number|null>(null);
+
+  const assistTargets = useMemo(()=>{
+    if (!assistOn || hoverIdx==null || myColor==null) return new Set<number>();
+    const W=board.W as number, H=board.H as number, arr=board.m_board as number[];
+    if (arr[hoverIdx]!==myColor) return new Set<number>();
+    const opp = myColor===1?2:1;
+    const x0 = hoverIdx % W, y0 = Math.floor(hoverIdx / W);
+    const targets = new Set<number>();
+
+    for (let row=0; row<H; row++){
+      for (let col=0; col<W; col++){
+        const dx=col-x0, dy=row-y0;
+        const x1=x0-dy, y1=y0+dx;
+        const x2=col-dy, y2=row+dx;
+        if (x1<0||x1>=W||y1<0||y1>=H||x2<0||x2>=W||y2<0||y2>=H) continue;
+        if (col===x0 && row===y0) continue;
+
+        const idx0 = hoverIdx;
+        const idxA = row*W + col;
+        const idxB = y1*W + x1;
+        const idxC = y2*W + x2;
+
+        const v0 = myColor;     // by definition
+        const vA = arr[idxA];
+        const vB = arr[idxB];
+        const vC = arr[idxC];
+
+        // Any opponent piece in the corners blocks this square for us
+        if (vA===opp || vB===opp || vC===opp) continue;
+
+        // Count empties among the four (we know v0 is ours)
+        const empties:number[] = [];
+        if (vA===0) empties.push(idxA);
+        if (vB===0) empties.push(idxB);
+        if (vC===0) empties.push(idxC);
+
+        // One or two moves away
+        if (empties.length===1 || empties.length===2){
+          empties.forEach(i=>targets.add(i));
+        }
+      }
+    }
+    return targets;
+  },[assistOn, hoverIdx, myColor, board.W, board.H, board.m_board]);
+
+  const onCellEnter = (idx:number, v:number) => {
+    if (!assistOn || myColor==null) return;
+    if (v===myColor) setHoverIdx(idx);
+    else setHoverIdx(null);
+  };
+  const clearHover = () => setHoverIdx(null);
 
   return (
     <div className="flex flex-col items-center gap-4 p-4" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
@@ -1416,26 +1449,36 @@ const GameScreen:React.FC<{
       )) : null}
 
       {/* Board */}
-      <div className="relative" style={{width:bw, height:bh, margin:'0 auto', maxWidth:'100vw'}}>
+      <div className="relative" style={{width:bw, height:bh, margin:'0 auto', maxWidth:'100vw'}} onMouseLeave={clearHover}>
         {/* Overlay lines — do not intercept clicks */}
         <svg className="absolute top-0 left-0 w-full h-full z-10" style={{ pointerEvents:'none' }} viewBox={`0 0 ${bw} ${bh}`}>{lines}</svg>
 
         <div className="grid" style={{gridTemplateColumns:`repeat(${board.W}, ${cell}px)`, gridAutoRows:`${cell}px`, gap:0}}>
           {Array.from({length:board.H},(_,y)=>
             Array.from({length:board.W},(_,x)=>{
-              const v=board.m_board[y * board.W + x];
+              const idx = y * board.W + x;
+              const v=board.m_board[idx];
               const isLast = v>0 && board?.m_last && board.m_last.x===x && board.m_last.y===y;
+
               let fill='var(--empty-fill)', stroke='var(--empty-stroke)', shadow: string | undefined = undefined, extraClass = '';
               if(v===1){
                 fill='var(--dot-red-fill)'; stroke='var(--dot-red-stroke)';
                 if (isLast) { shadow = '0 0 0 5px var(--last-red-ring), 0 0 18px var(--last-red-glow)'; extraClass = 'last__pulse'; }
-              }
-              if(v===2){
+              } else if(v===2){
                 fill='var(--dot-blue-fill)'; stroke='var(--dot-blue-stroke)';
                 if (isLast) { shadow = '0 0 0 5px var(--last-blue-ring), 0 0 18px var(--last-blue-glow)'; extraClass = 'last__pulse'; }
+              } else if (v===0){
+                // Assist overlays for empty spots
+                if (assistOn && assistTargets.size>0){
+                  if (assistTargets.has(idx)) extraClass += ' assist__glow';
+                  else extraClass += ' assist__dim';
+                }
               }
+
+              const onEnter = () => onCellEnter(idx, v);
+
               return (
-                <div key={`${y}-${x}`} className="flex items-center justify-center" onClick={()=>onCellClick(x,y)}>
+                <div key={`${y}-${x}`} className="flex items-center justify-center" onClick={()=>onCellClick(x,y)} onMouseEnter={onEnter}>
                   <div className={`rounded-full ${extraClass}`}
                     style={{ width:DOT, height:DOT, background:fill, border:`2px solid ${stroke}`, boxShadow: shadow }}
                     aria-label={isLast ? 'Last move' : undefined}
