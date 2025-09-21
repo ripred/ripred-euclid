@@ -41,7 +41,12 @@ const ELO_START = 1200;
 const ELO_K = 32;
 
 // AI baselines per difficulty
-const AI_BASE: Record<'casual'|'offensive'|'defensive'|'brutal', number> = {
+const AI_BASE: Record<'doofus'|'goldfish'|'beginner'|'coffee'|'tenderfoot'|'casual'|'offensive'|'defensive'|'brutal', number> = {
+  doofus: 800,
+  goldfish: 875,
+  beginner: 900,
+  coffee: 925,       // Coffee-Deprived
+  tenderfoot: 950,
   casual: 1000,
   offensive: 1200,
   defensive: 1350,
@@ -170,7 +175,8 @@ async function saveBoard(gid: string, board: BoardJSON): Promise<void> {
 async function getActiveGames(): Promise<string[]> {
   const s = await redis.get(ACTIVE_GAMES);
   if (!s) return [];
-  try { return JSON.parse(s) as string[]; } catch { return []; }
+  try { return JSON.parse(s) as string[]; } catch { return [];
+  }
 }
 async function addActiveGame(gid: string) {
   const list = await getActiveGames();
@@ -739,7 +745,7 @@ router.post('/api/solo/record', async (req, res) => {
     const uid = context.userId;
     if (!uid) return res.status(401).json({ status: 'error', message: 'userId missing' });
 
-    const { difficulty, youScore, botScore } = (req.body || {}) as { difficulty: 'casual'|'offensive'|'defensive'|'brutal'; youScore:number; botScore:number };
+    const { difficulty, youScore, botScore } = (req.body || {}) as { difficulty: 'doofus'|'goldfish'|'beginner'|'coffee'|'tenderfoot'|'casual'|'offensive'|'defensive'|'brutal'; youScore:number; botScore:number };
     if (!difficulty || !(difficulty in AI_BASE)) return res.status(400).json({ status: 'error', message: 'invalid difficulty' });
     const ys = Number(youScore) || 0;
     const bs = Number(botScore) || 0;
@@ -865,6 +871,11 @@ router.get('/api/admin/metrics', async (_req, res) => {
     };
 
     const aiDiffs = {
+      doofus: await getCount('ai_diff_doofus_count'),
+      goldfish: await getCount('ai_diff_goldfish_count'),
+      beginner: await getCount('ai_diff_beginner_count'),
+      coffee: await getCount('ai_diff_coffee_count'),
+      tenderfoot: await getCount('ai_diff_tenderfoot_count'),
       casual: await getCount('ai_diff_casual_count'),
       offensive: await getCount('ai_diff_offensive_count'),
       defensive: await getCount('ai_diff_defensive_count'),

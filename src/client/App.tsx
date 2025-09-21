@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Devvit } from '@devvit/public-api';
 
 /* ===== app version (tiny watermark) ===== */
-const APP_VERSION = 'v2025.09.20.07';
+const APP_VERSION = 'v2025.09.20.08';
 const VersionStamp: React.FC = () => (
   <div style={{position:'fixed', top:6, right:8, fontSize:10, lineHeight:1, opacity:.6, color:'var(--muted)', zIndex:80}}>
     {APP_VERSION}
@@ -144,6 +144,8 @@ class Player { m_squares:Square[]=[]; m_score=0; m_lastNumSquares=0; m_playStyle
 class Board {
   static GS_RUNNING=0; static GS_PLAYER1WIN=1; static GS_PLAYER2WIN=2; static GS_TIE=3;
   static PS_BRUTAL=0; static PS_OFFENSIVE=1; static PS_DEFENSIVE=2; static PS_CASUAL=3;
+  static PS_BEGINNER=4; static PS_TENDERFOOT=5; static PS_DOOFUS=6;
+  static PS_GOLDFISH=7; static PS_COFFEE=8;
 
   W:number; H:number; scoring:'bbox'|'true'; winScore:number;
 
@@ -344,11 +346,16 @@ class Board {
   findBestMove(){
     const style=this.m_players[this.m_turn].m_playStyle;
     switch(style){
-      case Board.PS_BRUTAL:    return this.chooseUnifiedMove(0, 0);
-      case Board.PS_OFFENSIVE: return this.chooseUnifiedMove(1/3, 0);
-      case Board.PS_DEFENSIVE: return this.chooseUnifiedMove(0, 1/3);
-      case Board.PS_CASUAL:    return this.chooseUnifiedMove(1/2, 1/2);
-      default:                 return this.chooseUnifiedMove(1/2, 1/2);
+      case Board.PS_BRUTAL:     return this.chooseUnifiedMove(0, 0);
+      case Board.PS_OFFENSIVE:  return this.chooseUnifiedMove(1/3, 0);
+      case Board.PS_DEFENSIVE:  return this.chooseUnifiedMove(0, 1/3);
+      case Board.PS_CASUAL:     return this.chooseUnifiedMove(1/2, 1/2);
+      case Board.PS_BEGINNER:   return this.chooseUnifiedMove(2/3, 2/3);
+      case Board.PS_TENDERFOOT: return this.chooseUnifiedMove(5/8, 5/8);
+      case Board.PS_DOOFUS:     return this.chooseUnifiedMove(4/5, 4/5);
+      case Board.PS_GOLDFISH:   return this.chooseUnifiedMove(3/4, 2/3); // off=2/3, def=3/4
+      case Board.PS_COFFEE:     return this.chooseUnifiedMove(2/3, 3/5); // off=3/5, def=2/3
+      default:                  return this.chooseUnifiedMove(1/2, 1/2);
     }
   }
 
@@ -561,9 +568,15 @@ export const App=(context:Devvit.Context)=>{
       const you = board.m_players?.[0]?.m_score ?? 0;
       const bot = board.m_players?.[1]?.m_score ?? 0;
       const diff =
-        selectedStyle===Board.PS_BRUTAL ? 'brutal' :
-        selectedStyle===Board.PS_OFFENSIVE ? 'offensive' :
-        selectedStyle===Board.PS_DEFENSIVE ? 'defensive' : 'casual';
+        selectedStyle===Board.PS_BRUTAL     ? 'brutal' :
+        selectedStyle===Board.PS_OFFENSIVE  ? 'offensive' :
+        selectedStyle===Board.PS_DEFENSIVE  ? 'defensive' :
+        selectedStyle===Board.PS_DOOFUS     ? 'doofus' :
+        selectedStyle===Board.PS_GOLDFISH   ? 'goldfish' :
+        selectedStyle===Board.PS_BEGINNER   ? 'beginner' :
+        selectedStyle===Board.PS_COFFEE     ? 'coffee' :
+        selectedStyle===Board.PS_TENDERFOOT ? 'tenderfoot' :
+                                              'casual';
       (async ()=>{ try{
         await fetch('/api/solo/record', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ difficulty: diff, youScore: you, botScore: bot })});
       }catch{} soloRecordedRef.current=true; })();
@@ -794,10 +807,16 @@ export const App=(context:Devvit.Context)=>{
             <div>
               <label className="font-medium block mb-1" style={{color:'var(--muted)'}}>Difficulty</label>
               <select className="rounded px-3 py-2 w-full" style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`}} value={selectedStyle} onChange={(e)=>setSelectedStyle(Number(e.target.value))}>
-                <option value={Board.PS_BRUTAL}>Brutal</option>
+                {/* Easiest → Hardest */}
+                <option value={Board.PS_DOOFUS}>doofus</option>
+                <option value={Board.PS_GOLDFISH}>Goldfish</option>
+                <option value={Board.PS_BEGINNER}>Beginner</option>
+                <option value={Board.PS_COFFEE}>Coffee-Deprived</option>
+                <option value={Board.PS_TENDERFOOT}>Tenderfoot</option>
+                <option value={Board.PS_CASUAL}>Casual</option>
                 <option value={Board.PS_OFFENSIVE}>Offensive</option>
                 <option value={Board.PS_DEFENSIVE}>Defensive</option>
-                <option value={Board.PS_CASUAL}>Casual</option>
+                <option value={Board.PS_BRUTAL}>Brutal</option>
               </select>
             </div>
 
@@ -1022,6 +1041,11 @@ export const App=(context:Devvit.Context)=>{
               </ul>
               <div className="font-bold mt-4 mb-2" style={{color:'var(--muted)'}}>AI difficulty breakdown</div>
               <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
+                <li>doofus: {admin?.aiDiffs?.doofus ?? 0}</li>
+                <li>Goldfish: {admin?.aiDiffs?.goldfish ?? 0}</li>
+                <li>Beginner: {admin?.aiDiffs?.beginner ?? 0}</li>
+                <li>Coffee-Deprived: {admin?.aiDiffs?.coffee ?? 0}</li>
+                <li>Tenderfoot: {admin?.aiDiffs?.tenderfoot ?? 0}</li>
                 <li>Casual: {admin?.aiDiffs?.casual ?? 0}</li>
                 <li>Offensive: {admin?.aiDiffs?.offensive ?? 0}</li>
                 <li>Defensive: {admin?.aiDiffs?.defensive ?? 0}</li>
@@ -1183,10 +1207,15 @@ export const App=(context:Devvit.Context)=>{
     const style=selectedStyle;
     const p1Name='You';
     const p2Name =
-      style===Board.PS_BRUTAL    ? 'Bot (Brutal)'    :
-      style===Board.PS_OFFENSIVE ? 'Bot (Offensive)' :
-      style===Board.PS_DEFENSIVE ? 'Bot (Defensive)' :
-                                   'Bot (Casual)';
+      style===Board.PS_BRUTAL     ? 'Bot (Brutal)'          :
+      style===Board.PS_OFFENSIVE  ? 'Bot (Offensive)'       :
+      style===Board.PS_DEFENSIVE  ? 'Bot (Defensive)'       :
+      style===Board.PS_DOOFUS     ? 'Bot (doofus)'          :
+      style===Board.PS_GOLDFISH   ? 'Bot (Goldfish)'        :
+      style===Board.PS_BEGINNER   ? 'Bot (Beginner)'        :
+      style===Board.PS_COFFEE     ? 'Bot (Coffee-Deprived)' :
+      style===Board.PS_TENDERFOOT ? 'Bot (Tenderfoot)'      :
+                                    'Bot (Casual)';
 
     const onCellClick=(x:number,y:number)=>{
       if(board.m_turn!==0 || board.m_board[y*board.W+x]>0 || winner || aiTie) return;
