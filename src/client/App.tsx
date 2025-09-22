@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Devvit } from '@devvit/public-api';
 
 /* ===== app version (tiny watermark) ===== */
-const APP_VERSION = 'v2025.09.21.05';
+const APP_VERSION = 'v2025.09.22.01';
 const VersionStamp: React.FC = () => (
   <div style={{position:'fixed', top:6, right:8, fontSize:10, lineHeight:1, opacity:.6, color:'var(--muted)', zIndex:80}}>
     {APP_VERSION}
@@ -121,6 +121,8 @@ const GlobalStyles = () => (
     .hint-my1 { box-shadow: 0 0 0 5px rgba(var(--hint-my1), .70), 0 0 18px rgba(var(--hint-my1), .45) !important; }
     .hint-my2 { box-shadow: 0 0 0 5px rgba(var(--hint-my2), .42), 0 0 18px rgba(var(--hint-my2), .28) !important; }
     .hint-opp1{ box-shadow: 0 0 0 5px rgba(var(--hint-opp1), .75), 0 0 18px rgba(var(--hint-opp1), .50) !important; }
+
+    .assist__dim { opacity: 0.42; }
 
     .anim__animated{animation-duration:.6s;animation-fill-mode:both;}
     @keyframes zoomIn_kf{from{opacity:0;transform:scale3d(.3,.3,.3)}50%{opacity:1}}
@@ -301,7 +303,7 @@ class Board{
       for(let x=0;x<this.W;x++){
         const cur:Square[]=[]; this.analyze(this.pointAt(x,y),cur);
         for(const s of cur){
-          if(!all.some(t=>t.p1.index===s.p1.index&&t.p2.index===s.p2.index&&t.p3.index===s.p3.index&&t.p4.index===s.p4.index&&t.points===s.points&&t.remain===s.remain&&t.clr===s.clr)){
+          if(!all.some(t=>t.p1.index===s.p1.index&&t.p2.index===s.p2.index&&t.p3.index===s.p3.index&&t.p4.index===s.p4.index&&t.points===s.points&&s.remain===s.remain&&t.clr===s.clr)){
             all.push(s);
           }
         }
@@ -1154,9 +1156,7 @@ export const App=(context:Devvit.Context)=>{
       }catch{}
 
       setBoard(board.clone());
-      setTimeout(refreshStateOnce, 200);
-      setTimeout(refreshStateOnce, 400);
-      setTimeout(refreshStateOnce, 800);
+      setTimeout(refreshStateOnce,200); setTimeout(refreshStateOnce,400); setTimeout(refreshStateOnce,800);
     };
 
     const midText = finalSide
@@ -1389,13 +1389,14 @@ const GameScreen:React.FC<{
   // ===== Assist highlight logic (hover over your placed piece) =====
   const [hoverIdx,setHoverIdx] = useState<number|null>(null);
 
-  const assistTargets = useMemo(()=>{
-    if (!assistOn || hoverIdx==null || myColor==null) return new Set<number>();
+  const { oneMoveTargets, twoMoveTargets } = useMemo(()=>{
+    const one = new Set<number>();
+    const two = new Set<number>();
+    if (!assistOn || hoverIdx==null || myColor==null) return { oneMoveTargets: one, twoMoveTargets: two };
     const W=board.W as number, H=board.H as number, arr=board.m_board as number[];
-    if (arr[hoverIdx]!==myColor) return new Set<number>();
+    if (arr[hoverIdx]!==myColor) return { oneMoveTargets: one, twoMoveTargets: two };
     const opp = myColor===1?2:1;
     const x0 = hoverIdx % W, y0 = Math.floor(hoverIdx / W);
-    const targets = new Set<number>();
 
     for (let row=0; row<H; row++){
       for (let col=0; col<W; col++){
@@ -1418,19 +1419,22 @@ const GameScreen:React.FC<{
         // Any opponent piece in the corners blocks this square for us
         if (vA===opp || vB===opp || vC===opp) continue;
 
-        // Count empties among the four (we know v0 is ours)
-        const empties:number[] = [];
-        if (vA===0) empties.push(idxA);
-        if (vB===0) empties.push(idxB);
-        if (vC===0) empties.push(idxC);
+        // Count empties among the three others (v0 is ours)
+        const emptiesCount = (vA===0?1:0) + (vB===0?1:0) + (vC===0?1:0);
 
         // One or two moves away
-        if (empties.length===1 || empties.length===2){
-          empties.forEach(i=>targets.add(i));
+        if (emptiesCount === 1) {
+          if (vA===0) one.add(idxA);
+          if (vB===0) one.add(idxB);
+          if (vC===0) one.add(idxC);
+        } else if (emptiesCount === 2) {
+          if (vA===0) two.add(idxA);
+          if (vB===0) two.add(idxB);
+          if (vC===0) two.add(idxC);
         }
       }
     }
-    return targets;
+    return { oneMoveTargets: one, twoMoveTargets: two };
   },[assistOn, hoverIdx, myColor, board.W, board.H, board.m_board]);
 
   const onCellEnter = (idx:number, v:number) => {
@@ -1439,6 +1443,9 @@ const GameScreen:React.FC<{
     else setHoverIdx(null);
   };
   const clearHover = () => setHoverIdx(null);
+
+  // Chat log dismiss
+  const [showLog, setShowLog] = useState(true);
 
   return (
     <div className="flex flex-col items-center gap-4 p-4" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
@@ -1492,8 +1499,9 @@ const GameScreen:React.FC<{
                 if (isLast) { shadow = '0 0 0 5px var(--last-blue-ring), 0 0 18px var(--last-blue-glow)'; extraClass = 'last__pulse'; }
               } else if (v===0){
                 // Assist overlays for empty spots
-                if (assistOn && assistTargets.size>0){
-                  if (assistTargets.has(idx)) extraClass += ' assist__glow';
+                if (assistOn && hoverIdx !== null) {
+                  if (oneMoveTargets.has(idx)) extraClass += ' hint-my1';
+                  else if (twoMoveTargets.has(idx)) extraClass += ' hint-my2';
                   else extraClass += ' assist__dim';
                 }
               }
@@ -1515,15 +1523,16 @@ const GameScreen:React.FC<{
       </div>
 
       {/* Chat log (if provided) */}
-      {chatItems && chatItems.length>0 && (
-        <div className="w-[min(720px,95vw)] max-w-[95vw]"
-             style={{background:'var(--card-bg)', border:`1px solid var(--card-border)`, borderRadius:10, padding:'6px 8px', color:'var(--text)'}}>
-          {chatItems.map(it=>(
+      {chatItems && chatItems.length>0 && showLog && (
+        <div className="relative w-[min(720px,95vw)] max-w-[95vw]"
+             style={{background:'var(--card-bg)', border:`1px solid var(--card-border)`, borderRadius:10, padding:'6px 8px', color:'var(--text)', maxHeight:120, overflowY:'auto'}}>
+          {chatItems.slice(-8).reverse().map(it=>(
             <div key={it.id} className="truncate" style={{lineHeight:1.5}}>
               <b style={{color:'var(--muted)'}}>{it.sender}:</b> <span>{it.text}</span>
             </div>
           ))}
           <div className="text-xs" style={{color:'var(--muted)'}}>Press “\” to chat</div>
+          <button onClick={()=>setShowLog(false)} style={{position:'absolute', top:4, right:4, background:'transparent', border:'none', color:'var(--muted)', cursor:'pointer', fontSize:14}}>×</button>
         </div>
       )}
 
