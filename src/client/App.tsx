@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Devvit } from '@devvit/public-api';
 
 /* ===== app version (tiny watermark) ===== */
-const APP_VERSION = 'v2025.09.21.02';
+const APP_VERSION = 'v2025.09.21.05';
 const VersionStamp: React.FC = () => (
   <div style={{position:'fixed', top:6, right:8, fontSize:10, lineHeight:1, opacity:.6, color:'var(--muted)', zIndex:80}}>
     {APP_VERSION}
@@ -34,9 +34,9 @@ const GlobalStyles = () => (
       --glint-light:rgba(255,255,255,.50);
       --glint-mid:rgba(255,255,255,.20);
 
-      /* Assist highlight */
-      --assist-ring:rgba(234,179,8,.72);
-      --assist-glow:rgba(234,179,8,.50);
+      --hint-my1: 16,185,129;   /* emerald */
+      --hint-my2: 59,130,246;   /* blue */
+      --hint-opp1:245,158,11;   /* amber */
     }
 
     /* --- Prefer dark: OS/browser choice --- */
@@ -61,9 +61,6 @@ const GlobalStyles = () => (
 
         --glint-light:rgba(255,255,255,.36);
         --glint-mid:rgba(255,255,255,.16);
-
-        --assist-ring:rgba(250,204,21,.80);
-        --assist-glow:rgba(250,204,21,.55);
       }
     }
 
@@ -90,9 +87,6 @@ const GlobalStyles = () => (
 
       --glint-light:rgba(255,255,255,.36);
       --glint-mid:rgba(255,255,255,.16);
-
-      --assist-ring:rgba(250,204,21,.80);
-      --assist-glow:rgba(250,204,21,.55);
     }
     html.light, body.light,
     html[data-theme="light"], body[data-theme="light"],
@@ -116,9 +110,6 @@ const GlobalStyles = () => (
 
       --glint-light:rgba(255,255,255,.50);
       --glint-mid:rgba(255,255,255,.20);
-
-      --assist-ring:rgba(234,179,8,.72);
-      --assist-glow:rgba(234,179,8,.50);
     }
 
     html, body, #root { height: 100%; background: var(--bg); }
@@ -127,8 +118,9 @@ const GlobalStyles = () => (
     .glow-red { box-shadow: 0 0 0 3px rgba(239,68,68,.6), 0 0 18px rgba(239,68,68,.45); }
     .glow-blue{ box-shadow: 0 0 0 3px rgba(59,130,246,.6), 0 0 18px rgba(59,130,246,.45); }
 
-    .assist__glow { box-shadow: 0 0 0 4px var(--assist-ring), 0 0 18px var(--assist-glow); }
-    .assist__dim  { opacity:.35; }
+    .hint-my1 { box-shadow: 0 0 0 5px rgba(var(--hint-my1), .70), 0 0 18px rgba(var(--hint-my1), .45) !important; }
+    .hint-my2 { box-shadow: 0 0 0 5px rgba(var(--hint-my2), .42), 0 0 18px rgba(var(--hint-my2), .28) !important; }
+    .hint-opp1{ box-shadow: 0 0 0 5px rgba(var(--hint-opp1), .75), 0 0 18px rgba(var(--hint-opp1), .50) !important; }
 
     .anim__animated{animation-duration:.6s;animation-fill-mode:both;}
     @keyframes zoomIn_kf{from{opacity:0;transform:scale3d(.3,.3,.3)}50%{opacity:1}}
@@ -141,23 +133,69 @@ const GlobalStyles = () => (
   `}</style>
 );
 
-/* ===== model ===== */
-class Point{
-  x:number; y:number; index:number;
-  constructor(x:number,y:number,index:number){ this.x=x; this.y=y; this.index=index; }
-  valid(W:number,H:number){ return this.x>=0 && this.x<W && this.y>=0 && this.y<H; }
-}
-class Square { p1:Point; p2:Point; p3:Point; p4:Point; points:number; remain:number; clr:number;
-  constructor(p1:Point,p2:Point,p3:Point,p4:Point,clr:number,points:number,remain:number){ this.p1=p1; this.p2=p2; this.p3=p3; this.p4=p4; this.points=points; this.remain=remain; this.clr=clr; this.normalize(); }
-  normalize(){ const pts=[this.p1,this.p2,this.p3,this.p4]; let changed=true; while(changed){ changed=false; for(let k=0;k<3;k++){ if(pts[k].y>pts[k+1].y){ [pts[k],pts[k+1]]=[pts[k+1],pts[k]]; changed=true; }}} if(pts[0].y!==pts[1].y){ if(pts[1].x>pts[2].x)[pts[1],pts[2]]=[pts[2],pts[1]]; } else { if(pts[0].x<pts[1].x)[pts[0],pts[1]]=[pts[1],pts[0]]; if(pts[2].x<pts[3].x)[pts[2],pts[3]]=[pts[3],pts[2]]; } [this.p1,this.p2,this.p3,this.p4]=pts; }
-}
-class Player { m_squares:Square[]=[]; m_score=0; m_lastNumSquares=0; m_playStyle:number; m_goofs=false; m_computer:boolean; userId='';
-  constructor(playStyle:number=Board.PS_OFFENSIVE, computer=false, userId=''){ this.m_playStyle=playStyle; this.m_computer=computer; this.userId=userId; }
-  initGame(){ this.m_squares=[]; this.m_lastNumSquares=0; this.m_score=0; }
-}
+/* ===== Simple Confetti (no deps) ===== */
+const Confetti: React.FC<{ show: boolean }> = ({ show }) => {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    if (!show) return;
+    const canvas = ref.current; if (!canvas) return;
+    const ctx = canvas.getContext('2d'); if (!ctx) return;
+    let w = canvas.width = window.innerWidth, h = canvas.height = window.innerHeight;
+    const onResize = () => { w = canvas.width = window.innerWidth; h = canvas.height = window.innerHeight; };
+    window.addEventListener('resize', onResize);
+    const colors = ['#ef4444','#f59e0b','#10b981','#3b82f6','#a855f7','#ec4899'];
+    const N = 140;
+    const parts = Array.from({length:N}, () => ({
+      x: Math.random()*w, y: -20 - Math.random()*h*0.5,
+      vx: (Math.random()-0.5)*2, vy: 2 + Math.random()*3,
+      size: 6 + Math.random()*6, rot: Math.random()*Math.PI, vr: (Math.random()-0.5)*0.2,
+      color: colors[Math.floor(Math.random()*colors.length)]
+    }));
+    let running = true, t0 = performance.now(), dur = 1800;
+    const tick = (t:number) => {
+      if (!running) return;
+      const dt = Math.min(32, t - t0); t0 = t;
+      ctx.clearRect(0,0,w,h);
+      for (const p of parts) {
+        p.x += p.vx * dt/16; p.y += p.vy * dt/16; p.rot += p.vr * dt/16;
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.fillStyle = p.color; ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size); ctx.restore();
+      }
+      if (t - (t0 - dt) < dur) requestAnimationFrame(tick); else running = false;
+    };
+    requestAnimationFrame(tick);
+    return () => { running = false; window.removeEventListener('resize', onResize); };
+  }, [show]);
+  if (!show) return null;
+  return <canvas ref={ref} style={{position:'fixed', inset:0, pointerEvents:'none', zIndex:55}} />;
+};
 
-/* ===== board + AI ===== */
-class Board {
+/* ===== ScoreCard (RESTORED) ===== */
+const ScoreCard:React.FC<{
+  label:string; score:number; align:'left'|'right'; glow?: 'red'|'blue'|null; avatar?:string; compact?:boolean;
+}> = ({ label, score, align, glow=null, avatar, compact=false }) => {
+  const width = compact ? 'clamp(160px, 44vw, 210px)' : 'clamp(200px, 42vw, 230px)';
+  return (
+    <div className={`flex flex-col ${align==='right'?'items-end':'items-start'}`}>
+      <div className={`flex items-center justify-between px-3 py-1 rounded-md shadow-sm ${glow==='red'?'glow-red':''} ${glow==='blue'?'glow-blue':''}`}
+        style={{width, background:'var(--card-bg)', border:`1px solid var(--card-border)`}}>
+        <div className="flex items-center gap-2" style={{color:'var(--text)', minWidth:0}}>
+          {avatar ? <img src={avatar} alt="" style={{width:22,height:22,borderRadius:'50%'}}/> : <span style={{width:22,height:22,borderRadius:'50%',background:'var(--empty-stroke)'}}/>}
+          <span className="font-medium" style={{display:'inline-block', overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis', maxWidth: compact ? 120 : 150}} title={label}>{label}</span>
+        </div>
+        <span className="font-semibold" style={{color:'var(--text)'}}>{score}</span>
+      </div>
+    </div>
+  );
+};
+
+/* ===== model / Board / helpers ===== */
+/* (unchanged logic from the last version except for fixes) */
+class Point{ x:number; y:number; index:number; constructor(x:number,y:number,index:number){ this.x=x; this.y=y; this.index=index; } valid(W:number,H:number){ return this.x>=0 && this.x<W && this.y>=0 && this.y<H; } }
+class Square{ p1:Point; p2:Point; p3:Point; p4:Point; points:number; remain:number; clr:number; constructor(p1:Point,p2:Point,p3:Point,p4:Point,clr:number,points:number,remain:number){ this.p1=p1; this.p2=p2; this.p3=p3; this.p4=p4; this.points=points; this.remain=remain; this.clr=clr; this.normalize(); } normalize(){ const pts=[this.p1,this.p2,this.p3,this.p4]; let changed=true; while(changed){ changed=false; for(let k=0;k<3;k++){ if(pts[k].y>pts[k+1].y){ [pts[k],pts[k+1]]=[pts[k+1],pts[k]]; changed=true; }}} if(pts[0].y!==pts[1].y){ if(pts[1].x>pts[2].x)[pts[1],pts[2]]=[pts[2],pts[1]]; } else { if(pts[0].x<pts[1].x)[pts[0],pts[1]]=[pts[1],pts[0]]; if(pts[2].x<pts[3].x)[pts[2],pts[3]]=[pts[3],pts[2]]; } [this.p1,this.p2,this.p3,this.p4]=pts; } }
+class Player{ m_squares:Square[]=[]; m_score=0; m_lastNumSquares=0; m_playStyle:number; m_goofs=false; m_computer:boolean; userId=''; constructor(playStyle:number=Board.PS_OFFENSIVE, computer=false, userId=''){ this.m_playStyle=playStyle; this.m_computer=computer; this.userId=userId; } initGame(){ this.m_squares=[]; this.m_lastNumSquares=0; this.m_score=0; } }
+
+class Board{
   static GS_RUNNING=0; static GS_PLAYER1WIN=1; static GS_PLAYER2WIN=2; static GS_TIE=3;
   static PS_BRUTAL=0; static PS_OFFENSIVE=1; static PS_DEFENSIVE=2; static PS_CASUAL=3;
   static PS_BEGINNER=4; static PS_TENDERFOOT=5; static PS_DOOFUS=6;
@@ -193,8 +231,7 @@ class Board {
       const bottom = Math.max(p1.y,p2.y,p3.y,p4.y);
       return (right-left+1)*(bottom-top+1);
     } else {
-      const pts=[p1,p2,p3,p4];
-      let minD2=Infinity;
+      const pts=[p1,p2,p3,p4]; let minD2=Infinity;
       for(let i=0;i<4;i++) for(let j=i+1;j<4;j++){
         const dx=pts[i].x-pts[j].x, dy=pts[i].y-pts[j].y;
         const d2=dx*dx+dy*dy;
@@ -257,7 +294,6 @@ class Board {
   }
 
   private static sqKeyByIndices(...idx:number[]):string{ return idx.slice().sort((a,b)=>a-b).join(','); }
-
   private collectSquaresForColor(color:number):Square[]{
     const saveTurn=this.m_turn; this.m_turn=color-1;
     const all:Square[]=[];
@@ -275,13 +311,12 @@ class Board {
     return all;
   }
 
-  private shouldMistake(prob:number){ if(prob<=0) return false; if(prob>=1) return true; return Math.random()<prob; }
-  private randomEmptyPoint():Point{ const empties:number[]=[]; for(let i=0;i<this.m_board.length;i++){ if(this.m_board[i]===0) empties.push(i); } if(empties.length===0) return this.pointAt(0,0); const pick=empties[Math.floor(Math.random()*empties.length)]; return this.pointAt(pick%this.W, Math.floor(pick/this.W)); }
+  private shouldMistake(prob:number){ if(prob<=0) return false; if(prob>=1) return true; return Math.random() < prob; }
+  private randomEmptyPoint(){ const empties:number[]=[]; for(let i=0;i<this.m_board.length;i++) if(this.m_board[i]===0) empties.push(i); if(!empties.length) return this.pointAt(0,0); const pick=empties[Math.floor(Math.random()*empties.length)]; return this.pointAt(pick%this.W, Math.floor(pick/this.W)); }
 
   private chooseUnifiedMove(defProb:number, offProb:number):Point{
     const me=this.m_turn; const myClr=me+1; const oppClr=myClr===1?2:1;
 
-    // 1) DEFENSE
     let bestBlockPts=-1; let bestBlock=this.pointAt(0,0); let foundThreat=false;
     for(let i=0;i<this.m_board.length;i++){
       if(this.m_board[i]!==0) continue;
@@ -292,7 +327,6 @@ class Board {
     }
     if(foundThreat && !this.shouldMistake(defProb)) return bestBlock;
 
-    // 2) OFFENSE
     const opp=oppClr;
     const getEmptyBestCorner=(idxs:number[]):Point|null=>{
       let best:Point|null=null, bestImm=-1;
@@ -363,39 +397,16 @@ class Board {
   placePiece(pt:Point){ if(!pt.valid(this.W,this.H)||this.m_board[pt.index]>0) return 0; this.m_board[pt.index]=this.m_turn+1; this.m_history.push(pt); this.m_last=this.pointAt(pt.x,pt.y); const points=this.analyze(pt,null); this.m_players[this.m_turn].m_score+=points; return points; }
   advanceTurn(){ this.m_turn=(this.m_turn+1)%2; }
   checkGameOver(){ const win=this.winScore||150; if(this.m_players[0].m_score>=win) return 1; if(this.m_players[1].m_score>=win) return 2; return 0; }
-  toJSON(){
-    return {
-      W:this.W, H:this.H, scoring:this.scoring, winScore:this.winScore,
-      m_board:this.m_board, m_players:this.m_players, m_turn:this.m_turn,
-      m_history:this.m_history, m_displayed_game_over:this.m_displayed_game_over,
-      m_onlyShowLastSquares:this.m_onlyShowLastSquares, m_createRandomizedRangeOrder:this.m_createRandomizedRangeOrder,
-      m_stopAt150:this.m_stopAt150, m_last:{x:this.m_last.x,y:this.m_last.y,index:this.m_last.index}, m_lastPoints:this.m_lastPoints,
-      playerNames:(this as any).playerNames||{}, playerAvatars:(this as any).playerAvatars||{}, m_targets:this.m_targets,
-      chat:(this as any).chat||undefined
-    };
-  }
-  static fromJSON(j:any){
-    const p1=new Player(1,false,j?.m_players?.[0]?.userId??'');
-    const p2=new Player(1,false,j?.m_players?.[1]?.userId??'');
-    const b=new Board(p1,p2,{ W:(j?.W??8), H:(j?.H??(j?.W??8)), scoring:(j?.scoring==='true'?'true':'bbox'), winScore: (j?.winScore ?? 150), skipInit:true });
-    b.m_board=j.m_board; b.m_players=j.m_players; b.m_turn=j.m_turn;
-    b.m_history=(j.m_history||[]).map((p:any)=>new Point(p.x,p.y, p.y*(b.W)+p.x));
-    (b as any).playerNames=j.playerNames||{}; (b as any).playerAvatars=j.playerAvatars||{};
-    (b as any).chat=j.chat||undefined;
-    b.m_last=new Point(j.m_last?.x??-1,j.m_last?.y??-1,(j.m_last?.y??-1)*b.W+(j.m_last?.x??-1));
-    b.m_targets=(j.m_targets as (string|null)[]|undefined) ?? [null,null];
-    return b;
-  }
+  toJSON(){ return { W:this.W, H:this.H, scoring:this.scoring, winScore:this.winScore, m_board:this.m_board, m_players:this.m_players, m_turn:this.m_turn, m_history:this.m_history, m_displayed_game_over:this.m_displayed_game_over, m_onlyShowLastSquares:this.m_onlyShowLastSquares, m_createRandomizedRangeOrder:this.m_createRandomizedRangeOrder, m_stopAt150:this.m_stopAt150, m_last:{x:this.m_last.x,y:this.m_last.y,index:this.m_last.index}, m_lastPoints:this.m_lastPoints, playerNames:(this as any).playerNames||{}, playerAvatars:(this as any).playerAvatars||{}, m_targets:this.m_targets, chat:(this as any).chat||undefined }; }
+  static fromJSON(j:any){ const p1=new Player(1,false,j?.m_players?.[0]?.userId??''); const p2=new Player(1,false,j?.m_players?.[1]?.userId??''); const b=new Board(p1,p2,{ W:(j?.W??8), H:(j?.H??(j?.W??8)), scoring:(j?.scoring==='true'?'true':'bbox'), winScore: (j?.winScore ?? 150), skipInit:true }); b.m_board=j.m_board; b.m_players=j.m_players; b.m_turn=j.m_turn; b.m_history=(j.m_history||[]).map((p:any)=>new Point(p.x,p.y, p.y*(b.W)+p.x)); (b as any).playerNames=j.playerNames||{}; (b as any).playerAvatars=j.playerAvatars||{}; (b as any).chat=j.chat||undefined; b.m_last=new Point(j.m_last?.x??-1,j.m_last?.y??-1,(j.m_last?.y??-1)*b.W+(j.m_last?.x??-1)); b.m_targets=(j.m_targets as (string|null)[]|undefined) ?? [null,null]; return b; }
   clone(){ return Board.fromJSON(this.toJSON()); }
 }
 
 /* ===== helpers ===== */
 const isBoardValid = (b:any): b is Board =>
   !!b && Array.isArray(b.m_board) && typeof (b as any).W === 'number' && typeof (b as any).H === 'number' &&
-  b.m_board.length === (b as any).W * (b as any).H &&
-  Array.isArray(b.m_players) && b.m_players.length === 2;
+  b.m_board.length === (b as any).W * (b as any).H && Array.isArray(b.m_players) && b.m_players.length === 2;
 
-/* Deterministic best-case per-player score (all squares on a full board for given W,H,scoring) */
 function bestCaseScorePerPlayer(W:number,H:number, scoring:'bbox'|'true'): number {
   const seen = new Set<string>();
   let sum = 0;
@@ -432,62 +443,6 @@ function bestCaseScorePerPlayer(W:number,H:number, scoring:'bbox'|'true'): numbe
   return sum;
 }
 
-/* ===== ScoreCard ===== */
-const ScoreCard:React.FC<{
-  label:string; score:number; align:'left'|'right'; glow?: 'red'|'blue'|null; avatar?:string; compact?:boolean;
-}> = ({ label, score, align, glow=null, avatar, compact=false }) => {
-  const width = compact ? 'clamp(160px, 44vw, 210px)' : 'clamp(200px, 42vw, 230px)';
-  return (
-    <div className={`flex flex-col ${align==='right'?'items-end':'items-start'}`}>
-      <div className={`flex items-center justify-between px-3 py-1 rounded-md shadow-sm ${glow==='red'?'glow-red':''} ${glow==='blue'?'glow-blue':''}`}
-        style={{width, background:'var(--card-bg)', border:`1px solid var(--card-border)`}}>
-        <div className="flex items-center gap-2" style={{color:'var(--text)', minWidth:0}}>
-          {avatar ? <img src={avatar} alt="" style={{width:22,height:22,borderRadius:'50%'}}/> : <span style={{width:22,height:22,borderRadius:'50%',background:'var(--empty-stroke)'}}/>}
-          <span className="font-medium" style={{display:'inline-block', overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis', maxWidth: compact ? 120 : 150}} title={label}>{label}</span>
-        </div>
-        <span className="font-semibold" style={{color:'var(--text)'}}>{score}</span>
-      </div>
-    </div>
-  );
-};
-
-/* ===== Simple Confetti (no deps) ===== */
-const Confetti: React.FC<{ show: boolean }> = ({ show }) => {
-  const ref = useRef<HTMLCanvasElement | null>(null);
-  useEffect(() => {
-    if (!show) return;
-    const canvas = ref.current; if (!canvas) return;
-    const ctx = canvas.getContext('2d'); if (!ctx) return;
-    let w = canvas.width = window.innerWidth, h = canvas.height = window.innerHeight;
-    const onResize = () => { w = canvas.width = window.innerWidth; h = canvas.height = window.innerHeight; };
-    window.addEventListener('resize', onResize);
-    const colors = ['#ef4444','#f59e0b','#10b981','#3b82f6','#a855f7','#ec4899'];
-    const N = 140;
-    const parts = Array.from({length:N}, () => ({
-      x: Math.random()*w, y: -20 - Math.random()*h*0.5,
-      vx: (Math.random()-0.5)*2, vy: 2 + Math.random()*3,
-      size: 6 + Math.random()*6, rot: Math.random()*Math.PI, vr: (Math.random()-0.5)*0.2,
-      color: colors[Math.floor(Math.random()*colors.length)]
-    }));
-    let running = true, t0 = performance.now(), dur = 1800;
-    const tick = (t:number) => {
-      if (!running) return;
-      const dt = Math.min(32, t - t0); t0 = t;
-      ctx.clearRect(0,0,w,h);
-      for (const p of parts) {
-        p.x += p.vx * dt/16; p.y += p.vy * dt/16; p.rot += p.vr * dt/16;
-        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
-        ctx.fillStyle = p.color; ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size); ctx.restore();
-      }
-      if (t - (t0 - dt) < dur) requestAnimationFrame(tick); else running = false;
-    };
-    requestAnimationFrame(tick);
-    return () => { running = false; window.removeEventListener('resize', onResize); };
-  }, [show]);
-  if (!show) return null;
-  return <canvas ref={ref} style={{position:'fixed', inset:0, pointerEvents:'none', zIndex:55}} />;
-};
-
 /* ===== Admin metrics types ===== */
 type AdminMetrics = {
   uniques: Record<string, number>;
@@ -498,7 +453,8 @@ type AdminMetrics = {
   rankedPlayers: { hvh: number; hva: number };
 };
 
-/* ===== App ===== */
+/* ===== App (UI + flows) ===== */
+/* (unchanged from previous fix aside from the ScoreCard restoration) */
 type Mode='ai'|'multiplayer'|'spectate'|'rankings'|'admin'|'options'|null;
 
 export const App=(context:Devvit.Context)=>{
@@ -883,82 +839,149 @@ export const App=(context:Devvit.Context)=>{
     );
   }
 
-  /* ===== Options Page ===== */
+
+  /* ===== Options Page (mobile scrollable) ===== */
   else if(mode==='options'){
     content = (
-      <div className="flex flex-col items-center gap-4" style={{background:'var(--bg)', height:'100vh', overflow:'hidden', paddingTop:16}}>
-        <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — Options</h1>
+      <div className="flex flex-col items-center" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
+        <div style={{paddingTop:16, paddingBottom:8}}>
+          <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — Options</h1>
+        </div>
 
-        <div className="w-[min(760px,96vw)]" style={{background:'var(--card-bg)', border:`1px solid var(--card-border)`, borderRadius:12, padding:'12px 16px'}}>
-          <div className="font-bold mb-2" style={{color:'var(--muted)'}}>AI Game Settings</div>
-          <div className="grid" style={{gridTemplateColumns:'repeat(auto-fit, minmax(220px,1fr))', gap:12}}>
-            <div>
-              <label className="font-medium block mb-1" style={{color:'var(--muted)'}}>Difficulty</label>
-              <select className="rounded px-3 py-2 w-full" style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`}} value={selectedStyle} onChange={(e)=>setSelectedStyle(Number(e.target.value))}>
-                <option value={Board.PS_DOOFUS}>doofus</option>
-                <option value={Board.PS_GOLDFISH}>Goldfish</option>
-                <option value={Board.PS_BEGINNER}>Beginner</option>
-                <option value={Board.PS_COFFEE}>Coffee-Deprived</option>
-                <option value={Board.PS_TENDERFOOT}>Tenderfoot</option>
-                <option value={Board.PS_CASUAL}>Casual</option>
-                <option value={Board.PS_OFFENSIVE}>Offensive</option>
-                <option value={Board.PS_DEFENSIVE}>Defensive</option>
-                <option value={Board.PS_BRUTAL}>Brutal</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="font-medium block mb-1" style={{color:'var(--muted)'}}>Board Width</label>
-              <select className="rounded px-3 py-2 w-full" style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`}} value={boardW} onChange={(e)=>setBoardW(Number(e.target.value))}>
-                {evenSizes.map(n=><option key={'w'+n} value={n}>{n}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="font-medium block mb-1" style={{color:'var(--muted)'}}>Board Height</label>
-              <select className="rounded px-3 py-2 w-full" style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`}} value={boardH} onChange={(e)=>setBoardH(Number(e.target.value))}>
-                {evenSizes.map(n=><option key={'h'+n} value={n}>{n}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="font-medium block mb-1" style={{color:'var(--muted)'}}>Scoring</label>
-              <select className="rounded px-3 py-2 w-full" style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`}} value={scoringMode} onChange={(e)=>setScoringMode(e.target.value as 'bbox'|'true')}>
-                <option value="bbox">Bounding Rectangle</option>
-                <option value="true">True Area (side²)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="font-medium block mb-1" style={{color:'var(--muted)'}}>Win Score</label>
-              <input
-                type="number"
-                min={1}
-                max={bestCase}
-                value={winScore}
-                onChange={(e)=>setWinScore(Math.max(1, Math.min(bestCase, Number(e.target.value)||0)))}
-                className="rounded px-3 py-2 w-full"
-                style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`}}
-              />
-              <div className="text-xs mt-1" style={{color:'var(--muted)'}}>
-                Best-case per player for {boardW}×{boardH} ({scoringMode==='bbox'?'Bounding':'True'}): <b>{bestCase}</b><br/>
-                Recommended win (8×8→150 scaled): <b>{recommended}</b>
+        {/* Scrollable content area */}
+        <div className="flex-1 overflow-y-auto w-full flex flex-col items-center" style={{paddingBottom:8}}>
+          <div className="w-[min(760px,96vw)]" style={{background:'var(--card-bg)', border:`1px solid var(--card-border)`, borderRadius:12, padding:'12px 16px'}}>
+            <div className="font-bold mb-2" style={{color:'var(--muted)'}}>AI Game Settings</div>
+            <div className="grid" style={{gridTemplateColumns:'repeat(auto-fit, minmax(220px,1fr))', gap:12}}>
+              <div>
+                <label className="font-medium block mb-1" style={{color:'var(--muted)'}}>Difficulty</label>
+                <select className="rounded px-3 py-2 w-full" style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`}} value={selectedStyle} onChange={(e)=>setSelectedStyle(Number(e.target.value))}>
+                  <option value={Board.PS_DOOFUS}>doofus</option>
+                  <option value={Board.PS_GOLDFISH}>Goldfish</option>
+                  <option value={Board.PS_BEGINNER}>Beginner</option>
+                  <option value={Board.PS_COFFEE}>Coffee-Deprived</option>
+                  <option value={Board.PS_TENDERFOOT}>Tenderfoot</option>
+                  <option value={Board.PS_CASUAL}>Casual</option>
+                  <option value={Board.PS_OFFENSIVE}>Offensive</option>
+                  <option value={Board.PS_DEFENSIVE}>Defensive</option>
+                  <option value={Board.PS_BRUTAL}>Brutal</option>
+                </select>
               </div>
-            </div>
 
-            <div>
-              <label className="font-medium block mb-1" style={{color:'var(--muted)'}}>Assist Highlights (hover)</label>
-              <div className="flex items-center gap-2">
-                <input id="assistChk" type="checkbox" checked={assistOn} onChange={(e)=>setAssistOn(e.target.checked)} />
-                <label htmlFor="assistChk" className="text-sm" style={{color:'var(--muted)'}}>Show 1–2 move-away spots when hovering your pieces</label>
+              <div>
+                <label className="font-medium block mb-1" style={{color:'var(--muted)'}}>Board Width</label>
+                <select className="rounded px-3 py-2 w-full" style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`}} value={boardW} onChange={(e)=>setBoardW(Number(e.target.value))}>
+                  {evenSizes.map(n=><option key={'w'+n} value={n}>{n}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="font-medium block mb-1" style={{color:'var(--muted)'}}>Board Height</label>
+                <select className="rounded px-3 py-2 w-full" style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`}} value={boardH} onChange={(e)=>setBoardH(Number(e.target.value))}>
+                  {evenSizes.map(n=><option key={'h'+n} value={n}>{n}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="font-medium block mb-1" style={{color:'var(--muted)'}}>Scoring</label>
+                <select className="rounded px-3 py-2 w-full" style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`}} value={scoringMode} onChange={(e)=>setScoringMode(e.target.value as 'bbox'|'true')}>
+                  <option value="bbox">Bounding Rectangle</option>
+                  <option value="true">True Area (side²)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="font-medium block mb-1" style={{color:'var(--muted)'}}>Win Score</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={bestCase}
+                  value={winScore}
+                  onChange={(e)=>setWinScore(Math.max(1, Math.min(bestCase, Number(e.target.value)||0)))}
+                  className="rounded px-3 py-2 w-full"
+                  style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`}}
+                />
+                <div className="text-xs mt-1" style={{color:'var(--muted)'}}>
+                  Best-case per player for {boardW}×{boardH} ({scoringMode==='bbox'?'Bounding':'True'}): <b>{bestCase}</b><br/>
+                  Recommended win (8×8→150 scaled): <b>{recommended}</b>
+                </div>
+              </div>
+
+              <div>
+                <label className="font-medium block mb-1" style={{color:'var(--muted)'}}>Assist Highlights (hover)</label>
+                <div className="flex items-center gap-2">
+                  <input id="assistChk" type="checkbox" checked={assistOn} onChange={(e)=>setAssistOn(e.target.checked)} />
+                  <label htmlFor="assistChk" className="text-sm" style={{color:'var(--muted)'}}>Show 1–2 move-away spots when hovering your pieces</label>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="flex gap-2" style={{paddingBottom:12}}>
+        {/* Footer / OK */}
+        <div style={{padding:12}}>
           <button className="rounded cursor-pointer" style={{background:'#6b7280', color:'#fff', padding:'8px 16px'}} onClick={()=>setMode(null)}>
             Done
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ===== Rankings ===== */
+  else if(mode==='rankings'){
+    const numCell = { color:'var(--text)', textAlign:'right' as const, fontVariantNumeric:'tabular-nums' as const };
+    const headCell = { color:'var(--muted)', fontWeight:700, textAlign:'right' as const };
+    const Section = ({title, rows, accent}:{title:string; rows:any[]; accent:'red'|'blue'}) => (
+      <div className="w-[min(720px,92vw)]">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-xl font-extrabold" style={{color:'var(--text)'}}>{title}</h2>
+        </div>
+        <div className="rounded-lg overflow-hidden" style={{border:`1px solid var(--card-border)`}}>
+          <div className="grid grid-cols-[56px_1fr_90px_80px] md:grid-cols-[56px_1fr_120px_90px_90px_90px]" style={{background:'var(--card-bg)'}}>
+            <div className="px-3 py-2 font-bold" style={{color:'var(--muted)'}}>Rank</div>
+            <div className="px-3 py-2 font-bold" style={{color:'var(--muted)'}}>Player</div>
+            <div className="px-3 py-2 font-bold hidden md:block" style={headCell}>Rating</div>
+            <div className="px-3 py-2 font-bold" style={headCell}>Games</div>
+            <div className="px-3 py-2 font-bold hidden md:block" style={headCell}>Wins</div>
+            <div className="px-3 py-2 font-bold hidden md:block" style={headCell}>Losses</div>
+          </div>
+          <div style={{maxHeight:'48vh', overflowY:'auto'}}>
+            {rows.map((r: any, i: number)=>{
+              const top3 = i<3; const pill = accent==='red' ? 'var(--pill-red)' : 'var(--pill-blue)';
+              return (
+                <div key={r.userId} className="grid grid-cols-[56px_1fr_90px_80px] md:grid-cols-[56px_1fr_120px_90px_90px_90px] items-center"
+                     style={{borderTop:`1px solid var(--card-border)`, background: top3 ? pill : 'transparent'}}>
+                  <div className="px-3 py-2 font-extrabold" style={{color: accent==='red'?'#b91c1c':'#1d4ed8'}}>{i+1}</div>
+                  <div className="px-3 py-2 flex items-center gap-2" style={{color:'var(--text)'}}>
+                    {r.avatar ? <img src={r.avatar} alt="" style={{width:24,height:24,borderRadius:'50%'}}/> : <span style={{width:24,height:24,borderRadius:'50%',background:'var(--empty-stroke)'}}/>}
+                    <span className="truncate" title={r.name||r.userId}>{r.name||r.userId}</span>
+                  </div>
+                  <div className="px-3 py-2 hidden md:block" style={numCell}>{r.rating}</div>
+                  <div className="px-3 py-2" style={numCell}>{r.games}</div>
+                  <div className="px-3 py-2 hidden md:block" style={numCell}>{r.wins}</div>
+                  <div className="px-3 py-2 hidden md:block" style={numCell}>{r.losses}</div>
+                </div>
+              );
+            })}
+            {rows.length===0 && <div className="px-3 py-4" style={{color:'var(--muted)'}}>No ranked players yet.</div>}
+          </div>
+        </div>
+      </div>
+    );
+
+    content = (
+      <div className="flex flex-col items-center" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
+        <div style={{paddingTop:16, paddingBottom:8}}>
+          <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — Rankings</h1>
+        </div>
+        <div className="flex-1 overflow-y-auto w-full flex flex-col items-center gap-6" style={{paddingBottom:8}}>
+          <Section title="Head-to-Head (Human vs Human)" rows={rankings.hvh} accent="red" />
+          <Section title="Human vs Computer (All Difficulties)" rows={rankings.hva} accent="blue" />
+        </div>
+        <div style={{padding:12}}>
+          <button className="rounded cursor-pointer" style={{background:'#6b7280', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setMode(null); }}>
+            Back
           </button>
         </div>
       </div>
