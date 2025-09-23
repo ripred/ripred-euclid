@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Devvit } from '@devvit/public-api';
 
 /* ===== app version (tiny watermark) ===== */
-const APP_VERSION = 'v2025.09.22.01';
+const APP_VERSION = 'v2025.09.22.02';
 const VersionStamp: React.FC = () => (
   <div style={{position:'fixed', top:6, right:8, fontSize:10, lineHeight:1, opacity:.6, color:'var(--muted)', zIndex:80}}>
     {APP_VERSION}
@@ -132,6 +132,10 @@ const GlobalStyles = () => (
     @keyframes glintSlide{0%{transform:translateX(-140%)}100%{transform:translateX(140%)}}
     .glint-wrap{position:relative;display:inline-block;padding:2px 6px;border-radius:8px;overflow:hidden}
     .glint-bar{position:absolute;inset:0;background:linear-gradient(90deg,transparent,var(--glint-mid),var(--glint-light),var(--glint-mid),transparent);transform:translateX(-140%);animation:glintSlide 2.2s ease;pointer-events:none;filter:blur(1px)}
+    @keyframes dotPlace{0%{transform:scale(0.5);opacity:0.5}100%{transform:scale(1);opacity:1}}
+    .dot-anim{animation:dotPlace 0.3s ease-out}
+    @keyframes lineDraw{0%{stroke-dashoffset:100%}100%{stroke-dashoffset:0%}}
+    .line-anim{stroke-dasharray:100%;animation:lineDraw 0.5s linear forwards}
   `}</style>
 );
 
@@ -453,10 +457,10 @@ type AdminMetrics = {
   aiDiffs: Record<string, number>;
   activeGames: number;
   rankedPlayers: { hvh: number; hva: number };
+  daily: { dates: string[]; hvh: number[]; ai: Record<string, number[]> };
 };
 
 /* ===== App (UI + flows) ===== */
-/* (unchanged from previous fix aside from the ScoreCard restoration) */
 type Mode='ai'|'multiplayer'|'spectate'|'rankings'|'admin'|'options'|null;
 
 export const App=(context:Devvit.Context)=>{
@@ -508,6 +512,48 @@ export const App=(context:Devvit.Context)=>{
   const pollRef=useRef<number|null>(null);
   const pollActiveRef = useRef<'none'|'mapping'|'state'>('none');
   const stopPolling=()=>{ if(pollRef.current){ clearInterval(pollRef.current); pollRef.current=null; } };
+
+  // Sounds
+  const [soundOn, setSoundOn] = useState(false);
+  const audioContext = useMemo(() => new (window.AudioContext || (window as any).webkitAudioContext)(), []);
+  const playBeep = () => {
+    if (!soundOn) return;
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    oscillator.type = 'square';
+    oscillator.frequency.value = 880; // A5 note
+    gainNode.gain.value = 0.5;
+    oscillator.start();
+    setTimeout(() => oscillator.stop(), 100);
+  };
+  const playFanfare = () => {
+    if (!soundOn) return;
+    const notes = [523.25, 659.25, 783.99, 1046.50]; // C E G C
+    notes.forEach((freq, i) => {
+      setTimeout(() => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        oscillator.type = 'sine';
+        oscillator.frequency.value = freq;
+        gainNode.gain.value = 0.5;
+        oscillator.start();
+        setTimeout(() => oscillator.stop(), 200);
+      }, i * 250);
+    });
+  };
+
+  // Tutorial/onboarding
+  const [showTutorial,setShowTutorial]=useState(false);
+  useEffect(() => {
+    if ((mode === 'ai' || mode === 'multiplayer') && localStorage.getItem('euclid_first_play') !== 'true') {
+      setShowTutorial(true);
+      localStorage.setItem('euclid_first_play', 'true');
+    }
+  }, [mode]);
 
   // window/theme basics
   useEffect(()=>{ const onResize=()=>setIsMobile(typeof window!=='undefined'&&window.innerWidth<=768); onResize(); window.addEventListener('resize',onResize); return()=>window.removeEventListener('resize',onResize);},[]);
@@ -606,7 +652,12 @@ export const App=(context:Devvit.Context)=>{
 
   /* ===== Spectate list ===== */
   const [games,setGames]=useState<{gameId:string; names:Record<string,string>; scores:number[]; lastSaved:number; ended:boolean}[]>([]);
-  const loadGames = async () => { try{ const r=await fetch('/api/games/list'); const j=await r.json(); setGames((j.games||[]).slice().sort((a:any,b:any)=>(b.lastSaved||0)-(a.lastSaved||0))); }catch{} };
+  const [loadingGames, setLoadingGames] = useState(true);
+  const loadGames = async () => {
+    setLoadingGames(true);
+    try{ const r=await fetch('/api/games/list'); const j=await r.json(); setGames((j.games||[]).slice().sort((a:any,b:any)=>(b.lastSaved||0)-(a.lastSaved||0))); }catch{}
+    setLoadingGames(false);
+  };
 
   /* ===== Rankings ===== */
   type RankingRow = { userId:string; name:string; avatar?:string; rating:number; games:number; wins:number; losses:number; draws:number };
@@ -629,22 +680,24 @@ export const App=(context:Devvit.Context)=>{
       const m=board.findBestMove(); board.m_players[0].m_playStyle=saved;
       if (m) {
         board.placePiece(board.pointAt(m.x,m.y));
-        let st=board.checkGameOver(); if(st!==0){ setWinner(st); setBoard(board.clone()); return; }
+        playBeep();
+        let st=board.checkGameOver(); if(st!==0){ setWinner(st); playFanfare(); setBoard(board.clone()); return; }
         if (!board.m_board.some(v=>v===0)) {
           const s1=board.m_players[0].m_score, s2=board.m_players[1].m_score;
-          if (s1!==s2){ setWinner(s1>s2?1:2); setBoard(board.clone()); return; }
+          if (s1!==s2){ setWinner(s1>s2?1:2); playFanfare(); setBoard(board.clone()); return; }
           setAiTie(true); setBoard(board.clone()); return;
         }
         board.advanceTurn();
         setTimeout(()=>{
           board.m_players[1].m_playStyle = selectedStyle;
           board.makeMove();
+          playBeep();
           st=board.checkGameOver();
-          if(st!==0) setWinner(st);
+          if(st!==0) { setWinner(st); playFanfare(); }
           else {
             if (!board.m_board.some(v=>v===0)) {
               const s1=board.m_players[0].m_score, s2=board.m_players[1].m_score;
-              if (s1!==s2){ setWinner(s1>s2?1:2); setBoard(board.clone()); return; }
+              if (s1!==s2){ setWinner(s1>s2?1:2); playFanfare(); setBoard(board.clone()); return; }
               setAiTie(true); setBoard(board.clone()); return;
             }
             board.advanceTurn();
@@ -660,7 +713,8 @@ export const App=(context:Devvit.Context)=>{
       const m=board.findBestMove(); board.m_players[board.m_turn].m_playStyle=saved;
       if (m) {
         board.placePiece(board.pointAt(m.x,m.y));
-        const st=board.checkGameOver(); if(st!==0){ setWinner(st); } else { board.advanceTurn(); }
+        playBeep();
+        const st=board.checkGameOver(); if(st!==0){ setWinner(st); playFanfare(); } else { board.advanceTurn(); }
         try{ await fetch('/api/h2h/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({gameId:gid,board:board.toJSON()})}); }catch{}
         setBoard(board.clone());
         setTimeout(refreshStateOnce,200); setTimeout(refreshStateOnce,400); setTimeout(refreshStateOnce,800);
@@ -728,6 +782,24 @@ export const App=(context:Devvit.Context)=>{
           </ul>
         <div className="mt-3" style={{display:'flex', justifyContent:'flex-end', marginTop:12}}>
           <button className="rounded cursor-pointer" style={{background:'#d93900', color:'#fff', padding:'6px 12px'}} onClick={()=>setShowRules(false)}>Close</button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  /* ===== Tutorial Modal ===== */
+  const TutorialModal = showTutorial ? (
+    <div className="anim__animated anim__zoomIn" onClick={()=>setShowTutorial(false)} style={{position:'fixed', inset:0, display:'flex', alignItems:'center', justifyContent:'center', zIndex:60, background:'rgba(0,0,0,.55)'}}>
+      <div onClick={(e)=>e.stopPropagation()} style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`, borderRadius:12, padding:'16px 22px', maxWidth:680, width:'min(92vw, 680px)', maxHeight:'82vh', overflowY:'auto', fontSize:'0.95rem'}}>
+        <div style={{fontSize:'1.125rem', fontWeight:800, marginBottom:8}}>Welcome to Euclid — Tutorial</div>
+        <ol style={{paddingLeft: '1.2em', listStyle:'decimal'}}>
+          <li>Place dots on the grid alternately with your opponent.</li>
+          <li>Form squares by connecting four dots of your color (can be rotated).</li>
+          <li>Score points based on square size (bounding or true area).</li>
+          <li>Reach the win score first to victory!</li>
+        </ol>
+        <div style={{display:'flex', justifyContent:'flex-end', marginTop:12}}>
+          <button className="rounded cursor-pointer" style={{background:'#2563eb', color:'#fff', padding:'6px 12px'}} onClick={()=>setShowTutorial(false)}>Start Playing</button>
         </div>
       </div>
     </div>
@@ -940,34 +1012,55 @@ export const App=(context:Devvit.Context)=>{
           <h2 className="text-xl font-extrabold" style={{color:'var(--text)'}}>{title}</h2>
         </div>
         <div className="rounded-lg overflow-hidden" style={{border:`1px solid var(--card-border)`}}>
-          <div className="grid grid-cols-[56px_1fr_90px_80px] md:grid-cols-[56px_1fr_120px_90px_90px_90px]" style={{background:'var(--card-bg)'}}>
+          <div className="grid grid-cols-[56px_1fr_90px_80px_80px_80px]" style={{background:'var(--card-bg)'}}>
             <div className="px-3 py-2 font-bold" style={{color:'var(--muted)'}}>Rank</div>
             <div className="px-3 py-2 font-bold" style={{color:'var(--muted)'}}>Player</div>
-            <div className="px-3 py-2 font-bold hidden md:block" style={headCell}>Rating</div>
+            <div className="px-3 py-2 font-bold" style={headCell}>Rating</div>
             <div className="px-3 py-2 font-bold" style={headCell}>Games</div>
-            <div className="px-3 py-2 font-bold hidden md:block" style={headCell}>Wins</div>
-            <div className="px-3 py-2 font-bold hidden md:block" style={headCell}>Losses</div>
+            <div className="px-3 py-2 font-bold" style={headCell}>Wins</div>
+            <div className="px-3 py-2 font-bold" style={headCell}>Losses</div>
           </div>
           <div style={{maxHeight:'48vh', overflowY:'auto'}}>
             {rows.map((r: any, i: number)=>{
               const top3 = i<3; const pill = accent==='red' ? 'var(--pill-red)' : 'var(--pill-blue)';
               return (
-                <div key={r.userId} className="grid grid-cols-[56px_1fr_90px_80px] md:grid-cols-[56px_1fr_120px_90px_90px_90px] items-center"
+                <div key={r.userId} className="grid grid-cols-[56px_1fr_90px_80px_80px_80px] items-center"
                      style={{borderTop:`1px solid var(--card-border)`, background: top3 ? pill : 'transparent'}}>
                   <div className="px-3 py-2 font-extrabold" style={{color: accent==='red'?'#b91c1c':'#1d4ed8'}}>{i+1}</div>
                   <div className="px-3 py-2 flex items-center gap-2" style={{color:'var(--text)'}}>
                     {r.avatar ? <img src={r.avatar} alt="" style={{width:24,height:24,borderRadius:'50%'}}/> : <span style={{width:24,height:24,borderRadius:'50%',background:'var(--empty-stroke)'}}/>}
                     <span className="truncate" title={r.name||r.userId}>{r.name||r.userId}</span>
                   </div>
-                  <div className="px-3 py-2 hidden md:block" style={numCell}>{r.rating}</div>
+                  <div className="px-3 py-2" style={numCell}>{r.rating}</div>
                   <div className="px-3 py-2" style={numCell}>{r.games}</div>
-                  <div className="px-3 py-2 hidden md:block" style={numCell}>{r.wins}</div>
-                  <div className="px-3 py-2 hidden md:block" style={numCell}>{r.losses}</div>
+                  <div className="px-3 py-2" style={numCell}>{r.wins}</div>
+                  <div className="px-3 py-2" style={numCell}>{r.losses}</div>
                 </div>
               );
             })}
             {rows.length===0 && <div className="px-3 py-4" style={{color:'var(--muted)'}}>No ranked players yet.</div>}
           </div>
+        </div>
+        <div style={{marginTop:8, display:'flex', justifyContent:'flex-end'}}>
+			<button className="rounded cursor-pointer" style={{background:'#16a34a', color:'#fff', padding:'6px 12px'}}
+				onClick={async () => {
+					const hvhTop = rankings.hvh.slice(0,10).map((r,i)=> `${i+1}. ${r.name} (${r.rating})`).join('\n');
+					const hvaTop = rankings.hva.slice(0,10).map((r,i)=> `${i+1}. ${r.name} (${r.rating})`).join('\n');
+					const text = `**Head-to-Head Top 10:**\n${hvhTop}\n\n**Human vs AI Top 10:**\n${hvaTop}`;
+					try {
+						await context.reddit.submitPost({
+							subreddit: 'ripred_euclid_dev',
+							kind: 'self',
+							title: 'Euclid Rankings Update',
+							text: text
+						});
+						setNotice('Rankings shared on Reddit!');
+					} catch (e) {
+						setNotice('Failed to share: ' + (e as Error).message);
+					}
+				}}>
+					Share Rankings
+				</button>
         </div>
       </div>
     );
@@ -990,39 +1083,6 @@ export const App=(context:Devvit.Context)=>{
     );
   }
 
-  /* ===== Spectate ===== */
-  else if(mode==='spectate'){
-    content = (
-      <div className="flex flex-col justify-center items-center gap-4" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
-        <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — Spectate</h1>
-        <div className="w-[min(640px,92vw)] flex-1 overflow-y-auto flex flex-col gap-2" style={{color:'var(--text)'}}>
-          {games.length===0 && <div style={{color:'var(--muted)'}}>No active games right now.</div>}
-          {games.map(g=>{
-            const uids=Object.keys(g.names||{}); const n1=g.names[uids[0]]||'Player 1'; const n2=g.names[uids[1]]||'Player 2';
-            return (
-              <div key={g.gameId} className="flex justify-between items-center px-3 py-2 rounded" style={{background:'var(--card-bg)',border:`1px solid var(--card-border)`}}>
-                <div>{n1} vs {n2} <span style={{color:'var(--muted)'}}>— {g.scores[0]} : {g.scores[1]}</span></div>
-                <div className="flex gap-2">
-                  <button className="rounded cursor-pointer" style={{background:'#2563eb', color:'#fff', padding:'6px 12px'}}
-                    onClick={async()=>{
-                      setGameId(g.gameId); gameIdRef.current=g.gameId;
-                      try{ const r=await fetch(`/api/h2h/state?gameId=${encodeURIComponent(g.gameId)}`); const j=await r.json(); if(j.board){ setBoard(Board.fromJSON(j.board)); } }catch{}
-                      setSpectating(true); pollGame(); setMode('multiplayer'); setStatus('Spectating — read only');
-                    }}>Watch</button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <div style={{paddingTop:8}}>
-          <button className="rounded cursor-pointer" style={{background:'#6b7280', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setMode(null); }}>
-            Back
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   /* ===== Admin ===== */
   else if(mode==='admin'){
     content = (
@@ -1033,54 +1093,97 @@ export const App=(context:Devvit.Context)=>{
 
         <div className="w-[min(860px,94vw)] rounded-lg flex-1 overflow-y-auto"
              style={{background:'var(--card-bg)', border:`1px solid var(--card-border)`, padding:'4px 2px'}}>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
-            <div className="p-4" style={{borderRight:`1px solid var(--card-border)`}}>
-              <div className="font-bold mb-2" style={{color:'var(--muted)'}}>Unique users</div>
-              <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
-                <li>App started: {admin?.uniques?.app_start_users ?? 0}</li>
-                <li>H2H clicked: {admin?.uniques?.h2h_click_users ?? 0}</li>
-                <li>H2H started: {admin?.uniques?.h2h_started_users ?? 0}</li>
-                <li>H2H completed: {admin?.uniques?.h2h_completed_users ?? 0}</li>
-                <li>AI clicked: {admin?.uniques?.ai_click_users ?? 0}</li>
-                <li>AI first move: {admin?.uniques?.ai_first_users ?? 0}</li>
-                <li>AI completed: {admin?.uniques?.ai_completed_users ?? 0}</li>
-              </ul>
-              <div className="font-bold mt-4 mb-2" style={{color:'var(--muted)'}}>Computed (never …)</div>
-              <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
-                <li>H2H: clicked but never played: {admin?.computed?.h2h_clicked_never_started ?? 0}</li>
-                <li>H2H: started but never finished: {admin?.computed?.h2h_started_never_finished ?? 0}</li>
-                <li>AI: clicked but never played: {admin?.computed?.ai_clicked_never_started ?? 0}</li>
-                <li>AI: started but never finished: {admin?.computed?.ai_started_never_finished ?? 0}</li>
-              </ul>
-            </div>
-            <div className="p-4">
-              <div className="font-bold mb-2" style={{color:'var(--muted)'}}>Event counts</div>
-              <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
-                <li>App starts: {admin?.counts?.app_start_count ?? 0}</li>
-                <li>H2H clicks: {admin?.counts?.h2h_click_count ?? 0}</li>
-                <li>H2H pairs: {admin?.counts?.h2h_started_count ?? 0}</li>
-                <li>H2H game overs: {admin?.counts?.h2h_game_over_count ?? 0}</li>
-                <li>H2H cancel queue: {admin?.counts?.h2h_cancel_queue_count ?? 0}</li>
-                <li>H2H opponent left: {admin?.counts?.h2h_opponent_left_count ?? 0}</li>
-                <li>H2H player left: {admin?.counts?.h2h_player_left_count ?? 0}</li>
-                <li>AI clicks: {admin?.counts?.ai_click_count ?? 0}</li>
-                <li>AI first moves: {admin?.counts?.ai_first_count ?? 0}</li>
-                <li>AI completes: {admin?.counts?.ai_completed_count ?? 0}</li>
-              </ul>
-              <div className="font-bold mt-4 mb-2" style={{color:'var(--muted)'}}>AI difficulty breakdown</div>
-              <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
-                <li>doofus: {admin?.aiDiffs?.doofus ?? 0}</li>
-                <li>Goldfish: {admin?.aiDiffs?.goldfish ?? 0}</li>
-                <li>Beginner: {admin?.aiDiffs?.beginner ?? 0}</li>
-                <li>Coffee-Deprived: {admin?.aiDiffs?.coffee ?? 0}</li>
-                <li>Tenderfoot: {admin?.aiDiffs?.tenderfoot ?? 0}</li>
-                <li>Casual: {admin?.aiDiffs?.casual ?? 0}</li>
-                <li>Offensive: {admin?.aiDiffs?.offensive ?? 0}</li>
-                <li>Defensive: {admin?.aiDiffs?.defensive ?? 0}</li>
-                <li>Brutal: {admin?.aiDiffs?.brutal ?? 0}</li>
-              </ul>
-            </div>
-          </div>
+          <table style={{width:'100%', borderCollapse:'collapse'}}>
+            <tbody>
+              <tr>
+                <td style={{padding:4, verticalAlign:'top', border:'1px solid var(--card-border)'}}>
+                  <div className="font-bold mb-2" style={{color:'var(--muted)'}}>Unique users</div>
+                  <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
+                    <li>App started: {admin?.uniques?.app_start_users ?? 0}</li>
+                    <li>H2H clicked: {admin?.uniques?.h2h_click_users ?? 0}</li>
+                    <li>H2H started: {admin?.uniques?.h2h_started_users ?? 0}</li>
+                    <li>H2H completed: {admin?.uniques?.h2h_completed_users ?? 0}</li>
+                    <li>AI clicked: {admin?.uniques?.ai_click_users ?? 0}</li>
+                    <li>AI first move: {admin?.uniques?.ai_first_users ?? 0}</li>
+                    <li>AI completed: {admin?.uniques?.ai_completed_users ?? 0}</li>
+                  </ul>
+                  <div className="font-bold mt-4 mb-2" style={{color:'var(--muted)'}}>Computed (never …)</div>
+                  <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
+                    <li>H2H: clicked but never played: {admin?.computed?.h2h_clicked_never_started ?? 0}</li>
+                    <li>H2H: started but never finished: {admin?.computed?.h2h_started_never_finished ?? 0}</li>
+                    <li>AI: clicked but never played: {admin?.computed?.ai_clicked_never_started ?? 0}</li>
+                    <li>AI: started but never finished: {admin?.computed?.ai_started_never_finished ?? 0}</li>
+                  </ul>
+                </td>
+                <td style={{padding:4, verticalAlign:'top', border:'1px solid var(--card-border)'}}>
+                  <div className="font-bold mb-2" style={{color:'var(--muted)'}}>Event counts</div>
+                  <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
+                    <li>App starts: {admin?.counts?.app_start_count ?? 0}</li>
+                    <li>H2H clicks: {admin?.counts?.h2h_click_count ?? 0}</li>
+                    <li>H2H pairs: {admin?.counts?.h2h_started_count ?? 0}</li>
+                    <li>H2H game overs: {admin?.counts?.h2h_game_over_count ?? 0}</li>
+                    <li>H2H cancel queue: {admin?.counts?.h2h_cancel_queue_count ?? 0}</li>
+                    <li>H2H opponent left: {admin?.counts?.h2h_opponent_left_count ?? 0}</li>
+                    <li>H2H player left: {admin?.counts?.h2h_player_left_count ?? 0}</li>
+                    <li>AI clicks: {admin?.counts?.ai_click_count ?? 0}</li>
+                    <li>AI first moves: {admin?.counts?.ai_first_count ?? 0}</li>
+                    <li>AI completes: {admin?.counts?.ai_completed_count ?? 0}</li>
+                  </ul>
+                  <div className="font-bold mt-4 mb-2" style={{color:'var(--muted)'}}>AI difficulty breakdown</div>
+                  <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
+                    <li>doofus: {admin?.aiDiffs?.doofus ?? 0}</li>
+                    <li>Goldfish: {admin?.aiDiffs?.goldfish ?? 0}</li>
+                    <li>Beginner: {admin?.aiDiffs?.beginner ?? 0}</li>
+                    <li>Coffee-Deprived: {admin?.aiDiffs?.coffee ?? 0}</li>
+                    <li>Tenderfoot: {admin?.aiDiffs?.tenderfoot ?? 0}</li>
+                    <li>Casual: {admin?.aiDiffs?.casual ?? 0}</li>
+                    <li>Offensive: {admin?.aiDiffs?.offensive ?? 0}</li>
+                    <li>Defensive: {admin?.aiDiffs?.defensive ?? 0}</li>
+                    <li>Brutal: {admin?.aiDiffs?.brutal ?? 0}</li>
+                  </ul>
+                </td>
+              </tr>
+              <tr>
+                <td colSpan={2} style={{padding:4, border:'1px solid var(--card-border)'}}>
+                  <div className="font-bold mb-2" style={{color:'var(--muted)'}}>Daily Play Counts (Past 7 Days)</div>
+                  <table style={{width:'100%', borderCollapse:'collapse'}}>
+                    <thead>
+                      <tr>
+                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'left'}}>Date</th>
+                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>HvH</th>
+                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>doofus</th>
+                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>Goldfish</th>
+                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>Beginner</th>
+                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>Coffee</th>
+                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>Tenderfoot</th>
+                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>Casual</th>
+                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>Offensive</th>
+                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>Defensive</th>
+                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>Brutal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {admin?.daily?.dates.map((date, i) => (
+                        <tr key={date}>
+                          <td style={{border:'1px solid var(--card-border)', padding:4}}>{date}</td>
+                          <td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>{admin.daily.hvh[i] ?? 0}</td>
+                          <td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>{admin.daily.ai.doofus[i] ?? 0}</td>
+                          <td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>{admin.daily.ai.goldfish[i] ?? 0}</td>
+                          <td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>{admin.daily.ai.beginner[i] ?? 0}</td>
+                          <td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>{admin.daily.ai.coffee[i] ?? 0}</td>
+                          <td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>{admin.daily.ai.tenderfoot[i] ?? 0}</td>
+                          <td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>{admin.daily.ai.casual[i] ?? 0}</td>
+                          <td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>{admin.daily.ai.offensive[i] ?? 0}</td>
+                          <td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>{admin.daily.ai.defensive[i] ?? 0}</td>
+                          <td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>{admin.daily.ai.brutal[i] ?? 0}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </td>
+              </tr>
+            </tbody>
+          </table>
           <div className="p-4 flex flex-wrap items-center justify-between" style={{borderTop:`1px solid var(--card-border)`, color:'var(--text)'}}>
             <div>Active H2H games: <b>{admin?.activeGames ?? 0}</b></div>
             <div>Ranked players — H2H: <b>{admin?.rankedPlayers?.hvh ?? 0}</b> / HvA: <b>{admin?.rankedPlayers?.hva ?? 0}</b></div>
@@ -1122,7 +1225,7 @@ export const App=(context:Devvit.Context)=>{
             onClick={async ()=>{
               stopPolling(); pollActiveRef.current='none';
               try { await fetch('/api/h2h/cancelQueue', { method: 'POST' }); } catch {}
-              try { await fetch('/api/metrics/ai-click', { method:'POST' }); } catch {}
+              try { await fetch('/api/metrics/ai-click', { method: 'POST' }); } catch {}
               const p1=new Player(selectedStyle,false);
               const p2=new Player(selectedStyle,true);
               const b=new Board(p1,p2,{ W:boardW, H:boardH, scoring:scoringMode, winScore });
@@ -1149,7 +1252,8 @@ export const App=(context:Devvit.Context)=>{
       if(!isMyTurn || board.m_board[y*board.W+x]>0 || winner || finalSide) return;
 
       board.placePiece(board.pointAt(x,y));
-      const st=board.checkGameOver(); if(st!==0){ setWinner(st); } else { board.advanceTurn(); }
+      playBeep();
+      const st=board.checkGameOver(); if(st!==0){ setWinner(st); playFanfare(); } else { board.advanceTurn(); }
 
       try{
         await fetch('/api/h2h/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({gameId:gid,board:board.toJSON()})});
@@ -1169,6 +1273,8 @@ export const App=(context:Devvit.Context)=>{
     const youAreWinner = (decided===1 && isPlayer1) || (decided===2 && !isPlayer1);
     const winnerText = youAreWinner ? 'You win!' : `${winnerLabel} wins!`;
 
+    const summary = `Final: ${p1Name} ${board.m_players[0].m_score} - ${board.m_players[1].m_score} ${p2Name}. Winner: ${winnerLabel}. Replay JSON: ${JSON.stringify(board.toJSON())}`;
+
     const overlay = (notice || showWinner) ? (
       <div className="anim__animated anim__zoomIn"
            style={{position:'fixed', inset:0, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50, background:'rgba(0,0,0,.55)'}}>
@@ -1186,6 +1292,24 @@ export const App=(context:Devvit.Context)=>{
             onClick={()=>{ setMode(null); setBoard(null); setStatus(''); setNotice(''); setWinner(null); setFinalSide(null); setFinalReason(''); }}>
             Close
           </button>
+          {mode === 'multiplayer' && showWinner && (
+            <button className="rounded cursor-pointer ml-2" style={{background:'#16a34a', color:'#fff', padding:'6px 12px'}}
+              onClick={async () => {
+                try {
+                  await reddit.submitPost({
+                    subreddit: 'ripred_euclid_dev',
+                    kind: 'self',
+                    title: `Euclid Game: ${p1Name} vs ${p2Name}`,
+                    text: summary
+                  });
+                  setNotice('Game shared on Reddit!');
+                } catch (e) {
+                  setNotice('Failed to share: ' + (e as Error).message);
+                }
+              }}>
+              Share Game
+            </button>
+          )}
         </div>
       </div>
     ) : null;
@@ -1249,23 +1373,25 @@ export const App=(context:Devvit.Context)=>{
       if(board.m_turn!==0 || board.m_board[y*board.W+x]>0 || winner || aiTie) return;
       if (!aiFirstSentRef.current) { try { fetch('/api/metrics/ai-first', { method:'POST' }); } catch {} aiFirstSentRef.current = true; }
       board.placePiece(board.pointAt(x,y));
+      playBeep();
       let st=board.checkGameOver();
-      if(st!==0){ setWinner(st); setBoard(board.clone()); return; }
+      if(st!==0){ setWinner(st); playFanfare(); setBoard(board.clone()); return; }
       if (!board.m_board.some(v=>v===0)) {
         const s1=board.m_players[0].m_score, s2=board.m_players[1].m_score;
-        if (s1!==s2){ setWinner(s1>s2?1:2); setBoard(board.clone()); return; }
+        if (s1!==s2){ setWinner(s1>s2?1:2); playFanfare(); setBoard(board.clone()); return; }
         setAiTie(true); setBoard(board.clone()); return;
       }
       board.advanceTurn();
       setTimeout(()=>{
         board.m_players[1].m_playStyle = style;
         board.makeMove();
+        playBeep();
         st=board.checkGameOver();
-        if(st!==0) setWinner(st);
+        if(st!==0) { setWinner(st); playFanfare(); }
         else {
           if (!board.m_board.some(v=>v===0)) {
             const s1=board.m_players[0].m_score, s2=board.m_players[1].m_score;
-            if (s1!==s2){ setWinner(s1>s2?1:2); setBoard(board.clone()); return; }
+            if (s1!==s2){ setWinner(s1>s2?1:2); playFanfare(); setBoard(board.clone()); return; }
             setAiTie(true); setBoard(board.clone()); return;
           }
           board.advanceTurn();
@@ -1332,6 +1458,10 @@ export const App=(context:Devvit.Context)=>{
       <VersionStamp />
       {content}
       {ChatOverlay}
+      {TutorialModal}
+      <div style={{position:'fixed', top:8, left:8, zIndex:90, cursor:'pointer'}} onClick={() => setSoundOn(!soundOn)}>
+        <span style={{fontSize:20}}>{soundOn ? '🔊' : '🔇'}</span>
+      </div>
     </>
   );
 };
@@ -1525,7 +1655,7 @@ const GameScreen:React.FC<{
       {/* Chat log (if provided) */}
       {chatItems && chatItems.length>0 && showLog && (
         <div className="relative w-[min(720px,95vw)] max-w-[95vw]"
-             style={{background:'var(--card-bg)', border:`1px solid var(--card-border)`, borderRadius:10, padding:'6px 8px', color:'var(--text)', maxHeight:120, overflowY:'auto'}}>
+             style={{background:'var(--card-bg)', border:`1px solid var(--card-border)`, borderRadius:10, padding:'6px 8px', color:'var(--text)', maxHeight:'30vh', overflowY:'auto'}}>
           {chatItems.slice(-8).reverse().map(it=>(
             <div key={it.id} className="truncate" style={{lineHeight:1.5}}>
               <b style={{color:'var(--muted)'}}>{it.sender}:</b> <span>{it.text}</span>
