@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Devvit } from '@devvit/public-api';
 
 /* ===== app version (tiny watermark) ===== */
-const APP_VERSION = 'v2025.09.22.03';
+const APP_VERSION = 'v2025.09.22.04';
 const VersionStamp: React.FC = () => (
   <div style={{position:'fixed', top:6, right:8, fontSize:10, lineHeight:1, opacity:.6, color:'var(--muted)', zIndex:80}}>
     {APP_VERSION}
@@ -819,7 +819,7 @@ export const App=(context:Devvit.Context)=>{
           onKeyDown={(e)=>{ if(e.key==='Enter') { e.preventDefault(); sendChat(); } else if (e.key==='Escape'){ e.preventDefault(); setChatOpen(false); } }}
           placeholder={mode==='ai' ? 'Say something to the bot (echo)…' : 'Say something to your opponent…'}
           maxLength={140}
-          style={{flex:1, background:'transparent', color:'var(--text)', border:'none', outline:'none'}}
+          style={{flex:1, background:'transparent', color:'var(--text)', border:'none', outline:'none', height: '48px', lineHeight: '1.5'}}
         />
         <button className="rounded cursor-pointer" style={{background:'#2563eb', color:'#fff', padding:'6px 12px'}} onClick={sendChat}>Send</button>
       </div>
@@ -1053,13 +1053,13 @@ export const App=(context:Devvit.Context)=>{
               const hvaTop = rankings.hva.slice(0,10).map((r,i)=> `${i+1}. ${r.name} (${r.rating})`).join('\n');
               const text = `**Head-to-Head Top 10:**\n${hvhTop}\n\n**Human vs AI Top 10:**\n${hvaTop}`;
               try {
-                await context.reddit.submitPost({
-                  subreddit: 'ripred_euclid_dev',
-                  kind: 'self',
-                  title: 'Euclid Rankings Update',
-                  text: text
-                });
-                setNotice('Rankings shared on Reddit!');
+                const r = await fetch('/api/rankings/share', { method: 'POST' });
+                const j = await r.json();
+                if (j.ok) {
+                  setNotice(j.message);
+                } else {
+                  setNotice('Failed to share: ' + j.message);
+                }
               } catch (e) {
                 setNotice('Failed to share: ' + (e as Error).message);
               }
@@ -1351,13 +1351,13 @@ export const App=(context:Devvit.Context)=>{
             <button className="rounded cursor-pointer ml-2" style={{background:'#16a34a', color:'#fff', padding:'6px 12px'}}
               onClick={async () => {
                 try {
-                  await reddit.submitPost({
-                    subreddit: 'ripred_euclid_dev',
-                    kind: 'self',
-                    title: `Euclid Game: ${p1Name} vs ${p2Name}`,
-                    text: summary
-                  });
-                  setNotice('Game shared on Reddit!');
+                  const r = await fetch('/api/rankings/share', { method: 'POST' });
+                  const j = await r.json();
+                  if (j.ok) {
+                    setNotice(j.message);
+                  } else {
+                    setNotice('Failed to share: ' + j.message);
+                  }
                 } catch (e) {
                   setNotice('Failed to share: ' + (e as Error).message);
                 }
