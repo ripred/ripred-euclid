@@ -514,6 +514,13 @@ router.get('/api/h2h/state', async (req, res) => {
         await saveBoard(gid, board);
         await removeActiveGame(gid);
         await incrCount('h2h_opponent_left_count', 1);
+
+        // NEW: Apply ELO penalty for leaver
+        const winnerUid = uid || (meIsP1 ? u1 : u2);
+        const leaverUid = oppId;
+        const [winnerRec, leaverRec] = await Promise.all([getElo(winnerUid, 'hvh'), getElo(leaverUid, 'hvh')]);
+        const [newWinner, newLeaver] = updateEloPair(winnerRec, leaverRec, 1);  // 1 for winner (leaver loses)
+        await Promise.all([setElo(winnerUid, 'hvh', newWinner), setElo(leaverUid, 'hvh', newLeaver)]);
       }
     } else if (ended) {
       const s1 = board.m_players[0].m_score ?? 0;
@@ -693,6 +700,13 @@ router.post('/api/h2h/leave', async (_req, res) => {
           await incrCount('h2h_player_left_count', 1);
           await saveBoard(gid, board);
           await removeActiveGame(gid);
+
+          // NEW: Apply ELO penalty for leaver
+          const leaverUid = uid;
+          const winnerUid = uid === u1 ? u2 : u1;
+          const [winnerRec, leaverRec] = await Promise.all([getElo(winnerUid, 'hvh'), getElo(leaverUid, 'hvh')]);
+          const [newWinner, newLeaver] = updateEloPair(winnerRec, leaverRec, 1);  // 1 for winner (leaver loses)
+          await Promise.all([setElo(winnerUid, 'hvh', newWinner), setElo(leaverUid, 'hvh', newLeaver)]);
         }
       }
       await redis.del(USERMAP(uid));

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Devvit } from '@devvit/public-api';
 
 /* ===== app version (tiny watermark) ===== */
-const APP_VERSION = 'v2025.09.22.02';
+const APP_VERSION = 'v2025.09.22.03';
 const VersionStamp: React.FC = () => (
   <div style={{position:'fixed', top:6, right:8, fontSize:10, lineHeight:1, opacity:.6, color:'var(--muted)', zIndex:80}}>
     {APP_VERSION}
@@ -611,6 +611,8 @@ export const App=(context:Devvit.Context)=>{
         setFinalSide(side);
         setFinalReason(j.endedReason||'game_over');
         if ((j.endedReason||'') === 'tie') setNotice('Tie game!');
+        else if ((j.endedReason||'') === 'opponent_left') setNotice('Opponent left—you win!');
+        else if ((j.endedReason||'') === 'player_left') setNotice('You left the game.');
         stopPolling(); pollActiveRef.current='none';
       }
       if(j.board) setBoard(Board.fromJSON(j.board));
@@ -1011,68 +1013,121 @@ export const App=(context:Devvit.Context)=>{
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-xl font-extrabold" style={{color:'var(--text)'}}>{title}</h2>
         </div>
-        <div className="rounded-lg overflow-hidden" style={{border:`1px solid var(--card-border)`}}>
-          <div className="grid grid-cols-[56px_1fr_90px_80px_80px_80px]" style={{background:'var(--card-bg)'}}>
-            <div className="px-3 py-2 font-bold" style={{color:'var(--muted)'}}>Rank</div>
-            <div className="px-3 py-2 font-bold" style={{color:'var(--muted)'}}>Player</div>
-            <div className="px-3 py-2 font-bold" style={headCell}>Rating</div>
-            <div className="px-3 py-2 font-bold" style={headCell}>Games</div>
-            <div className="px-3 py-2 font-bold" style={headCell}>Wins</div>
-            <div className="px-3 py-2 font-bold" style={headCell}>Losses</div>
-          </div>
-          <div style={{maxHeight:'48vh', overflowY:'auto'}}>
-            {rows.map((r: any, i: number)=>{
-              const top3 = i<3; const pill = accent==='red' ? 'var(--pill-red)' : 'var(--pill-blue)';
-              return (
-                <div key={r.userId} className="grid grid-cols-[56px_1fr_90px_80px_80px_80px] items-center"
-                     style={{borderTop:`1px solid var(--card-border)`, background: top3 ? pill : 'transparent'}}>
-                  <div className="px-3 py-2 font-extrabold" style={{color: accent==='red'?'#b91c1c':'#1d4ed8'}}>{i+1}</div>
-                  <div className="px-3 py-2 flex items-center gap-2" style={{color:'var(--text)'}}>
-                    {r.avatar ? <img src={r.avatar} alt="" style={{width:24,height:24,borderRadius:'50%'}}/> : <span style={{width:24,height:24,borderRadius:'50%',background:'var(--empty-stroke)'}}/>}
-                    <span className="truncate" title={r.name||r.userId}>{r.name||r.userId}</span>
-                  </div>
-                  <div className="px-3 py-2" style={numCell}>{r.rating}</div>
-                  <div className="px-3 py-2" style={numCell}>{r.games}</div>
-                  <div className="px-3 py-2" style={numCell}>{r.wins}</div>
-                  <div className="px-3 py-2" style={numCell}>{r.losses}</div>
-                </div>
-              );
-            })}
-            {rows.length===0 && <div className="px-3 py-4" style={{color:'var(--muted)'}}>No ranked players yet.</div>}
-          </div>
+        <div className="rounded-lg overflow-hidden overflow-x-auto" style={{border:`1px solid var(--card-border)`}}>
+          <table style={{width:'100%', borderCollapse:'collapse', background:'var(--card-bg)', minWidth:620}}>
+            <thead>
+              <tr>
+                <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell, textAlign:'left' as const}}>Rank</th>
+                <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell, textAlign:'left' as const}}>Player</th>
+                <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell}}>Rating</th>
+                <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell}}>Games</th>
+                <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell}}>Wins</th>
+                <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell}}>Losses</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r: any, i: number)=>{
+                const top3 = i<3; const pill = accent==='red' ? 'var(--pill-red)' : 'var(--pill-blue)';
+                return (
+                  <tr key={r.userId} style={{background: top3 ? pill : 'transparent', borderTop:`1px solid var(--card-border)`}}>
+                    <td style={{padding:'8px 12px', fontWeight:700, color: accent==='red'?'#b91c1c':'#1d4ed8'}}>{i+1}</td>
+                    <td style={{padding:'8px 12px', display:'flex', alignItems:'center', gap:8, color:'var(--text)'}}>
+                      {r.avatar ? <img src={r.avatar} alt="" style={{width:24,height:24,borderRadius:'50%'}}/> : <span style={{width:24,height:24,borderRadius:'50%',background:'var(--empty-stroke)'}}/>}
+                      <span className="truncate" title={r.name||r.userId}>{r.name||r.userId}</span>
+                    </td>
+                    <td style={{padding:'8px 12px', ...numCell}}>{r.rating}</td>
+                    <td style={{padding:'8px 12px', ...numCell}}>{r.games}</td>
+                    <td style={{padding:'8px 12px', ...numCell}}>{r.wins}</td>
+                    <td style={{padding:'8px 12px', ...numCell}}>{r.losses}</td>
+                  </tr>
+                );
+              })}
+              {rows.length===0 && <tr><td colSpan={6} style={{padding:'16px', color:'var(--muted)', textAlign:'center'}}>No ranked players yet.</td></tr>}
+            </tbody>
+          </table>
         </div>
         <div style={{marginTop:8, display:'flex', justifyContent:'flex-end'}}>
-			<button className="rounded cursor-pointer" style={{background:'#16a34a', color:'#fff', padding:'6px 12px'}}
-				onClick={async () => {
-					const hvhTop = rankings.hvh.slice(0,10).map((r,i)=> `${i+1}. ${r.name} (${r.rating})`).join('\n');
-					const hvaTop = rankings.hva.slice(0,10).map((r,i)=> `${i+1}. ${r.name} (${r.rating})`).join('\n');
-					const text = `**Head-to-Head Top 10:**\n${hvhTop}\n\n**Human vs AI Top 10:**\n${hvaTop}`;
-					try {
-						await context.reddit.submitPost({
-							subreddit: 'ripred_euclid_dev',
-							kind: 'self',
-							title: 'Euclid Rankings Update',
-							text: text
-						});
-						setNotice('Rankings shared on Reddit!');
-					} catch (e) {
-						setNotice('Failed to share: ' + (e as Error).message);
-					}
-				}}>
-					Share Rankings
-				</button>
+          <button className="rounded cursor-pointer" style={{background:'#16a34a', color:'#fff', padding:'6px 12px'}}
+            onClick={async () => {
+              const hvhTop = rankings.hvh.slice(0,10).map((r,i)=> `${i+1}. ${r.name} (${r.rating})`).join('\n');
+              const hvaTop = rankings.hva.slice(0,10).map((r,i)=> `${i+1}. ${r.name} (${r.rating})`).join('\n');
+              const text = `**Head-to-Head Top 10:**\n${hvhTop}\n\n**Human vs AI Top 10:**\n${hvaTop}`;
+              try {
+                await context.reddit.submitPost({
+                  subreddit: 'ripred_euclid_dev',
+                  kind: 'self',
+                  title: 'Euclid Rankings Update',
+                  text: text
+                });
+                setNotice('Rankings shared on Reddit!');
+              } catch (e) {
+                setNotice('Failed to share: ' + (e as Error).message);
+              }
+            }}>
+            Share Rankings
+          </button>
         </div>
       </div>
     );
 
     content = (
       <div className="flex flex-col items-center" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
+        {notice && <div className="text-sm mb-2" style={{color:'var(--muted)'}}>{notice}</div>}
         <div style={{paddingTop:16, paddingBottom:8}}>
           <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — Rankings</h1>
         </div>
         <div className="flex-1 overflow-y-auto w-full flex flex-col items-center gap-6" style={{paddingBottom:8}}>
           <Section title="Head-to-Head (Human vs Human)" rows={rankings.hvh} accent="red" />
           <Section title="Human vs Computer (All Difficulties)" rows={rankings.hva} accent="blue" />
+        </div>
+        <div style={{padding:12}}>
+          <button className="rounded cursor-pointer" style={{background:'#6b7280', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setMode(null); }}>
+            Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ===== Spectate ===== */
+  else if(mode==='spectate'){
+    content = (
+      <div className="flex flex-col items-center" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
+        <div style={{paddingTop:16, paddingBottom:8}}>
+          <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — Spectate Active Games</h1>
+        </div>
+        <div className="flex-1 overflow-y-auto w-full flex flex-col items-center gap-4" style={{paddingBottom:8}}>
+          {loadingGames ? (
+            <div style={{color:'var(--text)'}}>Loading active games…</div>
+          ) : games.length === 0 ? (
+            <div style={{color:'var(--muted)'}}>No active games right now.</div>
+          ) : (
+            games.map(g => {
+              const p1Id = Object.keys(g.names)[0] || '';
+              const p2Id = Object.keys(g.names)[1] || '';
+              const p1Name = g.names[p1Id] || 'Player 1';
+              const p2Name = g.names[p2Id] || 'Player 2';
+              return (
+                <div key={g.gameId} className="w-[min(720px,92vw)]" style={{background:'var(--card-bg)', border:`1px solid var(--card-border)`, borderRadius:12, padding:'12px 16px'}}>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <span style={{fontWeight:700}}>{p1Name}</span> ({g.scores[0]}) vs <span style={{fontWeight:700}}>{p2Name}</span> ({g.scores[1]})
+                    </div>
+                    <button className="rounded cursor-pointer" style={{background:'#7c3aed', color:'#fff', padding:'4px 10px'}}
+                      onClick={()=>{
+                        setGameId(g.gameId); gameIdRef.current=g.gameId;
+                        setSpectating(true);
+                        setMode('multiplayer');
+                        pollGame();
+                      }}>
+                      Spectate
+                    </button>
+                  </div>
+                  <div className="text-xs" style={{color:'var(--muted)', marginTop:4}}>Last updated: {new Date(g.lastSaved).toLocaleTimeString()}</div>
+                </div>
+              );
+            })
+          )}
         </div>
         <div style={{padding:12}}>
           <button className="rounded cursor-pointer" style={{background:'#6b7280', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setMode(null); }}>
@@ -1574,6 +1629,41 @@ const GameScreen:React.FC<{
   };
   const clearHover = () => setHoverIdx(null);
 
+  // Mobile touch for assist
+  const boardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!assistOn || !isMobile || !boardRef.current) return;
+    const handleTouchStart = (e: TouchEvent) => {
+      e.preventDefault();
+      handleTouchMove(e);
+    };
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 0) return;
+      const touch = e.touches[0];
+      const rect = boardRef.current!.getBoundingClientRect();
+      const tx = Math.floor((touch.clientX - rect.left) / cell);
+      const ty = Math.floor((touch.clientY - rect.top) / cell);
+      const idx = ty * board.W + tx;
+      if (idx >= 0 && idx < board.m_board.length && board.m_board[idx] === myColor) {
+        setHoverIdx(idx);
+      } else {
+        clearHover();
+      }
+    };
+    const handleTouchEnd = () => clearHover();
+    const boardEl = boardRef.current;
+    boardEl.addEventListener('touchstart', handleTouchStart);
+    boardEl.addEventListener('touchmove', handleTouchMove);
+    boardEl.addEventListener('touchend', handleTouchEnd);
+    boardEl.addEventListener('touchcancel', handleTouchEnd);
+    return () => {
+      boardEl.removeEventListener('touchstart', handleTouchStart);
+      boardEl.removeEventListener('touchmove', handleTouchMove);
+      boardEl.removeEventListener('touchend', handleTouchEnd);
+      boardEl.removeEventListener('touchcancel', handleTouchEnd);
+    };
+  }, [assistOn, isMobile, cell, board.W, board.m_board, myColor]);
+
   // Chat log dismiss
   const [showLog, setShowLog] = useState(true);
 
@@ -1609,7 +1699,7 @@ const GameScreen:React.FC<{
       )) : null}
 
       {/* Board */}
-      <div className="relative" style={{width:bw, height:bh, margin:'0 auto', maxWidth:'100vw'}} onMouseLeave={clearHover}>
+      <div ref={boardRef} className="relative" style={{width:bw, height:bh, margin:'0 auto', maxWidth:'100vw'}} onMouseLeave={clearHover}>
         {/* Overlay lines — do not intercept clicks */}
         <svg className="absolute top-0 left-0 w-full h-full z-10" style={{ pointerEvents:'none' }} viewBox={`0 0 ${bw} ${bh}`}>{lines}</svg>
 
