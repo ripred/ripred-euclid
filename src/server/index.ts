@@ -88,6 +88,11 @@ async function getCount(name:string): Promise<number> {
   return parseInt((await redis.get(MCOUNT(name))) || '0', 10);
 }
 
+/* ===== Daily play counts ===== */
+const DAILY_HVH = (date:string) => `euclid:daily:hvh:${date}`;
+const DAILY_AI = (diff:string, date:string) => `euclid:daily:ai_${diff}:${date}`;
+const diffs = ['doofus','goldfish','beginner','coffee','tenderfoot','casual','offensive','defensive','brutal'] as const;
+
 /* =========================
    TYPES
    ========================= */
@@ -610,7 +615,7 @@ router.post('/api/h2h/save', async (req, res) => {
         serverBoard.endedReason = (s1===s2) ? 'tie' : 'game_over';
         if (s1!==s2){
           winnerUid = s1 > s2 ? serverBoard.m_players[0].userId : serverBoard.m_players[1].userId;
-          loserUid  = s1 > s2 ? serverBoard.m_players[1].userId : serverBoard.m_players[0].userId;
+          loserUid  = s1 > s2 ? serverBoard.m_players[1].userId : s2 > s1 ? serverBoard.m_players[0].userId : '';
         }
       }
     }
@@ -622,6 +627,8 @@ router.post('/api/h2h/save', async (req, res) => {
         const [aRec, bRec] = await Promise.all([getElo(winnerUid, 'hvh'), getElo(loserUid, 'hvh')]);
         const [na, nb] = updateEloPair(aRec, bRec, 1);
         await Promise.all([setElo(winnerUid, 'hvh', na), setElo(loserUid, 'hvh', nb)]);
+        const date = new Date().toISOString().slice(0,10);
+        await incrCount(DAILY_HVH(date), 1);
       }
       if (serverBoard.endedReason === 'game_over') {
         await incrCount('h2h_game_over_count', 1);
@@ -760,6 +767,8 @@ router.post('/api/solo/record', async (req, res) => {
     await addUserToSet('ai_completed_users', uid);
     await incrCount('ai_completed_count', 1);
     await incrCount(`ai_diff_${difficulty}_count`, 1);
+    const date = new Date().toISOString().slice(0,10);
+    await incrCount(DAILY_AI(difficulty, date), 1);
 
     slog('[SOLO] record', { uid, difficulty, ys, bs, rating: meAfter.rating });
     res.json({ ok: true, rating: meAfter.rating });
@@ -882,10 +891,23 @@ router.get('/api/admin/metrics', async (_req, res) => {
       brutal: await getCount('ai_diff_brutal_count'),
     };
 
+    // Daily for past 7 days
+    const daily = { dates: [], hvh: [], ai: {} as Record<string, number[]> };
+    diffs.forEach(d => daily.ai[d] = []);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(Date.now() - i * 86400000);
+      const date = d.toISOString().slice(0,10);
+      daily.dates.unshift(date);
+      daily.hvh.unshift(await getCount(DAILY_HVH(date)));
+      for (const diff of diffs) {
+        daily.ai[diff].unshift(await getCount(DAILY_AI(diff, date)));
+      }
+    }
+
     const activeGames = (await getActiveGames()).length;
     const rankedPlayers = { hvh: (await getPlayers('hvh')).length, hva: (await getPlayers('hva')).length };
 
-    res.json({ uniques, counts, computed, aiDiffs, activeGames, rankedPlayers });
+    res.json({ uniques, counts, computed, aiDiffs, activeGames, rankedPlayers, daily });
   } catch (e:any) {
     console.error('[ADMIN] metrics error', e);
     res.status(500).json({ status:'error', message:e?.message||String(e) });
