@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Devvit } from '@devvit/public-api';
 
 /* ===== app version (tiny watermark) ===== */
-const APP_VERSION = 'v2025.09.30.01';
+const APP_VERSION = 'v2025.09.30.02';
 const VersionStamp: React.FC = () => (
   <div style={{position:'fixed', top:6, right:8, fontSize:10, lineHeight:1, opacity:.6, color:'var(--muted)', zIndex:80}}>
     {APP_VERSION}
@@ -1163,119 +1163,120 @@ export const App=(context:Devvit.Context)=>{
 
   /* ===== Admin ===== */
   else if(mode==='admin'){
-    content = (
-      <div className="flex flex-col items-center" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
-        <div style={{paddingTop:16, paddingBottom:8}}>
-          <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — Admin Metrics</h1>
-        </div>
-
-        <div className="w-[min(860px,94vw)] rounded-lg flex-1 overflow-y-auto"
-             style={{background:'var(--card-bg)', border:`1px solid var(--card-border)`, padding:'4px 2px'}}>
-          <table style={{width:'100%', borderCollapse:'collapse'}}>
-            <tbody>
-              <tr>
-                <td style={{padding:4, verticalAlign:'top', border:'1px solid var(--card-border)'}}>
-                  <div className="font-bold mb-2" style={{color:'var(--muted)'}}>Unique users</div>
-                  <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
-                    <li>App started: {admin?.uniques?.app_start_users ?? 0}</li>
-                    <li>H2H clicked: {admin?.uniques?.h2h_click_users ?? 0}</li>
-                    <li>H2H started: {admin?.uniques?.h2h_started_users ?? 0}</li>
-                    <li>H2H completed: {admin?.uniques?.h2h_completed_users ?? 0}</li>
-                    <li>AI clicked: {admin?.uniques?.ai_click_users ?? 0}</li>
-                    <li>AI first move: {admin?.uniques?.ai_first_users ?? 0}</li>
-                    <li>AI completed: {admin?.uniques?.ai_completed_users ?? 0}</li>
-                  </ul>
-                  <div className="font-bold mt-4 mb-2" style={{color:'var(--muted)'}}>Computed (never …)</div>
-                  <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
-                    <li>H2H: clicked but never played: {admin?.computed?.h2h_clicked_never_started ?? 0}</li>
-                    <li>H2H: started but never finished: {admin?.computed?.h2h_started_never_finished ?? 0}</li>
-                    <li>AI: clicked but never played: {admin?.computed?.ai_clicked_never_started ?? 0}</li>
-                    <li>AI: started but never finished: {admin?.computed?.ai_started_never_finished ?? 0}</li>
-                  </ul>
-                </td>
-                <td style={{padding:4, verticalAlign:'top', border:'1px solid var(--card-border)'}}>
-                  <div className="font-bold mb-2" style={{color:'var(--muted)'}}>Event counts</div>
-                  <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
-                    <li>App starts: {admin?.counts?.app_start_count ?? 0}</li>
-                    <li>H2H clicks: {admin?.counts?.h2h_click_count ?? 0}</li>
-                    <li>H2H pairs: {admin?.counts?.h2h_started_count ?? 0}</li>
-                    <li>H2H game overs: {admin?.counts?.h2h_game_over_count ?? 0}</li>
-                    <li>H2H cancel queue: {admin?.counts?.h2h_cancel_queue_count ?? 0}</li>
-                    <li>H2H opponent left: {admin?.counts?.h2h_opponent_left_count ?? 0}</li>
-                    <li>H2H player left: {admin?.counts?.h2h_player_left_count ?? 0}</li>
-                    <li>AI clicks: {admin?.counts?.ai_click_count ?? 0}</li>
-                    <li>AI first moves: {admin?.counts?.ai_first_count ?? 0}</li>
-                    <li>AI completes: {admin?.counts?.ai_completed_count ?? 0}</li>
-                  </ul>
-                  <div className="font-bold mt-4 mb-2" style={{color:'var(--muted)'}}>AI difficulty breakdown</div>
-                  <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
-                    <li>doofus: {admin?.aiDiffs?.doofus ?? 0}</li>
-                    <li>Goldfish: {admin?.aiDiffs?.goldfish ?? 0}</li>
-                    <li>Beginner: {admin?.aiDiffs?.beginner ?? 0}</li>
-                    <li>Coffee-Deprived: {admin?.aiDiffs?.coffee ?? 0}</li>
-                    <li>Tenderfoot: {admin?.aiDiffs?.tenderfoot ?? 0}</li>
-                    <li>Casual: {admin?.aiDiffs?.casual ?? 0}</li>
-                    <li>Offensive: {admin?.aiDiffs?.offensive ?? 0}</li>
-                    <li>Defensive: {admin?.aiDiffs?.defensive ?? 0}</li>
-                    <li>Brutal: {admin?.aiDiffs?.brutal ?? 0}</li>
-                  </ul>
-                </td>
-              </tr>
-              <tr>
-                <td colSpan={2} style={{padding:4, border:'1px solid var(--card-border)'}}>
-                  <div className="font-bold mb-2" style={{color:'var(--muted)'}}>Daily Play Counts (Past 7 Days)</div>
-                  <table style={{width:'100%', borderCollapse:'collapse'}}>
-                    <thead>
-                      <tr>
-                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'left'}}>Date</th>
-                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>HvH</th>
-                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>doofus</th>
-                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>Goldfish</th>
-                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>Beginner</th>
-                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>Coffee</th>
-                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>Tenderfoot</th>
-                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>Casual</th>
-                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>Offensive</th>
-                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>Defensive</th>
-                        <th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>Brutal</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {admin?.daily?.dates.map((date, i) => (
-                        <tr key={date}>
-                          <td style={{border:'1px solid var(--card-border)', padding:4}}>{date}</td>
-                          <td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>{admin.daily.hvh[i] ?? 0}</td>
-                          <td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>{admin.daily.ai.doofus[i] ?? 0}</td>
-                          <td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>{admin.daily.ai.goldfish[i] ?? 0}</td>
-                          <td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>{admin.daily.ai.beginner[i] ?? 0}</td>
-                          <td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>{admin.daily.ai.coffee[i] ?? 0}</td>
-                          <td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>{admin.daily.ai.tenderfoot[i] ?? 0}</td>
-                          <td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>{admin.daily.ai.casual[i] ?? 0}</td>
-                          <td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>{admin.daily.ai.offensive[i] ?? 0}</td>
-                          <td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>{admin.daily.ai.defensive[i] ?? 0}</td>
-                          <td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right'}}>{admin.daily.ai.brutal[i] ?? 0}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          <div className="p-4 flex flex-wrap items-center justify-between" style={{borderTop:`1px solid var(--card-border)`, color:'var(--text)'}}>
-            <div>Active H2H games: <b>{admin?.activeGames ?? 0}</b></div>
-            <div>Ranked players — H2H: <b>{admin?.rankedPlayers?.hvh ?? 0}</b> / HvA: <b>{admin?.rankedPlayers?.hva ?? 0}</b></div>
-          </div>
-        </div>
-
-        <div style={{padding:12}}>
-          <button className="rounded cursor-pointer" style={{background:'#2563eb', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setMode(null); }}>
-            ok
-          </button>
-        </div>
-      </div>
-    );
+  	content = (
+  		<div className="flex flex-col items-center" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
+  			<div style={{paddingTop:16, paddingBottom:8}}>
+  				<h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — Admin Metrics</h1>
+  			</div>
+  
+  			<div className="w-[min(860px,94vw)] rounded-lg flex-1 overflow-y-auto"
+  				style={{background:'var(--card-bg)', border:`1px solid var(--card-border)`, padding:'4px 2px'}}>
+  				<table style={{width:'100%', borderCollapse:'collapse', fontSize:'0.8125rem'}}>
+  					<tbody>
+  						<tr>
+  							<td style={{padding:4, verticalAlign:'top', border:'1px solid var(--card-border)', color:'var(--text)'}}>
+  								<div className="font-bold mb-2" style={{color:'var(--muted)'}}>Unique users</div>
+  								<ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
+  									<li>App started: {admin?.uniques?.app_start_users ?? 0}</li>
+  									<li>H2H clicked: {admin?.uniques?.h2h_click_users ?? 0}</li>
+  									<li>H2H started: {admin?.uniques?.h2h_started_users ?? 0}</li>
+  									<li>H2H completed: {admin?.uniques?.h2h_completed_users ?? 0}</li>
+  									<li>AI clicked: {admin?.uniques?.ai_click_users ?? 0}</li>
+  									<li>AI first move: {admin?.uniques?.ai_first_users ?? 0}</li>
+  									<li>AI completed: {admin?.uniques?.ai_completed_users ?? 0}</li>
+  								</ul>
+  								<div className="font-bold mt-4 mb-2" style={{color:'var(--muted)'}}>Computed (never …)</div>
+  								<ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
+  									<li>H2H: clicked but never played: {admin?.computed?.h2h_clicked_never_started ?? 0}</li>
+  									<li>H2H: started but never finished: {admin?.computed?.h2h_started_never_finished ?? 0}</li>
+  									<li>AI: clicked but never played: {admin?.computed?.ai_clicked_never_started ?? 0}</li>
+  									<li>AI: started but never finished: {admin?.computed?.ai_started_never_finished ?? 0}</li>
+  								</ul>
+  							</td>
+  							<td style={{padding:4, verticalAlign:'top', border:'1px solid var(--card-border)', color:'var(--text)'}}>
+  								<div className="font-bold mb-2" style={{color:'var(--muted)'}}>Event counts</div>
+  								<ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
+  									<li>App starts: {admin?.counts?.app_start_count ?? 0}</li>
+  									<li>H2H clicks: {admin?.counts?.h2h_click_count ?? 0}</li>
+  									<li>H2H pairs: {admin?.counts?.h2h_started_count ?? 0}</li>
+  									<li>H2H game overs: {admin?.counts?.h2h_game_over_count ?? 0}</li>
+  									<li>H2H cancel queue: {admin?.counts?.h2h_cancel_queue_count ?? 0}</li>
+  									<li>H2H opponent left: {admin?.counts?.h2h_opponent_left_count ?? 0}</li>
+  									<li>H2H player left: {admin?.counts?.h2h_player_left_count ?? 0}</li>
+  									<li>AI clicks: {admin?.counts?.ai_click_count ?? 0}</li>
+  									<li>AI first moves: {admin?.counts?.ai_first_count ?? 0}</li>
+  									<li>AI completes: {admin?.counts?.ai_completed_count ?? 0}</li>
+  								</ul>
+  								<div className="font-bold mt-4 mb-2" style={{color:'var(--muted)'}}>AI difficulty breakdown</div>
+  								<ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
+  									<li>doofus: {admin?.aiDiffs?.doofus ?? 0}</li>
+  									<li>Goldfish: {admin?.aiDiffs?.goldfish ?? 0}</li>
+  									<li>Beginner: {admin?.aiDiffs?.beginner ?? 0}</li>
+  									<li>Coffee-Deprived: {admin?.aiDiffs?.coffee ?? 0}</li>
+  									<li>Tenderfoot: {admin?.aiDiffs?.tenderfoot ?? 0}</li>
+  									<li>Casual: {admin?.aiDiffs?.casual ?? 0}</li>
+  									<li>Offensive: {admin?.aiDiffs?.offensive ?? 0}</li>
+  									<li>Defensive: {admin?.aiDiffs?.defensive ?? 0}</li>
+  									<li>Brutal: {admin?.aiDiffs?.brutal ?? 0}</li>
+  								</ul>
+  							</td>
+  						</tr>
+  						<tr>
+  							<td colSpan={2} style={{padding:4, border:'1px solid var(--card-border)', color:'var(--text)'}}>
+  								<div className="font-bold mb-2" style={{color:'var(--muted)'}}>Daily Play Counts (Past 7 Days)</div>
+  								<table style={{width:'100%', borderCollapse:'collapse', fontSize:'0.75rem'}}>
+  									<thead>
+  										<tr>
+  											<th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'left', color:'var(--text)'}}>Date</th>
+  											<th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right', color:'var(--text)'}}>HvH</th>
+  											<th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right', color:'var(--text)'}}>doofus</th>
+  											<th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right', color:'var(--text)'}}>Goldfish</th>
+  											<th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right', color:'var(--text)'}}>Beginner</th>
+  											<th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right', color:'var(--text)'}}>Coffee</th>
+  											<th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right', color:'var(--text)'}}>Tenderfoot</th>
+  											<th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right', color:'var(--text)'}}>Casual</th>
+  											<th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right', color:'var(--text)'}}>Offensive</th>
+  											<th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right', color:'var(--text)'}}>Defensive</th>
+  											<th style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right', color:'var(--text)'}}>Brutal</th>
+  										</tr>
+  									</thead>
+  									<tbody>
+  										{admin?.daily?.dates.map((date, i) => (
+  											<tr key={date}>
+  												<td style={{border:'1px solid var(--card-border)', padding:4, color:'var(--text)'}}>{date}</td>
+  												<td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right', color:'var(--text)'}}>{admin.daily.hvh[i] ?? 0}</td>
+  												<td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right', color:'var(--text)'}}>{admin.daily.ai.doofus[i] ?? 0}</td>
+  												<td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right', color:'var(--text)'}}>{admin.daily.ai.goldfish[i] ?? 0}</td>
+  												<td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right', color:'var(--text)'}}>{admin.daily.ai.beginner[i] ?? 0}</td>
+  												<td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right', color:'var(--text)'}}>{admin.daily.ai.coffee[i] ?? 0}</td>
+  												<td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right', color:'var(--text)'}}>{admin.daily.ai.tenderfoot[i] ?? 0}</td>
+  												<td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right', color:'var(--text)'}}>{admin.daily.ai.casual[i] ?? 0}</td>
+  												<td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right', color:'var(--text)'}}>{admin.daily.ai.offensive[i] ?? 0}</td>
+  												<td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right', color:'var(--text)'}}>{admin.daily.ai.defensive[i] ?? 0}</td>
+  												<td style={{border:'1px solid var(--card-border)', padding:4, textAlign:'right', color:'var(--text)'}}>{admin.daily.ai.brutal[i] ?? 0}</td>
+  											</tr>
+  									))}
+  								</tbody>
+  							</table>
+  						</td>
+  					</tr>
+  				</tbody>
+  			</table>
+  			<div className="p-4 flex flex-wrap items-center justify-between" style={{borderTop:`1px solid var(--card-border)`, color:'var(--text)'}}>
+  				<div>Active H2H games: <b>{admin?.activeGames ?? 0}</b></div>
+  				<div>Ranked players — H2H: <b>{admin?.rankedPlayers?.hvh ?? 0}</b> / HvA: <b>{admin?.rankedPlayers?.hva ?? 0}</b></div>
+  			</div>
+  		</div>
+  
+  		<div style={{padding:12}}>
+  			<button className="rounded cursor-pointer" style={{background:'#2563eb', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setMode(null); }}>
+  				ok
+  			</button>
+  		</div>
+  	</div>
+  );
   }
+
 
   /* ===== Multiplayer (waiting / paired) ===== */
   else if(mode==='multiplayer' && !isBoardValid(board)){
