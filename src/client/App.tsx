@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Devvit } from '@devvit/public-api';
 
 /* ===== app version (tiny watermark) ===== */
-const APP_VERSION = 'v2025.09.25.01';
+const APP_VERSION = 'v2025.09.22.04';
 const VersionStamp: React.FC = () => (
   <div style={{position:'fixed', top:6, right:8, fontSize:10, lineHeight:1, opacity:.6, color:'var(--muted)', zIndex:80}}>
     {APP_VERSION}
@@ -299,7 +299,7 @@ class Board{
     this.m_board[pt.index]=saved; this.m_turn=savedTurn; return total;
   }
 
-  private static sqKeyByIndices(idx:number[]):string{ return idx.slice().sort((a,b)=>a-b).join(','); }
+  private static sqKeyByIndices(...idx:number[]):string{ return idx.slice().sort((a,b)=>a-b).join(','); }
   private collectSquaresForColor(color:number):Square[]{
     const saveTurn=this.m_turn; this.m_turn=color-1;
     const all:Square[]=[];
@@ -334,9 +334,9 @@ class Board{
     if(foundThreat && !this.shouldMistake(defProb)) return bestBlock;
 
     const opp=oppClr;
-    const getEmptyBestCorner=(idx:number[]):Point|null=>{
+    const getEmptyBestCorner=(idxs:number[]):Point|null=>{
       let best:Point|null=null, bestImm=-1;
-      for(const idx of idx){
+      for(const idx of idxs){
         if(this.m_board[idx]!==0) continue;
         const pt=this.pointAt(idx%this.W, Math.floor(idx/this.W));
         const imm=this.scoreIfPlacedForColor(pt, myClr);
@@ -359,8 +359,8 @@ class Board{
 
     if(!playPt){
       const cand=this.collectSquaresForColor(myClr).filter(s=>{
-        const idx=[s.p1.index,s.p2.index,s.p3.index,s.p4.index];
-        for(const idx of idx){ if(this.m_board[idx]===opp) return false; }
+        const idxs=[s.p1.index,s.p2.index,s.p3.index,s.p4.index];
+        for(const idx of idxs){ if(this.m_board[idx]===opp) return false; }
         return true;
       });
       if(cand.length>0){
@@ -368,12 +368,12 @@ class Board{
         const top=cand.filter(s=>s.points===maxPts);
         let minRemain=Math.min(...top.map(s=>s.remain));
         const top2=top.filter(s=>s.remain===minRemain).sort((a,b)=>{
-          const ka=Board.sqKeyByIndices([a.p1.index,a.p2.index,a.p3.index,a.p4.index]);
-          const kb=Board.sqKeyByIndices([b.p1.index,b.p2.index,b.p3.index,b.p4.index]);
+          const ka=Board.sqKeyByIndices(a.p1.index,a.p2.index,a.p3.index,a.p4.index);
+          const kb=Board.sqKeyByIndices(b.p1.index,b.p2.index,b.p3.index,b.p4.index);
           return ka<kb?-1:ka>kb?1:0;
         });
         const chosen=top2[0];
-        targetKey=Board.sqKeyByIndices([chosen.p1.index,chosen.p2.index,chosen.p3.index,chosen.p4.index]);
+        targetKey=Board.sqKeyByIndices(chosen.p1.index,chosen.p2.index,chosen.p3.index,chosen.p4.index);
         this.m_targets[me]=targetKey;
         playPt=keyToPlayableCorner(targetKey);
       }
@@ -749,7 +749,6 @@ export const App=(context:Devvit.Context)=>{
     const onKey=(e:KeyboardEvent)=>{
       const k=(e.key||'');
       if (!k) return;
-      if (!k) return;
       if (chatOpen) return;
 
       if (k==='\\') {
@@ -820,7 +819,7 @@ export const App=(context:Devvit.Context)=>{
           onKeyDown={(e)=>{ if(e.key==='Enter') { e.preventDefault(); sendChat(); } else if (e.key==='Escape'){ e.preventDefault(); setChatOpen(false); } }}
           placeholder={mode==='ai' ? 'Say something to the bot (echo)…' : 'Say something to your opponent…'}
           maxLength={140}
-          style={{flex:1, background:'transparent', color:'var(--text)', border:'none', outline:'none', height: '20px', lineHeight: '1.5'}}
+          style={{flex:1, background:'transparent', color:'var(--text)', border:'none', outline:'none', height: '48px', lineHeight: '1.5'}}
         />
         <button className="rounded cursor-pointer" style={{background:'#2563eb', color:'#fff', padding:'6px 12px'}} onClick={sendChat}>Send</button>
       </div>
@@ -1062,7 +1061,7 @@ export const App=(context:Devvit.Context)=>{
                   setNotice('Failed to share: ' + j.message);
                 }
               } catch (e) {
-                  setNotice('Failed to share: ' + (e as Error).message);
+                setNotice('Failed to share: ' + (e as Error).message);
               }
             }}>
             Share Rankings
@@ -1427,7 +1426,7 @@ export const App=(context:Devvit.Context)=>{
 
     const onCellClick=(x:number,y:number)=>{
       if(board.m_turn!==0 || board.m_board[y*board.W+x]>0 || winner || aiTie) return;
-      if (!aiFirstSentRef.current) { try { fetch('/api/metrics/ai-first', { method: 'POST' }); } catch {} aiFirstSentRef.current = true; }
+      if (!aiFirstSentRef.current) { try { fetch('/api/metrics/ai-first', { method:'POST' }); } catch {} aiFirstSentRef.current = true; }
       board.placePiece(board.pointAt(x,y));
       playBeep();
       let st=board.checkGameOver();
@@ -1589,7 +1588,7 @@ const GameScreen:React.FC<{
         const dx=col-x0, dy=row-y0;
         const x1=x0-dy, y1=y0+dx;
         const x2=col-dy, y2=row+dx;
-        if (x1<0||x1>=W||y1<0||y1>=H||x2<0||x2>=W||y2<0||y2>=this.H) continue;
+        if (x1<0||x1>=W||y1<0||y1>=H||x2<0||x2>=W||y2<0||y2>=H) continue;
         if (col===x0 && row===y0) continue;
 
         const idx0 = hoverIdx;
@@ -1746,14 +1745,13 @@ const GameScreen:React.FC<{
       {/* Chat log (if provided) */}
       {chatItems && chatItems.length>0 && showLog && (
         <div className="relative w-[min(720px,95vw)] max-w-[95vw]"
-             style={{background:'var(--card-bg)', border:`1px solid var(--card-border)`, borderRadius:10, padding:'6px 8px', color:'var(--text)', maxHeight:'30vh', overflowY:'auto', minHeight:'60px', fontSize:'14px'}}>
-          {chatItems.slice(-8).reverse().map((it, i)=>(
-            <div key={it.id} style={{lineHeight:'1.8em', padding:'4px 4px', wordBreak:'break-word'}}>
-              <b style={{color:'var(--muted)', display:'inline'}}>{it.sender}:</b>{' '}
-              <span className="truncate" style={{display:'inline'}}>{it.text}</span>
+             style={{background:'var(--card-bg)', border:`1px solid var(--card-border)`, borderRadius:10, padding:'6px 8px', color:'var(--text)', maxHeight:'30vh', overflowY:'auto'}}>
+          {chatItems.slice(-8).reverse().map(it=>(
+            <div key={it.id} className="truncate" style={{lineHeight:1.5}}>
+              <b style={{color:'var(--muted)'}}>{it.sender}:</b> <span>{it.text}</span>
             </div>
           ))}
-          <div className="text-xs" style={{color:'var(--muted)', padding:'4px 0', fontSize:'14px'}}>Press “\” to chat</div>
+          <div className="text-xs" style={{color:'var(--muted)'}}>Press “\” to chat</div>
           <button onClick={()=>setShowLog(false)} style={{position:'absolute', top:4, right:4, background:'transparent', border:'none', color:'var(--muted)', cursor:'pointer', fontSize:14}}>×</button>
         </div>
       )}
