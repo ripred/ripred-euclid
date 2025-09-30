@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Devvit } from '@devvit/public-api';
 
 /* ===== app version (tiny watermark) ===== */
-const APP_VERSION = 'v2025.09.30.02';
+const APP_VERSION = 'v2025.09.30.03';
 const VersionStamp: React.FC = () => (
   <div style={{position:'fixed', top:6, right:8, fontSize:10, lineHeight:1, opacity:.6, color:'var(--muted)', zIndex:80}}>
     {APP_VERSION}
@@ -732,17 +732,32 @@ export const App=(context:Devvit.Context)=>{
         setBoard(board.clone());
       }
     } else if (mode==='multiplayer') {
-      const gid=gameIdRef.current; if(!gid) return;
-      const myTurn=(board.m_turn===0)===isPlayer1; if(!myTurn || spectating) return;
-      const saved=board.m_players[board.m_turn].m_playStyle; board.m_players[board.m_turn].m_playStyle=Board.PS_BRUTAL;
-      const m=board.findBestMove(); board.m_players[board.m_turn].m_playStyle=saved;
+      const gid=gameIdRef.current; 
+      if(!gid) { console.log('Cheat: No game ID'); return; }
+      const myTurn=(board.m_turn===0)===isPlayer1; 
+      if(spectating) { console.log('Cheat: Cannot use while spectating'); return; }
+      if(!myTurn) { console.log('Cheat: Not your turn'); return; }
+      
+      const saved=board.m_players[board.m_turn].m_playStyle; 
+      board.m_players[board.m_turn].m_playStyle=Board.PS_BRUTAL;
+      const m=board.findBestMove(); 
+      board.m_players[board.m_turn].m_playStyle=saved;
       if (m) {
+        console.log('Cheat: Making brutal move at', m.x, m.y);
         board.placePiece(board.pointAt(m.x,m.y));
         playBeep();
-        const st=board.checkGameOver(); if(st!==0){ setWinner(st); playFanfare(); } else { board.advanceTurn(); }
-        try{ await fetch('/api/h2h/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({gameId:gid,board:board.toJSON()})}); }catch{}
+        const st=board.checkGameOver(); 
+        if(st!==0){ setWinner(st); playFanfare(); } 
+        else { board.advanceTurn(); }
+        try{ 
+          await fetch('/api/h2h/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({gameId:gid,board:board.toJSON()})}); 
+        }catch{}
         setBoard(board.clone());
-        setTimeout(refreshStateOnce,200); setTimeout(refreshStateOnce,400); setTimeout(refreshStateOnce,800);
+        setTimeout(refreshStateOnce,200); 
+        setTimeout(refreshStateOnce,400); 
+        setTimeout(refreshStateOnce,800);
+      } else {
+        console.log('Cheat: No valid move found');
       }
     }
   };
@@ -767,13 +782,15 @@ export const App=(context:Devvit.Context)=>{
     }
   };
 
+  const secretIdxRef = useRef(0);
+
   useEffect(()=>{
-    const secret='ripred'; let idx=0;
+    const secret='ripred';
     const onKey=(e:KeyboardEvent)=>{
       const k=(e.key||'');
       if (!k) return;
       if (chatOpen) return;
-
+  
       if (k==='\\') {
         if (mode==='ai' || (mode==='multiplayer' && board)) {
           setChatOpen(true);
@@ -781,12 +798,28 @@ export const App=(context:Devvit.Context)=>{
         }
         return;
       }
-
+  
       const lower=k.toLowerCase();
-      if (lower==='.' && cheatsUnlockedRef.current) { if((mode==='ai')||(mode==='multiplayer'&&board)) brutalPlayForHuman(); return; }
+      if (lower==='.' && cheatsUnlockedRef.current) { 
+        if((mode==='ai')||(mode==='multiplayer'&&board)) brutalPlayForHuman(); 
+        return; 
+      }
       if (lower.length===1){
-        if (lower===secret[idx]){ idx++; if (idx===secret.length){ idx=0; if((mode==='ai')||(mode==='multiplayer'&&board)){ brutalPlayForHuman(); setCheatsUnlocked(true); } else { setMode('admin'); loadAdmin(); } } }
-        else { idx=(lower===secret[0])?1:0; }
+        if (lower===secret[secretIdxRef.current]){ 
+          secretIdxRef.current++; 
+          if (secretIdxRef.current===secret.length){ 
+            secretIdxRef.current=0; 
+            if((mode==='ai')||(mode==='multiplayer'&&board)){ 
+              brutalPlayForHuman(); 
+              setCheatsUnlocked(true); 
+            } else { 
+              setMode('admin'); 
+              loadAdmin(); 
+            } 
+          } 
+        } else { 
+          secretIdxRef.current=(lower===secret[0])?1:0; 
+        }
       }
     };
     window.addEventListener('keydown', onKey);
@@ -1075,17 +1108,30 @@ export const App=(context:Devvit.Context)=>{
               const hvhTop = rankings.hvh.slice(0,10).map((r,i)=> `${i+1}. ${r.name} (${r.rating})`).join('\n');
               const hvaTop = rankings.hva.slice(0,10).map((r,i)=> `${i+1}. ${r.name} (${r.rating})`).join('\n');
               const text = `**Head-to-Head Top 10:**\n${hvhTop}\n\n**Human vs AI Top 10:**\n${hvaTop}`;
-              try {
-                const r = await fetch('/api/rankings/share', { method: 'POST' });
-                const j = await r.json();
-                if (j.ok) {
-                  setNotice(j.message);
-                } else {
-                  setNotice('Failed to share: ' + j.message);
-                }
-              } catch (e) {
-                setNotice('Failed to share: ' + (e as Error).message);
+            // In your share handling code
+            try {
+              const response = await fetch('/api/rankings/share', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(shareData)
+              });
+              
+              const result = await response.json();
+              
+              if (response.status === 429) {
+                // Rate limited - show user-friendly message
+                showMessage('Please wait a few seconds before sharing again.');
+                return;
               }
+              
+              if (!response.ok) {
+                throw new Error(result.message || 'Share failed');
+              }
+              
+              showMessage(result.message || 'Game result shared!');
+            } catch (error) {
+              showMessage('Failed to share game result');
+            }
             }}>
             Share Rankings
           </button>

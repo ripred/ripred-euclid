@@ -845,6 +845,71 @@ router.get('/api/rankings', async (_req, res) => {
   }
 });
 
+  /* =========================
+     Share game result to Reddit
+     ========================= */
+  router.post('/api/rankings/share', async (req, res) => {
+    try {
+      const uid = context.userId;
+      if (!uid) return res.status(401).json({ status: 'error', message: 'userId missing' });
+  
+      const gid = await redis.get(USERMAP(uid));
+      if (!gid) return res.status(400).json({ ok: false, message: 'No active game found' });
+  
+      const board = await loadBoard(gid);
+      if (!board) return res.status(404).json({ ok: false, message: 'Game not found' });
+      if (!board.ended) return res.status(409).json({ ok: false, message: 'Game still in progress' });
+  
+      const u1 = board.m_players?.[0]?.userId;
+      const u2 = board.m_players?.[1]?.userId;
+      const names = board.playerNames || {};
+      const p1Name = names[u1] || 'Player 1';
+      const p2Name = names[u2] || 'Player 2';
+      const s1 = board.m_players[0].m_score;
+      const s2 = board.m_players[1].m_score;
+      
+      const winner = s1 > s2 ? p1Name : s2 > s1 ? p2Name : 'Tie';
+      const [r1, r2] = await Promise.all([getElo(u1, 'hvh'), getElo(u2, 'hvh')]);
+  
+      const comment = `🎮 **Euclid Game Complete!**\n\n` +
+        `${p1Name}: **${s1}** (Rating: ${r1.rating})\n` +
+        `${p2Name}: **${s2}** (Rating: ${r2.rating})\n\n` +
+        `${winner === 'Tie' ? '**Result: Tie Game!**' : `**Winner: ${winner}!**`}`;
+  
+      const { postId } = context;
+      if (!postId) return res.status(400).json({ ok: false, message: 'No post context' });
+  
+      try {
+        await reddit.submitComment({
+          id: postId,
+          text: comment
+        });
+  
+        slog('[SHARE] game result posted', { gid, postId });
+        return res.json({ ok: true, message: 'Game result shared!' });
+      } catch (redditError: any) {
+        // Handle Reddit-specific errors
+        if (redditError.message?.includes('RATELIMIT')) {
+          slog('[SHARE] rate limited', { gid, postId });
+          return res.status(429).json({ 
+            ok: false, 
+            message: 'Rate limited by Reddit. Please wait a few seconds before sharing again.',
+            retryAfter: 5000 // 5 seconds
+          });
+        }
+        
+        // Handle other Reddit errors
+        slog('[SHARE] reddit error', { gid, postId, error: redditError.message });
+        return res.status(502).json({ 
+          ok: false, 
+          message: 'Failed to post to Reddit. Please try again later.' 
+        });
+      }
+    } catch (e: any) {
+      console.error('[SHARE] general error', e);
+      res.status(500).json({ ok: false, message: e?.message || String(e) });
+    }
+  });
 /* =========================
    Admin metrics summary
    ========================= */
