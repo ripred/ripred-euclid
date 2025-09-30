@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Devvit } from '@devvit/public-api';
 
 /* ===== app version (tiny watermark) ===== */
-const APP_VERSION = 'v2025.09.22.04';
+const APP_VERSION = 'v2025.09.30.01';
 const VersionStamp: React.FC = () => (
   <div style={{position:'fixed', top:6, right:8, fontSize:10, lineHeight:1, opacity:.6, color:'var(--muted)', zIndex:80}}>
     {APP_VERSION}
@@ -33,10 +33,6 @@ const GlobalStyles = () => (
 
       --glint-light:rgba(255,255,255,.50);
       --glint-mid:rgba(255,255,255,.20);
-
-      --hint-my1: 16,185,129;   /* emerald */
-      --hint-my2: 59,130,246;   /* blue */
-      --hint-opp1:245,158,11;   /* amber */
     }
 
     /* --- Prefer dark: OS/browser choice --- */
@@ -116,11 +112,38 @@ const GlobalStyles = () => (
     body { color-scheme: light dark; margin: 0; overflow: hidden; }
 
     .glow-red { box-shadow: 0 0 0 3px rgba(239,68,68,.6), 0 0 18px rgba(239,68,68,.45); }
-    .glow-blue{ box-shadow: 0 0 0 3px rgba(59,130,246,.6), 0 0 18px rgba(59,130,246,.45); }
+	.glow-blue{ box-shadow: 0 0 0 3px rgba(59,130,246,.6), 0 0 18px rgba(59,130,246,.45); }
 
-    .hint-my1 { box-shadow: 0 0 0 5px rgba(var(--hint-my1), .70), 0 0 18px rgba(var(--hint-my1), .45) !important; }
-    .hint-my2 { box-shadow: 0 0 0 5px rgba(var(--hint-my2), .42), 0 0 18px rgba(var(--hint-my2), .28) !important; }
-    .hint-opp1{ box-shadow: 0 0 0 5px rgba(var(--hint-opp1), .75), 0 0 18px rgba(var(--hint-opp1), .50) !important; }
+	/* Updated hint styles - match player color with pulsing */
+	.hint-red-bright { 
+	    animation: pulse-red-bright 1.5s ease-in-out infinite;
+	}
+	.hint-red-dim { 
+	    animation: pulse-red-dim 1.5s ease-in-out infinite;
+	}
+	.hint-blue-bright { 
+	    animation: pulse-blue-bright 1.5s ease-in-out infinite;
+	}
+	.hint-blue-dim { 
+	    animation: pulse-blue-dim 1.5s ease-in-out infinite;
+	}
+
+	@keyframes pulse-red-bright {
+	    0%, 100% { box-shadow: 0 0 0 5px rgba(239,68,68,.85), 0 0 20px rgba(239,68,68,.60); }
+	    50% { box-shadow: 0 0 0 7px rgba(239,68,68,.95), 0 0 26px rgba(239,68,68,.70); }
+	}
+	@keyframes pulse-red-dim {
+	    0%, 100% { box-shadow: 0 0 0 4px rgba(239,68,68,.50), 0 0 14px rgba(239,68,68,.35); }
+	    50% { box-shadow: 0 0 0 5px rgba(239,68,68,.60), 0 0 16px rgba(239,68,68,.45); }
+	}
+	@keyframes pulse-blue-bright {
+	    0%, 100% { box-shadow: 0 0 0 5px rgba(59,130,246,.85), 0 0 20px rgba(59,130,246,.60); }
+	    50% { box-shadow: 0 0 0 7px rgba(59,130,246,.95), 0 0 26px rgba(59,130,246,.70); }
+	}
+	@keyframes pulse-blue-dim {
+	    0%, 100% { box-shadow: 0 0 0 4px rgba(59,130,246,.50), 0 0 14px rgba(59,130,246,.35); }
+	    50% { box-shadow: 0 0 0 5px rgba(59,130,246,.60), 0 0 16px rgba(59,130,246,.45); }
+	}
 
     .assist__dim { opacity: 0.42; }
 
@@ -777,7 +800,7 @@ export const App=(context:Devvit.Context)=>{
           <div style={{fontSize:'1.125rem', fontWeight:800, marginBottom:8}}>How to Play — Euclid</div>
           <ul style={{paddingLeft: '1.2em', listStyle:'disc'}}>
               <li>Players take turns placing a dot on a grid.</li>
-              <li>A <b>square</b> is completed when all four of its corner cells are your color. The four corners don’t need to be axis-aligned — they can form a rotated square.</li>
+              <li>A <b>square</b> is completed when all four of its corner cells are your color. The four corners don't need to be axis-aligned — they can form a rotated square.</li>
               <li><b>Scoring (AI mode configurable):</b> <i>Bounding Rectangle</i> or <i>True Area</i> (side²).</li>
               <li>One move can complete multiple squares; you score the sum.</li>
               <li>First to the selected <b>Win Score</b> wins; if the board fills with unequal points, higher total wins.</li>
@@ -1437,6 +1460,7 @@ export const App=(context:Devvit.Context)=>{
         setAiTie(true); setBoard(board.clone()); return;
       }
       board.advanceTurn();
+      let tout = Math.random() * 1000;
       setTimeout(()=>{
         board.m_players[1].m_playStyle = style;
         board.makeMove();
@@ -1452,7 +1476,7 @@ export const App=(context:Devvit.Context)=>{
           board.advanceTurn();
         }
         setBoard(board.clone());
-      }, 700);
+      }, tout);
       setBoard(board.clone());
     };
 
@@ -1706,37 +1730,59 @@ const GameScreen:React.FC<{
         <div className="grid" style={{gridTemplateColumns:`repeat(${board.W}, ${cell}px)`, gridAutoRows:`${cell}px`, gap:0}}>
           {Array.from({length:board.H},(_,y)=>
             Array.from({length:board.W},(_,x)=>{
-              const idx = y * board.W + x;
-              const v=board.m_board[idx];
-              const isLast = v>0 && board?.m_last && board.m_last.x===x && board.m_last.y===y;
+				const idx = y * board.W + x;
+				const v=board.m_board[idx];
+				const isLast = v>0 && board?.m_last && board.m_last.x===x && board.m_last.y===y;
 
-              let fill='var(--empty-fill)', stroke='var(--empty-stroke)', shadow: string | undefined = undefined, extraClass = '';
-              if(v===1){
-                fill='var(--dot-red-fill)'; stroke='var(--dot-red-stroke)';
-                if (isLast) { shadow = '0 0 0 5px var(--last-red-ring), 0 0 18px var(--last-red-glow)'; extraClass = 'last__pulse'; }
-              } else if(v===2){
-                fill='var(--dot-blue-fill)'; stroke='var(--dot-blue-stroke)';
-                if (isLast) { shadow = '0 0 0 5px var(--last-blue-ring), 0 0 18px var(--last-blue-glow)'; extraClass = 'last__pulse'; }
-              } else if (v===0){
-                // Assist overlays for empty spots
-                if (assistOn && hoverIdx !== null) {
-                  if (oneMoveTargets.has(idx)) extraClass += ' hint-my1';
-                  else if (twoMoveTargets.has(idx)) extraClass += ' hint-my2';
-                  else extraClass += ' assist__dim';
-                }
-              }
+				let fill='var(--empty-fill)', stroke='var(--empty-stroke)', extraClass = '';
+				let inlineShadow: string | undefined = undefined;
 
-              const onEnter = () => onCellEnter(idx, v);
+				if(v===1){
+					fill='var(--dot-red-fill)'; stroke='var(--dot-red-stroke)';
+					if (isLast) { 
+						inlineShadow = '0 0 0 5px var(--last-red-ring), 0 0 18px var(--last-red-glow)'; 
+						extraClass = 'last__pulse'; 
+					}
+				} else if(v===2){
+					fill='var(--dot-blue-fill)'; stroke='var(--dot-blue-stroke)';
+					if (isLast) { 
+						inlineShadow = '0 0 0 5px var(--last-blue-ring), 0 0 18px var(--last-blue-glow)'; 
+						extraClass = 'last__pulse'; 
+					}
+				} else if (v===0){
+					// Assist overlays for empty spots
+					if (assistOn && hoverIdx !== null) {
+						if (oneMoveTargets.has(idx)) {
+							extraClass += myColor === 1 ? ' hint-red-bright' : ' hint-blue-bright';
+						} else if (twoMoveTargets.has(idx)) {
+							extraClass += myColor === 1 ? ' hint-red-dim' : ' hint-blue-dim';
+						} else {
+							extraClass += ' assist__dim';
+						}
+					}
+				}
 
-              return (
-                <div key={`${y}-${x}`} className="flex items-center justify-center" onClick={()=>onCellClick(x,y)} onMouseEnter={onEnter}>
-                  <div className={`rounded-full ${extraClass}`}
-                    style={{ width:DOT, height:DOT, background:fill, border:`2px solid ${stroke}`, boxShadow: shadow }}
-                    aria-label={isLast ? 'Last move' : undefined}
-                    title={isLast ? 'Last move' : undefined}
-                  />
-                </div>
-              );
+				const onEnter = () => onCellEnter(idx, v);
+
+				return (
+					<div key={`${y}-${x}`} className="flex items-center justify-center" onClick={()=>onCellClick(x,y)} onMouseEnter={onEnter}>
+						<div 
+							className={`rounded-full ${extraClass}`}
+							style={{ 
+								width: DOT, 
+									height: DOT, 
+									background: fill, 
+									border: `2px solid ${stroke}`,
+									...(inlineShadow ? { boxShadow: inlineShadow } : {})
+							}}
+							aria-label={isLast ? 'Last move' : undefined}
+							title={isLast ? 'Last move' : undefined}
+						/>
+					</div>
+				);
+
+
+
             })
           )}
         </div>
@@ -1751,7 +1797,7 @@ const GameScreen:React.FC<{
               <b style={{color:'var(--muted)'}}>{it.sender}:</b> <span>{it.text}</span>
             </div>
           ))}
-          <div className="text-xs" style={{color:'var(--muted)'}}>Press “\” to chat</div>
+          <div className="text-xs" style={{color:'var(--muted)'}}>Press "\" to chat</div>
           <button onClick={()=>setShowLog(false)} style={{position:'absolute', top:4, right:4, background:'transparent', border:'none', color:'var(--muted)', cursor:'pointer', fontSize:14}}>×</button>
         </div>
       )}
