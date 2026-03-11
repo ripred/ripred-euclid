@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Euclid Share Post Examples</title>
+    <style>
+      :root {
+        --bg: #09111d;
+        --panel: #101b2d;
+        --border: #294466;
+        --text: #f8fafc;
+        --muted: #94a3b8;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Arial, Helvetica, sans-serif;
+        background: radial-gradient(circle at top right, #17304f 0%, var(--bg) 48%);
+        color: var(--text);
+      }
+
+      main {
+        max-width: 1360px;
+        margin: 0 auto;
+        padding: 32px 24px 64px;
+      }
+
+      h1 {
+        margin: 0 0 10px;
+        font-size: 44px;
+      }
+
+      p {
+        margin: 0 0 24px;
+        color: var(--muted);
+        font-size: 20px;
+        line-height: 1.5;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+        gap: 28px;
+      }
+
+      .card {
+        background: rgba(16, 27, 45, 0.92);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        padding: 18px 18px 22px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
+      }
+
+      .card h2 {
+        margin: 0 0 10px;
+        font-size: 28px;
+      }
+
+      .card p {
+        margin-bottom: 16px;
+        font-size: 17px;
+      }
+
+      img {
+        width: 100%;
+        display: block;
+        border-radius: 18px;
+        border: 1px solid var(--border);
+        background: #07101d;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Euclid Share Post Examples</h1>
+      <p>Two static concept mocks. These are not wired to the app. They are here so you can choose the direction before I implement the share-post format.</p>
+
+      <div class="grid">
+        <section class="card">
+          <h2>Rankings Share Post</h2>
+          <p>A custom post centered on the top leaderboard rows for a given date and bucket.</p>
+          <img src="./rankings-post-example.svg" alt="Rankings share post example" />
+        </section>
+
+        <section class="card">
+          <h2>Win Share Post</h2>
+          <p>A custom post centered on the winner, scoreline, and a stylized board snapshot.</p>
+          <img src="./win-post-example.svg" alt="Win share post example" />
+        </section>
+      </div>
+    </main>
+  </body>
+</html>
