@@ -8,6 +8,7 @@ yarn-error.log*
 .DS_Store
 webroot
 dist
+legacy/
 .editorconfig
 .env
 .prettierrc
