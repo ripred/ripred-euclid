@@ -1,14 +1,20 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Devvit } from '@devvit/public-api';
+import type {
+  InitResponse,
+  SerializableBoard,
+  ShareBucket,
+  SharedPostPayload,
+} from '../shared/types/api';
 
 /* ===== app version (tiny watermark) ===== */
-const APP_VERSION = 'v2025.09.30.03';
-const VersionStamp: React.FC = () => (
-  <div style={{position:'fixed', top:6, right:8, fontSize:10, lineHeight:1, opacity:.6, color:'var(--muted)', zIndex:80}}>
-    {APP_VERSION}
-  </div>
-);
-
+const VersionStamp: React.FC<{ version?: string }> = ({ version }) => {
+  const label = !version ? 'loading' : version.startsWith('v') ? version : `v${version}`;
+  return (
+    <div style={{position:'fixed', top:6, right:8, fontSize:10, lineHeight:1, opacity:.6, color:'var(--muted)', zIndex:80}}>
+      {label}
+    </div>
+  );
+};
 /* ===== theme (FOLLOW user/Devvit light/dark) ===== */
 const GlobalStyles = () => (
   <style>{`
@@ -209,7 +215,7 @@ const ScoreCard:React.FC<{
       <div className={`flex items-center justify-between px-3 py-1 rounded-md shadow-sm ${glow==='red'?'glow-red':''} ${glow==='blue'?'glow-blue':''}`}
         style={{width, background:'var(--card-bg)', border:`1px solid var(--card-border)`}}>
         <div className="flex items-center gap-2" style={{color:'var(--text)', minWidth:0}}>
-          {avatar ? <img src={avatar} alt="" style={{width:22,height:22,borderRadius:'50%'}}/> : <span style={{width:22,height:22,borderRadius:'50%',background:'var(--empty-stroke)'}}/>}
+          {avatar ? <img src={avatar} alt="" crossOrigin="anonymous" style={{width:22,height:22,borderRadius:'50%'}}/> : <span style={{width:22,height:22,borderRadius:'50%',background:'var(--empty-stroke)'}}/>}
           <span className="font-medium" style={{display:'inline-block', overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis', maxWidth: compact ? 120 : 150}} title={label}>{label}</span>
         </div>
         <span className="font-semibold" style={{color:'var(--text)'}}>{score}</span>
@@ -483,10 +489,68 @@ type AdminMetrics = {
   daily: { dates: string[]; hvh: number[]; ai: Record<string, number[]> };
 };
 
+type ThemeMode = 'light' | 'dark';
+
+const normalizeThemeMode = (value: string | null | undefined): ThemeMode | null => {
+  if (!value) return null;
+  const lower = value.trim().toLowerCase();
+  if (!lower) return null;
+  if (lower.includes('dark')) return 'dark';
+  if (lower.includes('light')) return 'light';
+  return null;
+};
+
+const readThemeModeFromElement = (element: Element | null | undefined, sourceWindow: Window = window): ThemeMode | null => {
+  if (!element) return null;
+  const attrTheme = normalizeThemeMode(element.getAttribute('data-theme'))
+    || normalizeThemeMode(element.getAttribute('data-color-scheme'))
+    || normalizeThemeMode(element.getAttribute('color-scheme'));
+  if (attrTheme) return attrTheme;
+  if (element.classList.contains('dark')) return 'dark';
+  if (element.classList.contains('light')) return 'light';
+  try {
+    return normalizeThemeMode(sourceWindow.getComputedStyle(element).colorScheme);
+  } catch {
+    return null;
+  }
+};
+
+const detectThemeMode = (): ThemeMode => {
+  try {
+    if (window.parent && window.parent !== window) {
+      const parentTheme = readThemeModeFromElement(window.parent.document.documentElement, window.parent)
+        || readThemeModeFromElement(window.parent.document.body, window.parent);
+      if (parentTheme) return parentTheme;
+    }
+  } catch {}
+
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+};
+
+const applyThemeModeToDocument = (theme: ThemeMode) => {
+  for (const element of [document.documentElement, document.body]) {
+    if (!element) continue;
+    element.dataset.theme = theme;
+    element.dataset.colorScheme = theme;
+    element.classList.toggle('dark', theme === 'dark');
+    element.classList.toggle('light', theme === 'light');
+    element.style.colorScheme = theme;
+  }
+};
+
+const formatDisplayDate = (input: string | number | Date = Date.now()) =>
+  new Date(input).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+const boardScoringLabel = (scoring: SerializableBoard['scoring']) =>
+  scoring === 'true' ? 'True Area' : 'Bounding Rectangle';
+
 /* ===== App (UI + flows) ===== */
 type Mode='ai'|'multiplayer'|'spectate'|'rankings'|'admin'|'options'|null;
 
-export const App=(context:Devvit.Context)=>{
+export const App=()=>{
+  const appliedThemeRef = useRef<ThemeMode | null>(null);
+  const [initState, setInitState] = useState<InitResponse | null>(null);
+  const [initError, setInitError] = useState('');
   const [mode,setMode]=useState<Mode>(null);
   const [board,setBoard]=useState<Board|null>(null);
 
@@ -517,8 +581,17 @@ export const App=(context:Devvit.Context)=>{
   const [showRules,setShowRules]=useState(false);
   const [glintOn,setGlintOn]=useState(false);
   const soloRecordedRef = useRef(false);
+  const soloRecordStartedRef = useRef(false);
   const aiFirstSentRef = useRef(false);
   const [aiTie, setAiTie] = useState(false);
+  const [soloShareReady, setSoloShareReady] = useState(false);
+  const [soloRecordBusy, setSoloRecordBusy] = useState(false);
+  const [shareBusy, setShareBusy] = useState<string | null>(null);
+  const [sharedWins, setSharedWins] = useState({ ai: false, multiplayer: false });
+  const rankingsHvhRef = useRef<HTMLDivElement | null>(null);
+  const rankingsHvaRef = useRef<HTMLDivElement | null>(null);
+  const multiplayerCaptureRef = useRef<HTMLDivElement | null>(null);
+  const aiCaptureRef = useRef<HTMLDivElement | null>(null);
 
   // Chat (global overlay + data)
   const [chatOpen,setChatOpen]=useState(false);
@@ -580,7 +653,66 @@ export const App=(context:Devvit.Context)=>{
 
   // window/theme basics
   useEffect(()=>{ const onResize=()=>setIsMobile(typeof window!=='undefined'&&window.innerWidth<=768); onResize(); window.addEventListener('resize',onResize); return()=>window.removeEventListener('resize',onResize);},[]);
-  useEffect(()=>{ (async()=>{ try{ await fetch('/api/init'); }catch{} })(); },[]);
+  useEffect(()=>{
+    let rafId = 0;
+    const syncTheme = () => {
+      const nextTheme = detectThemeMode();
+      if (appliedThemeRef.current === nextTheme) return;
+      applyThemeModeToDocument(nextTheme);
+      appliedThemeRef.current = nextTheme;
+    };
+    const scheduleSync = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(syncTheme);
+    };
+
+    syncTheme();
+
+    const media = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+    const mediaListener = () => scheduleSync();
+    if (media) {
+      if (typeof media.addEventListener === 'function') media.addEventListener('change', mediaListener);
+      else if (typeof media.addListener === 'function') media.addListener(mediaListener);
+    }
+
+    const observers: MutationObserver[] = [];
+    try {
+      if (window.parent && window.parent !== window) {
+        for (const target of [window.parent.document.documentElement, window.parent.document.body]) {
+          if (!target) continue;
+          const observer = new MutationObserver(scheduleSync);
+          observer.observe(target, { attributes: true, attributeFilter: ['class', 'data-theme', 'data-color-scheme'] });
+          observers.push(observer);
+        }
+      }
+    } catch {}
+
+    return ()=>{
+      cancelAnimationFrame(rafId);
+      if (media) {
+        if (typeof media.removeEventListener === 'function') media.removeEventListener('change', mediaListener);
+        else if (typeof media.removeListener === 'function') media.removeListener(mediaListener);
+      }
+      observers.forEach((observer) => observer.disconnect());
+    };
+  },[]);
+  useEffect(()=>{
+    let active = true;
+    (async()=>{
+      try{
+        const r = await fetch('/api/init');
+        const j = await r.json().catch(() => ({ message: 'Init failed.' })) as InitResponse | { message?: string };
+        if (!r.ok) throw new Error('message' in j ? (j.message || 'Init failed.') : 'Init failed.');
+        if (!active) return;
+        setInitState(j as InitResponse);
+        setInitError('');
+      }catch(e){
+        if (!active) return;
+        setInitError((e as Error).message || 'Unable to start Euclid.');
+      }
+    })();
+    return ()=>{ active = false; };
+  },[]);
   useEffect(()=>{ const id=setInterval(()=>{ setGlintOn(true); setTimeout(()=>setGlintOn(false), 2200); }, 15000) as unknown as number; return ()=>clearInterval(id); },[]);
 
   // Interpolate Recommended Win Score from 8×8→150 baseline, accounting for scoring mode
@@ -596,27 +728,49 @@ export const App=(context:Devvit.Context)=>{
     setWinScore(rec); // auto-adjust; user can override afterward
   },[boardW, boardH, scoringMode]);
 
+  const persistSoloResult = async () => {
+    if(mode!=='ai' || !winner || !board || soloRecordBusy) return false;
+    const you = board.m_players?.[0]?.m_score ?? 0;
+    const bot = board.m_players?.[1]?.m_score ?? 0;
+    const diff =
+      selectedStyle===Board.PS_BRUTAL     ? 'brutal' :
+      selectedStyle===Board.PS_OFFENSIVE  ? 'offensive' :
+      selectedStyle===Board.PS_DEFENSIVE  ? 'defensive' :
+      selectedStyle===Board.PS_DOOFUS     ? 'doofus' :
+      selectedStyle===Board.PS_GOLDFISH   ? 'goldfish' :
+      selectedStyle===Board.PS_BEGINNER   ? 'beginner' :
+      selectedStyle===Board.PS_COFFEE     ? 'coffee' :
+      selectedStyle===Board.PS_TENDERFOOT ? 'tenderfoot' :
+                                            'casual';
+    setSoloRecordBusy(true);
+    setSoloShareReady(false);
+    try{
+      const res = await fetch('/api/solo/record', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ difficulty: diff, youScore: you, botScore: bot, board: board.toJSON() })
+      });
+      if (!res.ok) throw new Error('record failed');
+      soloRecordedRef.current=true;
+      setSoloShareReady(true);
+      setNotice('');
+      return true;
+    }catch{
+      soloRecordedRef.current=false;
+      setSoloShareReady(false);
+      setNotice('Unable to save this AI result yet. Use Share Win to retry.');
+      return false;
+    } finally {
+      setSoloRecordBusy(false);
+    }
+  };
+
   // record AI result (win/loss only; tie has no ELO)
   useEffect(()=>{
-    if(mode!=='ai' || (!winner && !aiTie) || !board || soloRecordedRef.current) return;
-    if (winner){
-      const you = board.m_players?.[0]?.m_score ?? 0;
-      const bot = board.m_players?.[1]?.m_score ?? 0;
-      const diff =
-        selectedStyle===Board.PS_BRUTAL     ? 'brutal' :
-        selectedStyle===Board.PS_OFFENSIVE  ? 'offensive' :
-        selectedStyle===Board.PS_DEFENSIVE  ? 'defensive' :
-        selectedStyle===Board.PS_DOOFUS     ? 'doofus' :
-        selectedStyle===Board.PS_GOLDFISH   ? 'goldfish' :
-        selectedStyle===Board.PS_BEGINNER   ? 'beginner' :
-        selectedStyle===Board.PS_COFFEE     ? 'coffee' :
-        selectedStyle===Board.PS_TENDERFOOT ? 'tenderfoot' :
-                                              'casual';
-      (async ()=>{ try{
-        await fetch('/api/solo/record', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ difficulty: diff, youScore: you, botScore: bot })});
-      }catch{} soloRecordedRef.current=true; })();
-    }
-  },[mode,winner,aiTie,board,selectedStyle]);
+    if(mode!=='ai' || !winner || !board || soloRecordedRef.current || soloRecordBusy || soloRecordStartedRef.current) return;
+    soloRecordStartedRef.current = true;
+    void persistSoloResult();
+  },[mode,winner,board,selectedStyle,soloRecordBusy]);
 
   /* === H2H polling helpers === */
   const refreshStateOnce = async () => {
@@ -692,6 +846,95 @@ export const App=(context:Devvit.Context)=>{
   /* ===== Admin metrics ===== */
   const [admin,setAdmin]=useState<AdminMetrics|null>(null);
   const loadAdmin = async () => { try{ const r=await fetch('/api/admin/metrics'); const j=await r.json(); setAdmin(j); }catch{ setAdmin(null); } };
+
+  const clearMultiplayerState = () => {
+    stopPolling();
+    pollActiveRef.current='none';
+    setGameId(null);
+    gameIdRef.current=null;
+    setIsPlayer1(false);
+    setSpectating(false);
+    setBoard(null);
+    setMode(null);
+    setStatus('');
+    setNotice('');
+    setWinner(null);
+    setFinalSide(null);
+    setFinalReason('');
+    setSharedWins((current) => ({ ...current, multiplayer: false }));
+  };
+
+  const leaveMultiplayer = async () => {
+    try{ await fetch('/api/h2h/leave',{method:'POST'}); }catch{}
+    clearMultiplayerState();
+  };
+
+  const closeAiGame = () => {
+    setWinner(null);
+    setAiTie(false);
+    setBoard(null);
+    soloRecordedRef.current=false;
+    soloRecordStartedRef.current=false;
+    setSoloShareReady(false);
+    setSoloRecordBusy(false);
+    aiFirstSentRef.current=false;
+    setLocalChat([]);
+    setMode(null);
+    setStatus('');
+    setNotice('');
+    setSharedWins((current) => ({ ...current, ai: false }));
+  };
+
+  const shareGeneratedPost = async ({
+    busyKey,
+    endpoint,
+    payload
+  }: {
+    busyKey: string;
+    endpoint: string;
+    payload?: Record<string, unknown>;
+  }) => {
+    if (shareBusy) return;
+
+    setNotice('');
+    setShareBusy(busyKey);
+    try {
+      const r = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {})
+      });
+      const j = await r.json().catch(() => ({} as { ok?: boolean; message?: string }));
+      if (!r.ok || !j.ok) throw new Error(j.message || 'Share failed.');
+      if (busyKey === 'ai' || busyKey === 'multiplayer') {
+        setSharedWins((current) => ({ ...current, [busyKey]: true }));
+      }
+      setNotice(j.message || 'Shared to Reddit.');
+    } catch (e) {
+      setNotice((e as Error).message || 'Share failed.');
+    } finally {
+      setShareBusy(null);
+    }
+  };
+
+  const shareRankings = async (bucket: ShareBucket) =>
+    shareGeneratedPost({
+      busyKey: `rankings:${bucket}`,
+      endpoint: '/api/share/rankings',
+      payload: { bucket }
+    });
+
+  const shareMultiplayerWin = async () =>
+    shareGeneratedPost({
+      busyKey: 'multiplayer',
+      endpoint: '/api/share/h2h-result',
+    });
+
+  const shareAiWin = async () =>
+    shareGeneratedPost({
+      busyKey: 'ai',
+      endpoint: '/api/share/ai-result',
+    });
 
   /* ===== Secret keys + chat hotkey ===== */
   const [cheatsUnlocked,setCheatsUnlocked] = useState(false);
@@ -882,13 +1125,37 @@ export const App=(context:Devvit.Context)=>{
     </div>
   );
 
+  const sharedPost = initState?.type === 'share' ? initState.share : null;
+
   /* =========================
      CONTENT ROUTER
      ========================= */
   let content: JSX.Element;
 
+  if (!initState && !initError) {
+    content = (
+      <div className="flex flex-col justify-center items-center gap-3" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
+        <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid</h1>
+        <div style={{color:'var(--muted)'}}>Loading…</div>
+      </div>
+    );
+  }
+
+  else if (sharedPost) {
+    content = <SharedPostView share={sharedPost} />;
+  }
+
+  else if (initError) {
+    content = (
+      <div className="flex flex-col justify-center items-center gap-4" style={{background:'var(--bg)', height:'100vh', overflow:'hidden', padding:'0 18px'}}>
+        <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid</h1>
+        <div style={{color:'var(--muted)', textAlign:'center'}}>{initError}</div>
+      </div>
+    );
+  }
+
   /* ===== Intro / Home ===== */
-  if(mode===null){
+  else if(mode===null){
     const styleName =
       selectedStyle===Board.PS_BRUTAL     ? 'Brutal' :
       selectedStyle===Board.PS_OFFENSIVE  ? 'Offensive' :
@@ -917,7 +1184,7 @@ export const App=(context:Devvit.Context)=>{
               try{ await fetch('/api/metrics/ai-click',{method:'POST'});}catch{}
               const p1=new Player(selectedStyle,false), p2=new Player(selectedStyle,true);
               const b=new Board(p1,p2,{ W:boardW, H:boardH, scoring:scoringMode, winScore });
-              setBoard(b); setWinner(null); soloRecordedRef.current=false; aiFirstSentRef.current=false; setAiTie(false); setLocalChat([]); setMode('ai');
+              setBoard(b); setWinner(null); soloRecordedRef.current=false; soloRecordStartedRef.current=false; setSoloShareReady(false); setSoloRecordBusy(false); aiFirstSentRef.current=false; setAiTie(false); setLocalChat([]); setSharedWins((current) => ({ ...current, ai: false })); setMode('ai');
             }}>
             Play vs AI
           </button>
@@ -1064,76 +1331,67 @@ export const App=(context:Devvit.Context)=>{
   else if(mode==='rankings'){
     const numCell = { color:'var(--text)', textAlign:'right' as const, fontVariantNumeric:'tabular-nums' as const };
     const headCell = { color:'var(--muted)', fontWeight:700, textAlign:'right' as const };
-    const Section = ({title, rows, accent}:{title:string; rows:any[]; accent:'red'|'blue'}) => (
+    const Section = ({
+      title,
+      rows,
+      accent,
+      bucket,
+      captureRef
+    }:{
+      title:string;
+      rows:any[];
+      accent:'red'|'blue';
+      bucket: ShareBucket;
+      captureRef: React.RefObject<HTMLDivElement | null>;
+    }) => (
       <div className="w-[min(720px,92vw)]">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-xl font-extrabold" style={{color:'var(--text)'}}>{title}</h2>
-        </div>
-        <div className="rounded-lg overflow-hidden overflow-x-auto" style={{border:`1px solid var(--card-border)`}}>
-          <table style={{width:'100%', borderCollapse:'collapse', background:'var(--card-bg)', minWidth:620}}>
-            <thead>
-              <tr>
-                <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell, textAlign:'left' as const}}>Rank</th>
-                <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell, textAlign:'left' as const}}>Player</th>
-                <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell}}>Rating</th>
-                <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell}}>Games</th>
-                <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell}}>Wins</th>
-                <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell}}>Losses</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r: any, i: number)=>{
-                const top3 = i<3; const pill = accent==='red' ? 'var(--pill-red)' : 'var(--pill-blue)';
-                return (
-                  <tr key={r.userId} style={{background: top3 ? pill : 'transparent', borderTop:`1px solid var(--card-border)`}}>
-                    <td style={{padding:'8px 12px', fontWeight:700, color: accent==='red'?'#b91c1c':'#1d4ed8'}}>{i+1}</td>
-                    <td style={{padding:'8px 12px', display:'flex', alignItems:'center', gap:8, color:'var(--text)'}}>
-                      {r.avatar ? <img src={r.avatar} alt="" style={{width:24,height:24,borderRadius:'50%'}}/> : <span style={{width:24,height:24,borderRadius:'50%',background:'var(--empty-stroke)'}}/>}
-                      <span className="truncate" title={r.name||r.userId}>{r.name||r.userId}</span>
-                    </td>
-                    <td style={{padding:'8px 12px', ...numCell}}>{r.rating}</td>
-                    <td style={{padding:'8px 12px', ...numCell}}>{r.games}</td>
-                    <td style={{padding:'8px 12px', ...numCell}}>{r.wins}</td>
-                    <td style={{padding:'8px 12px', ...numCell}}>{r.losses}</td>
-                  </tr>
-                );
-              })}
-              {rows.length===0 && <tr><td colSpan={6} style={{padding:'16px', color:'var(--muted)', textAlign:'center'}}>No ranked players yet.</td></tr>}
-            </tbody>
-          </table>
+        <div ref={captureRef}>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-xl font-extrabold" style={{color:'var(--text)'}}>{title}</h2>
+          </div>
+          <div className="rounded-lg overflow-hidden overflow-x-auto" style={{border:`1px solid var(--card-border)`}}>
+            <table style={{width:'100%', borderCollapse:'collapse', background:'var(--card-bg)', minWidth:620}}>
+              <thead>
+                <tr>
+                  <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell, textAlign:'left' as const}}>Rank</th>
+                  <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell, textAlign:'left' as const}}>Player</th>
+                  <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell}}>Rating</th>
+                  <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell}}>Games</th>
+                  <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell}}>Wins</th>
+                  <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell}}>Losses</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r: any, i: number)=>{
+                  const top3 = i<3; const pill = accent==='red' ? 'var(--pill-red)' : 'var(--pill-blue)';
+                  return (
+                    <tr key={r.userId} style={{background: top3 ? pill : 'transparent', borderTop:`1px solid var(--card-border)`}}>
+                      <td style={{padding:'8px 12px', fontWeight:700, color: accent==='red'?'#b91c1c':'#1d4ed8'}}>{i+1}</td>
+                      <td style={{padding:'8px 12px', display:'flex', alignItems:'center', gap:8, color:'var(--text)'}}>
+                        {r.avatar ? <img src={r.avatar} alt="" crossOrigin="anonymous" style={{width:24,height:24,borderRadius:'50%'}}/> : <span style={{width:24,height:24,borderRadius:'50%',background:'var(--empty-stroke)'}}/>}
+                        <span className="truncate" title={r.name||r.userId}>{r.name||r.userId}</span>
+                      </td>
+                      <td style={{padding:'8px 12px', ...numCell}}>{r.rating}</td>
+                      <td style={{padding:'8px 12px', ...numCell}}>{r.games}</td>
+                      <td style={{padding:'8px 12px', ...numCell}}>{r.wins}</td>
+                      <td style={{padding:'8px 12px', ...numCell}}>{r.losses}</td>
+                    </tr>
+                  );
+                })}
+                {rows.length===0 && <tr><td colSpan={6} style={{padding:'16px', color:'var(--muted)', textAlign:'center'}}>No ranked players yet.</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </div>
         <div style={{marginTop:8, display:'flex', justifyContent:'flex-end'}}>
-          <button className="rounded cursor-pointer" style={{background:'#16a34a', color:'#fff', padding:'6px 12px'}}
-            onClick={async () => {
-              const hvhTop = rankings.hvh.slice(0,10).map((r,i)=> `${i+1}. ${r.name} (${r.rating})`).join('\n');
-              const hvaTop = rankings.hva.slice(0,10).map((r,i)=> `${i+1}. ${r.name} (${r.rating})`).join('\n');
-              const text = `**Head-to-Head Top 10:**\n${hvhTop}\n\n**Human vs AI Top 10:**\n${hvaTop}`;
-            // In your share handling code
-            try {
-              const response = await fetch('/api/rankings/share', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(shareData)
-              });
-              
-              const result = await response.json();
-              
-              if (response.status === 429) {
-                // Rate limited - show user-friendly message
-                showMessage('Please wait a few seconds before sharing again.');
-                return;
-              }
-              
-              if (!response.ok) {
-                throw new Error(result.message || 'Share failed');
-              }
-              
-              showMessage(result.message || 'Game result shared!');
-            } catch (error) {
-              showMessage('Failed to share game result');
-            }
-            }}>
-            Share Rankings
+          <button
+            className="rounded cursor-pointer"
+            data-share-exclude="true"
+            disabled={shareBusy === `rankings:${bucket}`}
+            style={{background:'#16a34a', color:'#fff', padding:'6px 12px', opacity:shareBusy === `rankings:${bucket}` ? 0.7 : 1}}
+            onClick={()=>shareRankings(bucket)}
+          >
+            {shareBusy === `rankings:${bucket}` ? 'Sharing…' : 'Share Rankings'}
           </button>
         </div>
       </div>
@@ -1146,11 +1404,11 @@ export const App=(context:Devvit.Context)=>{
           <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — Rankings</h1>
         </div>
         <div className="flex-1 overflow-y-auto w-full flex flex-col items-center gap-6" style={{paddingBottom:8}}>
-          <Section title="Head-to-Head (Human vs Human)" rows={rankings.hvh} accent="red" />
-          <Section title="Human vs Computer (All Difficulties)" rows={rankings.hva} accent="blue" />
+          <Section title="Head-to-Head (Human vs Human)" rows={rankings.hvh} accent="red" bucket="hvh" captureRef={rankingsHvhRef} />
+          <Section title="Human vs Computer (All Difficulties)" rows={rankings.hva} accent="blue" bucket="hva" captureRef={rankingsHvaRef} />
         </div>
         <div style={{padding:12}}>
-          <button className="rounded cursor-pointer" style={{background:'#6b7280', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setMode(null); }}>
+          <button className="rounded cursor-pointer" data-share-exclude="true" style={{background:'#6b7280', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setMode(null); }}>
             Back
           </button>
         </div>
@@ -1354,7 +1612,7 @@ export const App=(context:Devvit.Context)=>{
               const p1=new Player(selectedStyle,false);
               const p2=new Player(selectedStyle,true);
               const b=new Board(p1,p2,{ W:boardW, H:boardH, scoring:scoringMode, winScore });
-              setBoard(b); setWinner(null); soloRecordedRef.current=false; aiFirstSentRef.current=false; setAiTie(false); setLocalChat([]);
+              setBoard(b); setWinner(null); soloRecordedRef.current=false; soloRecordStartedRef.current=false; setSoloShareReady(false); setSoloRecordBusy(false); aiFirstSentRef.current=false; setAiTie(false); setLocalChat([]); setSharedWins((current) => ({ ...current, ai: false }));
               setMode('ai');
             }}>
             Play the Computer Instead …
@@ -1398,8 +1656,6 @@ export const App=(context:Devvit.Context)=>{
     const youAreWinner = (decided===1 && isPlayer1) || (decided===2 && !isPlayer1);
     const winnerText = youAreWinner ? 'You win!' : `${winnerLabel} wins!`;
 
-    const summary = `Final: ${p1Name} ${board.m_players[0].m_score} - ${board.m_players[1].m_score} ${p2Name}. Winner: ${winnerLabel}. Replay JSON: ${JSON.stringify(board.toJSON())}`;
-
     const overlay = (notice || showWinner) ? (
       <div className="anim__animated anim__zoomIn"
            style={{position:'fixed', inset:0, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50, background:'rgba(0,0,0,.55)'}}>
@@ -1409,30 +1665,24 @@ export const App=(context:Devvit.Context)=>{
             <>
               <div style={{fontSize:'1.2rem', fontWeight:800, marginBottom:8}}>{winnerText}</div>
               <div style={{color:'var(--muted)', marginBottom:12}}>Final: {p1Name} {board.m_players[0].m_score} — {board.m_players[1].m_score} {p2Name}</div>
+              {notice && <div style={{color:'var(--muted)', marginBottom:12}}>{notice}</div>}
             </>
           ) : (
             <div style={{fontSize:'1.1rem', fontWeight:800, marginBottom:8}}>{notice}</div>
           )}
-          <button className="rounded cursor-pointer" style={{background:'#ef4444', color:'#fff', padding:'6px 12px'}}
-            onClick={()=>{ setMode(null); setBoard(null); setStatus(''); setNotice(''); setWinner(null); setFinalSide(null); setFinalReason(''); }}>
+          <button className="rounded cursor-pointer" data-share-exclude="true" style={{background:'#ef4444', color:'#fff', padding:'6px 12px'}}
+            onClick={leaveMultiplayer}>
             Close
           </button>
-          {mode === 'multiplayer' && showWinner && (
-            <button className="rounded cursor-pointer ml-2" style={{background:'#16a34a', color:'#fff', padding:'6px 12px'}}
-              onClick={async () => {
-                try {
-                  const r = await fetch('/api/rankings/share', { method: 'POST' });
-                  const j = await r.json();
-                  if (j.ok) {
-                    setNotice(j.message);
-                  } else {
-                    setNotice('Failed to share: ' + j.message);
-                  }
-                } catch (e) {
-                  setNotice('Failed to share: ' + (e as Error).message);
-                }
-              }}>
-              Share Game
+          {mode === 'multiplayer' && showWinner && youAreWinner && !spectating && !sharedWins.multiplayer && (
+            <button
+              className="rounded cursor-pointer ml-2"
+              data-share-exclude="true"
+              disabled={shareBusy === 'multiplayer'}
+              style={{background:'#16a34a', color:'#fff', padding:'6px 12px', opacity:shareBusy === 'multiplayer' ? 0.7 : 1}}
+              onClick={shareMultiplayerWin}
+            >
+              {shareBusy === 'multiplayer' ? 'Sharing…' : 'Share Win'}
             </button>
           )}
         </div>
@@ -1456,13 +1706,7 @@ export const App=(context:Devvit.Context)=>{
         isMobile={isMobile}
         board={board}
         onCellClick={onCellClick}
-        onLeave={async ()=>{
-          try{ await fetch('/api/h2h/leave',{method:'POST'}); }catch{}
-          stopPolling(); pollActiveRef.current='none';
-          setGameId(null); gameIdRef.current=null;
-          setIsPlayer1(false); setSpectating(false); setBoard(null);
-          setMode(null); setStatus(''); setNotice(''); setWinner(null); setFinalSide(null); setFinalReason('');
-        }}
+        onLeave={leaveMultiplayer}
         p1Name={p1Name}
         p2Name={p2Name}
         yourTurn={isMyTurn}
@@ -1475,6 +1719,7 @@ export const App=(context:Devvit.Context)=>{
         chatItems={chatItems}
         assistOn={assistOn}
         myColor={isPlayer1?1:2}
+        captureRef={multiplayerCaptureRef}
       />
     );
   }
@@ -1535,10 +1780,22 @@ export const App=(context:Devvit.Context)=>{
         <Confetti show={!!winner} />
         <div style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`, borderRadius:12, padding:'16px 22px', textAlign:'center'}}>
           <div style={{fontSize:'1.2rem', fontWeight:800, marginBottom:8}}>{winner ? (winner===1?'You win!':'Bot wins!') : 'Tie game!'}</div>
-          <button className="rounded cursor-pointer" style={{background:'#ef4444', color:'#fff', padding:'6px 12px'}}
-            onClick={()=>{ setWinner(null); setAiTie(false); setBoard(null); soloRecordedRef.current=false; aiFirstSentRef.current=false; setLocalChat([]); setMode(null); setStatus(''); setNotice(''); }}>
+          {notice && <div style={{color:'var(--muted)', marginBottom:12}}>{notice}</div>}
+          <button className="rounded cursor-pointer" data-share-exclude="true" style={{background:'#ef4444', color:'#fff', padding:'6px 12px'}}
+            onClick={closeAiGame}>
             Close
           </button>
+          {winner===1 && !sharedWins.ai && (
+            <button
+              className="rounded cursor-pointer ml-2"
+              data-share-exclude="true"
+              disabled={shareBusy === 'ai' || soloRecordBusy}
+              style={{background:'#16a34a', color:'#fff', padding:'6px 12px', opacity:(shareBusy === 'ai' || soloRecordBusy) ? 0.7 : 1}}
+              onClick={()=>{ if (soloShareReady) { void shareAiWin(); } else { void persistSoloResult(); } }}
+            >
+              {shareBusy === 'ai' ? 'Sharing…' : (soloShareReady ? 'Share Win' : (soloRecordBusy ? 'Saving Result…' : 'Retry Save'))}
+            </button>
+          )}
         </div>
       </div>
     ) : null;
@@ -1552,7 +1809,7 @@ export const App=(context:Devvit.Context)=>{
           isMobile={isMobile}
           board={board}
           onCellClick={onCellClick}
-          onLeave={()=>{ setWinner(null); setAiTie(false); setBoard(null); soloRecordedRef.current=false; aiFirstSentRef.current=false; setLocalChat([]); setMode(null); setStatus(''); setNotice(''); }}
+          onLeave={closeAiGame}
           p1Name={p1Name}
           p2Name={p2Name}
           yourTurn={board.m_turn===0}
@@ -1563,6 +1820,7 @@ export const App=(context:Devvit.Context)=>{
           chatItems={chatItems}
           assistOn={assistOn}
           myColor={1}
+          captureRef={aiCaptureRef}
         />
       </div>
     );
@@ -1581,13 +1839,15 @@ export const App=(context:Devvit.Context)=>{
   return (
     <>
       <GlobalStyles />
-      <VersionStamp />
+      <VersionStamp version={initState?.appVersion} />
       {content}
-      {ChatOverlay}
-      {TutorialModal}
-      <div style={{position:'fixed', top:8, left:8, zIndex:90, cursor:'pointer'}} onClick={() => setSoundOn(!soundOn)}>
-        <span style={{fontSize:20}}>{soundOn ? '🔊' : '🔇'}</span>
-      </div>
+      {!sharedPost && !!initState && !initError && ChatOverlay}
+      {!sharedPost && !!initState && !initError && TutorialModal}
+      {!sharedPost && !!initState && !initError && (
+        <div style={{position:'fixed', top:8, left:8, zIndex:90, cursor:'pointer'}} onClick={() => setSoundOn(!soundOn)}>
+          <span style={{fontSize:20}}>{soundOn ? '🔊' : '🔇'}</span>
+        </div>
+      )}
     </>
   );
 };
@@ -1611,7 +1871,8 @@ const GameScreen:React.FC<{
   chatItems?: { id:number; sender:string; text:string }[];
   assistOn?: boolean;
   myColor?: 1|2;
-}> = ({ modeName, isMobile, board, onCellClick, onLeave, p1Name, p2Name, yourTurn, midText, glowSide, dimSide, overlay, p1Avatar, p2Avatar, chatItems, assistOn=false, myColor })=>{
+  captureRef?: React.RefObject<HTMLDivElement | null>;
+}> = ({ modeName, isMobile, board, onCellClick, onLeave, p1Name, p2Name, yourTurn, midText, glowSide, dimSide, overlay, p1Avatar, p2Avatar, chatItems, assistOn=false, myColor, captureRef })=>{
   // Responsive cell/dot sizes
   const vw = typeof window!=='undefined' ? window.innerWidth : 1024;
   const vh = typeof window!=='undefined' ? window.innerHeight : 768;
@@ -1739,7 +2000,7 @@ const GameScreen:React.FC<{
   const [showLog, setShowLog] = useState(true);
 
   return (
-    <div className="flex flex-col items-center gap-4 p-4" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
+    <div ref={captureRef} className="flex flex-col items-center gap-4 p-4" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
       {/* overlay (winner/notice) */}
       {overlay}
       <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)', marginTop: -4}}>Euclid</h1>
@@ -1851,7 +2112,7 @@ const GameScreen:React.FC<{
 
       {/* Leave/Back */}
       <div className="flex gap-2 mt-2" style={{ marginBottom: stackScores ? 96 : 76 }}>
-        <button className="rounded cursor-pointer" style={{background:'#ef4444', color:'#fff', padding:'6px 12px'}} onClick={onLeave}>
+        <button className="rounded cursor-pointer" data-share-exclude="true" style={{background:'#ef4444', color:'#fff', padding:'6px 12px'}} onClick={onLeave}>
           {modeName==='Multiplayer' ? 'Leave Game' : 'Back'}
         </button>
       </div>
@@ -1859,3 +2120,193 @@ const GameScreen:React.FC<{
   );
 };
 
+const BoardSnapshot: React.FC<{ board: Board }> = ({ board }) => {
+  const cell = Math.max(22, Math.min(52, Math.floor(Math.min(760 / board.W, 460 / board.H))));
+  const dot = Math.max(14, Math.floor(cell * 0.58));
+  const bw = board.W * cell;
+  const bh = board.H * cell;
+
+  const orderByAngle = (pts: Point[]) => {
+    const cx = (pts[0].x + pts[1].x + pts[2].x + pts[3].x) / 4;
+    const cy = (pts[0].y + pts[1].y + pts[2].y + pts[3].y) / 4;
+    return pts.slice().sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
+  };
+
+  const lines: JSX.Element[] = [];
+  const addLines = (squares: Square[], rgb: string, side: string) => {
+    squares.forEach((square, index) => {
+      const alpha = squares.length <= 1 ? 0.85 : 0.18 + (index / Math.max(1, squares.length - 1)) * 0.62;
+      const pts = orderByAngle([square.p1, square.p2, square.p3, square.p4]).map((p) => ({
+        x: (p.x + 0.5) * cell,
+        y: (p.y + 0.5) * cell,
+      }));
+      lines.push(
+        <polygon
+          key={`${side}-${index}`}
+          points={pts.map((pt) => `${pt.x},${pt.y}`).join(' ')}
+          fill="none"
+          stroke={`rgba(${rgb}, ${alpha})`}
+          strokeWidth="3"
+        />
+      );
+    });
+  };
+
+  addLines(board.m_players[0]?.m_squares || [], '239,68,68', 'red');
+  addLines(board.m_players[1]?.m_squares || [], '59,130,246', 'blue');
+
+  return (
+    <div style={{background:'#09121f', border:'1px solid #294466', borderRadius:28, padding:22, overflowX:'auto'}}>
+      <div className="relative" style={{width:bw, height:bh, margin:'0 auto'}}>
+        <svg className="absolute top-0 left-0 w-full h-full" viewBox={`0 0 ${bw} ${bh}`} style={{pointerEvents:'none'}}>
+          {lines}
+        </svg>
+        <div className="grid" style={{gridTemplateColumns:`repeat(${board.W}, ${cell}px)`, gridAutoRows:`${cell}px`, gap:0}}>
+          {Array.from({length:board.H},(_,y)=>
+            Array.from({length:board.W},(_,x)=>{
+              const idx = y * board.W + x;
+              const value = board.m_board[idx];
+              const isLast = value > 0 && board.m_last?.x === x && board.m_last?.y === y;
+              const fill = value === 1 ? '#fecaca' : value === 2 ? '#bfdbfe' : '#f1f5f9';
+              const stroke = value === 1 ? '#ef4444' : value === 2 ? '#2563eb' : '#64748b';
+              const shadow = isLast ? '0 0 0 4px rgba(248,250,252,.75), 0 0 20px rgba(148,163,184,.45)' : 'none';
+              return (
+                <div key={`${y}-${x}`} className="flex items-center justify-center">
+                  <div
+                    className="rounded-full"
+                    style={{
+                      width: dot,
+                      height: dot,
+                      background: fill,
+                      border: `3px solid ${stroke}`,
+                      boxShadow: shadow,
+                    }}
+                  />
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const SharedPostView: React.FC<{ share: SharedPostPayload }> = ({ share }) => {
+  const panelStyle: React.CSSProperties = {
+    background: 'rgba(16, 27, 45, 0.94)',
+    border: '1px solid #294466',
+    borderRadius: 32,
+    padding: '28px 28px 32px',
+    boxShadow: '0 24px 60px rgba(0, 0, 0, 0.32)',
+  };
+
+  if (share.kind === 'rankings') {
+    const accent = share.bucket === 'hvh' ? '#ef4444' : '#2563eb';
+    const soft = share.bucket === 'hvh' ? 'rgba(127,29,29,0.82)' : 'rgba(19,42,70,0.88)';
+
+    return (
+      <div style={{minHeight:'100vh', overflowY:'auto', background:'radial-gradient(circle at top right, #17304f 0%, #09111d 48%)'}}>
+        <div style={{maxWidth:1200, margin:'0 auto', padding:'32px 20px 64px'}}>
+          <div style={panelStyle}>
+            <div style={{color:'#cbd5e1', fontSize:18, fontWeight:700}}>r/{share.subredditName}</div>
+            <div style={{marginTop:12, color:'#f8fafc', fontSize:42, fontWeight:800}}>{share.title}</div>
+            <div style={{marginTop:10, color:'#94a3b8', fontSize:20}}>{share.subtitle}</div>
+
+            <div style={{marginTop:24, display:'flex', flexWrap:'wrap', justifyContent:'space-between', gap:12, background:'#132b46', border:'1px solid #315781', borderRadius:24, padding:'18px 22px'}}>
+              <div style={{color:'#93c5fd', fontSize:20, fontWeight:700}}>Top players right now</div>
+              <div style={{color:'#60a5fa', fontSize:16}}>Shared from Euclid on {formatDisplayDate(share.sharedAt)}</div>
+            </div>
+
+            <div style={{marginTop:28, overflowX:'auto'}}>
+              <table style={{width:'100%', minWidth:720, borderCollapse:'separate', borderSpacing:'0 16px'}}>
+                <thead>
+                  <tr style={{color:'#94a3b8', fontSize:14, textAlign:'left'}}>
+                    <th style={{padding:'0 12px'}}>RANK</th>
+                    <th style={{padding:'0 12px'}}>PLAYER</th>
+                    <th style={{padding:'0 12px'}}>RATING</th>
+                    <th style={{padding:'0 12px'}}>GAMES</th>
+                    <th style={{padding:'0 12px'}}>W-L</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {share.rows.map((row, index) => (
+                    <tr key={`${row.userId}-${index}`} style={{background:index===0 ? soft : '#111f33'}}>
+                      <td style={{padding:'18px 16px', color:index < 3 ? accent : '#94a3b8', fontSize:28, fontWeight:800, borderTopLeftRadius:22, borderBottomLeftRadius:22}}>
+                        {index + 1}
+                      </td>
+                      <td style={{padding:'18px 12px', color:'#f8fafc', fontSize:24, fontWeight:700}}>
+                        <div style={{display:'flex', alignItems:'center', gap:12}}>
+                          {row.avatar ? (
+                            <img src={row.avatar} alt="" crossOrigin="anonymous" style={{width:42, height:42, borderRadius:'50%', border:`2px solid ${accent}`}} />
+                          ) : (
+                            <div style={{width:42, height:42, borderRadius:'50%', background:accent, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:800}}>
+                              {(row.name || row.userId || '?').slice(0, 1).toUpperCase()}
+                            </div>
+                          )}
+                          <span>{row.name || row.userId}</span>
+                        </div>
+                      </td>
+                      <td style={{padding:'18px 12px', color:'#f8fafc', fontSize:24, fontWeight:700}}>{row.rating}</td>
+                      <td style={{padding:'18px 12px', color:'#e2e8f0', fontSize:22}}>{row.games}</td>
+                      <td style={{padding:'18px 16px', color:'#e2e8f0', fontSize:22, borderTopRightRadius:22, borderBottomRightRadius:22}}>
+                        {row.wins}-{row.losses}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const board = Board.fromJSON(share.board);
+  const score1 = board.m_players[0]?.m_score ?? 0;
+  const score2 = board.m_players[1]?.m_score ?? 0;
+
+  return (
+    <div style={{minHeight:'100vh', overflowY:'auto', background:'radial-gradient(circle at top right, #17304f 0%, #07101d 48%)'}}>
+      <div style={{maxWidth:1200, margin:'0 auto', padding:'32px 20px 64px'}}>
+        <div style={panelStyle}>
+          <div style={{color:'#cbd5e1', fontSize:18, fontWeight:700}}>r/{share.subredditName}</div>
+          <div style={{marginTop:12, color:'#f8fafc', fontSize:42, fontWeight:800}}>{share.title}</div>
+          <div style={{marginTop:10, color:'#94a3b8', fontSize:20}}>{share.subtitle}</div>
+
+          <div style={{marginTop:24, background:'#11253d', border:'1px solid #2b4a72', borderRadius:28, padding:'24px 28px'}}>
+            <div style={{color:'#f8fafc', fontSize:34, fontWeight:800}}>{share.headline}</div>
+            <div style={{marginTop:8, color:'#93c5fd', fontSize:18}}>{share.details}</div>
+          </div>
+
+          <div style={{marginTop:24, display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:18}}>
+            <div style={{background:'#31181e', border:'1px solid #7f1d1d', borderRadius:26, padding:'22px 24px'}}>
+              <div style={{color:'#fecaca', fontSize:20, fontWeight:700}}>{share.p1Name}</div>
+              <div style={{marginTop:12, color:'#fff', fontSize:56, fontWeight:800}}>{score1}</div>
+            </div>
+            <div style={{background:'#132a46', border:'1px solid #1d4ed8', borderRadius:26, padding:'22px 24px'}}>
+              <div style={{color:'#bfdbfe', fontSize:20, fontWeight:700}}>{share.p2Name}</div>
+              <div style={{marginTop:12, color:'#fff', fontSize:56, fontWeight:800}}>{score2}</div>
+            </div>
+          </div>
+
+          <div style={{marginTop:24, background:'#132743', border:'1px solid #315781', borderRadius:26, padding:'20px 24px'}}>
+            <div style={{color:'#86efac', fontSize:30, fontWeight:800}}>
+              {share.winnerSide === 1 ? `${share.p1Name} wins!` : `${share.p2Name} wins!`}
+            </div>
+            <div style={{marginTop:8, color:'#cbd5e1', fontSize:18}}>{share.footer}</div>
+          </div>
+
+          <div style={{marginTop:28}}>
+            <BoardSnapshot board={board} />
+          </div>
+
+          <div style={{marginTop:20, color:'#94a3b8', fontSize:16}}>
+            Shared {formatDisplayDate(share.sharedAt)} from Euclid • {boardScoringLabel(share.board.scoring)} scoring • {share.board.W}x{share.board.H} board
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
