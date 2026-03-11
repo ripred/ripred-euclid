@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1500" viewBox="0 0 1200 1500" role="img" aria-labelledby="title desc">
+  <title id="title">Euclid win share post mock</title>
+  <desc id="desc">Example Devvit share post for a Euclid victory result.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#07101d"/>
+      <stop offset="100%" stop-color="#10243d"/>
+    </linearGradient>
+    <linearGradient id="hero" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#122845"/>
+      <stop offset="100%" stop-color="#091422"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="1500" fill="url(#bg)"/>
+  <circle cx="1035" cy="220" r="220" fill="#1d4ed8" opacity="0.18"/>
+  <circle cx="140" cy="1360" r="260" fill="#ef4444" opacity="0.14"/>
+
+  <rect x="60" y="60" width="1080" height="1380" rx="34" fill="url(#hero)" stroke="#294466" stroke-width="3"/>
+
+  <text x="110" y="154" fill="#cbd5e1" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="700">r/ripred_euclid_dev</text>
+  <text x="110" y="220" fill="#f8fafc" font-family="Arial, Helvetica, sans-serif" font-size="62" font-weight="800">Euclid Result</text>
+  <text x="110" y="274" fill="#94a3b8" font-family="Arial, Helvetica, sans-serif" font-size="28">AI victory • March 9, 2026</text>
+
+  <rect x="110" y="320" width="980" height="116" rx="30" fill="#11253d" stroke="#2b4a72"/>
+  <text x="150" y="392" fill="#f8fafc" font-family="Arial, Helvetica, sans-serif" font-size="46" font-weight="800">ripred3 defeats Bot (Beginner)</text>
+  <text x="150" y="424" fill="#93c5fd" font-family="Arial, Helvetica, sans-serif" font-size="24">168–25 • Bounding Rectangle scoring • 8×8 board</text>
+
+  <rect x="110" y="480" width="430" height="160" rx="26" fill="#31181e" stroke="#7f1d1d"/>
+  <text x="150" y="548" fill="#fecaca" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="700">You</text>
+  <text x="150" y="614" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="78" font-weight="800">168</text>
+
+  <rect x="660" y="480" width="430" height="160" rx="26" fill="#132a46" stroke="#1d4ed8"/>
+  <text x="700" y="548" fill="#bfdbfe" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="700">Bot (Beginner)</text>
+  <text x="700" y="614" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="78" font-weight="800">25</text>
+
+  <rect x="110" y="680" width="980" height="120" rx="26" fill="#132743" stroke="#315781"/>
+  <text x="150" y="748" fill="#86efac" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="800">You win!</text>
+  <text x="150" y="786" fill="#cbd5e1" font-family="Arial, Helvetica, sans-serif" font-size="24">This post would open into a Euclid result card instead of uploading an image.</text>
+
+  <g transform="translate(236 870)">
+    <rect x="0" y="0" width="728" height="470" rx="28" fill="#09121f" stroke="#294466" stroke-width="3"/>
+
+    <g stroke="#22344b" stroke-width="2">
+      <line x1="84" y1="44" x2="84" y2="426"/>
+      <line x1="168" y1="44" x2="168" y2="426"/>
+      <line x1="252" y1="44" x2="252" y2="426"/>
+      <line x1="336" y1="44" x2="336" y2="426"/>
+      <line x1="420" y1="44" x2="420" y2="426"/>
+      <line x1="504" y1="44" x2="504" y2="426"/>
+      <line x1="588" y1="44" x2="588" y2="426"/>
+      <line x1="44" y1="84" x2="684" y2="84"/>
+      <line x1="44" y1="168" x2="684" y2="168"/>
+      <line x1="44" y1="252" x2="684" y2="252"/>
+      <line x1="44" y1="336" x2="684" y2="336"/>
+      <line x1="44" y1="420" x2="684" y2="420"/>
+    </g>
+
+    <g fill="none" stroke-width="6">
+      <polygon points="126,294 294,210 378,378 210,462" stroke="rgba(239,68,68,0.85)"/>
+      <polygon points="462,126 630,210 546,378 378,294" stroke="rgba(59,130,246,0.85)"/>
+    </g>
+
+    <g>
+      <g fill="#fecaca" stroke="#ef4444" stroke-width="4">
+        <circle cx="126" cy="294" r="20"/>
+        <circle cx="210" cy="462" r="20"/>
+        <circle cx="294" cy="210" r="20"/>
+        <circle cx="378" cy="378" r="20"/>
+        <circle cx="42" cy="42" r="20"/>
+        <circle cx="126" cy="42" r="20"/>
+        <circle cx="210" cy="42" r="20"/>
+        <circle cx="294" cy="42" r="20"/>
+        <circle cx="378" cy="42" r="20"/>
+        <circle cx="462" cy="42" r="20"/>
+        <circle cx="546" cy="42" r="20"/>
+        <circle cx="630" cy="42" r="20"/>
+      </g>
+
+      <g fill="#bfdbfe" stroke="#2563eb" stroke-width="4">
+        <circle cx="462" cy="126" r="20"/>
+        <circle cx="630" cy="210" r="20"/>
+        <circle cx="546" cy="378" r="20"/>
+        <circle cx="378" cy="294" r="20"/>
+        <circle cx="84" cy="126" r="20"/>
+        <circle cx="168" cy="126" r="20"/>
+        <circle cx="252" cy="126" r="20"/>
+        <circle cx="336" cy="126" r="20"/>
+        <circle cx="420" cy="126" r="20"/>
+        <circle cx="504" cy="126" r="20"/>
+        <circle cx="588" cy="126" r="20"/>
+      </g>
+
+      <g fill="#f1f5f9" stroke="#64748b" stroke-width="3">
+        <circle cx="84" cy="210" r="18"/>
+        <circle cx="168" cy="210" r="18"/>
+        <circle cx="252" cy="294" r="18"/>
+        <circle cx="336" cy="294" r="18"/>
+        <circle cx="420" cy="294" r="18"/>
+        <circle cx="504" cy="294" r="18"/>
+        <circle cx="588" cy="294" r="18"/>
+        <circle cx="84" cy="378" r="18"/>
+        <circle cx="168" cy="378" r="18"/>
+        <circle cx="252" cy="378" r="18"/>
+        <circle cx="336" cy="378" r="18"/>
+        <circle cx="420" cy="378" r="18"/>
+        <circle cx="504" cy="378" r="18"/>
+        <circle cx="588" cy="378" r="18"/>
+      </g>
+    </g>
+  </g>
+
+  <text x="110" y="1392" fill="#94a3b8" font-family="Arial, Helvetica, sans-serif" font-size="22">Example concept only: custom share post with an in-app result card and board snapshot.</text>
+</svg>
