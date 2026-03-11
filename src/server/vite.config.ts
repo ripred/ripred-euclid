@@ -6,7 +6,7 @@ export default defineConfig({
     noExternal: true,
   },
   build: {
-    emptyOutDir: false,
+    emptyOutDir: true,
     ssr: 'index.ts',
     outDir: '../../dist/server',
     target: 'node22',
