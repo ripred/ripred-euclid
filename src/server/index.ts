@@ -1,11 +1,23 @@
 import express from 'express';
-import { InitResponse } from '../shared/types/api';
+import { randomUUID } from 'node:crypto';
+import {
+  InitResponse,
+  RankingsSharePayload,
+  SerializableBoard,
+  ShareBucket,
+  SharePostDescriptor,
+  SharedPostPayload,
+  ResultSharePayload,
+} from '../shared/types/api';
 import { redis, reddit, createServer, context, getServerPort } from '@devvit/web/server';
+import { Devvit } from '@devvit/public-api';
+
+Devvit.configure({ redditAPI: true });
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(express.text());
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+app.use(express.text({ limit: '15mb' }));
 
 const router = express.Router();
 
@@ -39,6 +51,12 @@ const ELOKEY = (uid: string, bucket: 'hvh'|'hva') => `euclid:elo:${bucket}:${uid
 const MAX_IDLE_MS = 10 * 60 * 1000; // 10m
 const ELO_START = 1200;
 const ELO_K = 32;
+const SHARE_POST = (id: string) => `euclid:share:post:${id}`;
+const SHARE_RATE = (uid: string, kind: string) => `euclid:share:last:${kind}:${uid}`;
+const SOLO_LAST = (uid: string) => `euclid:solo:last:${uid}`;
+const SHARE_RATE_MS = 10 * 1000;
+const SIDEBAR_PLAY_WIDGET_NAME = 'Euclid';
+const SIDEBAR_PLAY_WIDGET_DESC = 'Start a fresh Euclid match from the live game post.';
 
 // AI baselines per difficulty
 const AI_BASE: Record<'doofus'|'goldfish'|'beginner'|'coffee'|'tenderfoot'|'casual'|'offensive'|'defensive'|'brutal', number> = {
@@ -111,6 +129,15 @@ type PlayerJSON = {
   userId: string;
 };
 type ChatItem = { id:number; ts:number; sender:string; text:string };
+type AiDifficulty = keyof typeof AI_BASE;
+type SoloShareRecord = {
+  difficulty: AiDifficulty;
+  youScore: number;
+  botScore: number;
+  result: 'win' | 'loss' | 'tie';
+  recordedAt: string;
+  board: SerializableBoard;
+};
 type BoardJSON = {
   m_board: number[];
   m_players: PlayerJSON[];
@@ -251,6 +278,26 @@ async function setElo(uid: string, bucket: 'hvh'|'hva', rec: EloRecord) {
   await redis.set(ELOKEY(uid, bucket), JSON.stringify(rec));
   await addPlayer(bucket, uid);
 }
+async function getRankingRows(bucket: ShareBucket) {
+  const ids = await getPlayers(bucket);
+  const rowsRaw = await Promise.all(ids.map(async uid => {
+    const rec = await getElo(uid, bucket);
+    const [name, avatar] = await Promise.all([redis.get(NAMEKEY(uid)), redis.get(AVAKEY(uid))]);
+    return {
+      userId: uid,
+      name: name || '',
+      avatar: avatar || '',
+      rating: rec.rating,
+      games: rec.games,
+      wins: rec.wins,
+      losses: rec.losses,
+      draws: rec.draws
+    };
+  }));
+  const rows = rowsRaw.filter(r => r.name && r.name.toLowerCase() !== 'anonymous');
+  rows.sort((a, b) => b.rating - a.rating || b.games - a.games || (a.name || '').localeCompare(b.name || ''));
+  return rows;
+}
 function updateEloPair(a: EloRecord, b: EloRecord, resultForA: 1 | 0 | 0.5): [EloRecord, EloRecord] {
   const Ra = a.rating, Rb = b.rating;
   const Ea = 1 / (1 + Math.pow(10, (Rb - Ra) / 400));
@@ -315,22 +362,301 @@ function computeSquaresAndPoints(boardArr: number[], x: number, y: number, clr: 
   return { points: total, squares: deduped };
 }
 
+function formatShareDate(input: string | number | Date = Date.now()) {
+  return new Date(input).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function difficultyLabel(difficulty: AiDifficulty): string {
+  switch (difficulty) {
+    case 'brutal': return 'Bot (Brutal)';
+    case 'offensive': return 'Bot (Offensive)';
+    case 'defensive': return 'Bot (Defensive)';
+    case 'doofus': return 'Bot (doofus)';
+    case 'goldfish': return 'Bot (Goldfish)';
+    case 'beginner': return 'Bot (Beginner)';
+    case 'coffee': return 'Bot (Coffee-Deprived)';
+    case 'tenderfoot': return 'Bot (Tenderfoot)';
+    default: return 'Bot (Casual)';
+  }
+}
+
+function shareScoringLabel(scoring: SerializableBoard['scoring']) {
+  return scoring === 'true' ? 'True Area' : 'Bounding Rectangle';
+}
+
+function serializeH2HBoard(board: BoardJSON): SerializableBoard {
+  return {
+    W: BOARD_W,
+    H: BOARD_H,
+    scoring: 'bbox',
+    winScore: 150,
+    m_board: board.m_board,
+    m_players: board.m_players,
+    m_turn: board.m_turn,
+    m_history: board.m_history,
+    m_displayed_game_over: board.m_displayed_game_over,
+    m_onlyShowLastSquares: board.m_onlyShowLastSquares,
+    m_createRandomizedRangeOrder: board.m_createRandomizedRangeOrder,
+    m_stopAt150: board.m_stopAt150,
+    m_last: board.m_last,
+    m_lastPoints: board.m_lastPoints,
+    playerNames: board.playerNames || {},
+    playerAvatars: board.playerAvatars || {},
+    chat: board.chat,
+    lastSaved: board.lastSaved,
+    createdAt: board.createdAt,
+    ended: board.ended,
+    endedReason: board.endedReason,
+    endedBy: board.endedBy,
+  };
+}
+
+function parseSharePostDescriptor(input: unknown): SharePostDescriptor | null {
+  if (!input || typeof input !== 'object') return null;
+  const maybe = input as Partial<SharePostDescriptor>;
+  if ((maybe.shareType !== 'rankings' && maybe.shareType !== 'result') || typeof maybe.shareId !== 'string' || !maybe.shareId) {
+    return null;
+  }
+  return { shareType: maybe.shareType, shareId: maybe.shareId };
+}
+
+function isSerializableBoard(input: unknown): input is SerializableBoard {
+  if (!input || typeof input !== 'object') return false;
+  const board = input as Partial<SerializableBoard>;
+  return typeof board.W === 'number'
+    && typeof board.H === 'number'
+    && Array.isArray(board.m_board)
+    && Array.isArray(board.m_players)
+    && !!board.m_last
+    && typeof board.scoring === 'string';
+}
+
+async function saveSharePayload(payload: Omit<RankingsSharePayload, 'shareId'> | Omit<ResultSharePayload, 'shareId'>): Promise<SharedPostPayload> {
+  const shareId = randomUUID();
+  const stored = { ...payload, shareId } as SharedPostPayload;
+  await redis.set(SHARE_POST(shareId), JSON.stringify(stored));
+  return stored;
+}
+
+async function loadSharePayload(shareId: string): Promise<SharedPostPayload | null> {
+  const raw = await redis.get(SHARE_POST(shareId));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as SharedPostPayload;
+    return parsed?.shareId === shareId ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildShareFallbackText(payload: SharedPostPayload) {
+  if (payload.kind === 'rankings') {
+    const rows = payload.rows.slice(0, 5).map((row, index) =>
+      `${index + 1}. ${row.name || row.userId} — ${row.rating} (${row.wins}-${row.losses})`
+    );
+    return [payload.title, payload.subtitle, ...rows].join('\n');
+  }
+
+  const board = payload.board;
+  return [
+    payload.title,
+    payload.subtitle,
+    payload.headline,
+    payload.details,
+    `${payload.p1Name} ${board.m_players[0]?.m_score ?? 0} — ${board.m_players[1]?.m_score ?? 0} ${payload.p2Name}`,
+    payload.footer,
+  ].join('\n');
+}
+
+function buildShareSplash(payload: SharedPostPayload) {
+  return {
+    appDisplayName: 'Euclid',
+    backgroundUri: 'snoo.png',
+    buttonLabel: 'Open Post',
+    entry: 'default' as const,
+    heading: payload.title,
+    description: payload.kind === 'rankings' ? payload.subtitle : payload.headline,
+  };
+}
+
+function buildSidebarPlayButton(targetUrl: string) {
+  return {
+    kind: '',
+    text: 'Play New Game!',
+    url: targetUrl,
+    fillColor: '#16a34a',
+    textColor: '#ffffff',
+    color: '#14532d',
+  };
+}
+
+function fullRedditUrl(permalink: string) {
+  return new URL(permalink, 'https://www.reddit.com').toString();
+}
+
+async function ensureSidebarPlayWidget(postId: string) {
+  const metadata = context.metadata;
+  if (!metadata) return;
+
+  const subredditName = context.subredditName || await reddit.getCurrentSubredditName();
+  if (!subredditName) return;
+
+  const post = await reddit.getPostById(postId);
+  if (!post?.permalink) return;
+
+  const targetUrl = fullRedditUrl(post.permalink);
+  const widgetsClient = Devvit.redditAPIPlugins.Widgets;
+  const widgets = await widgetsClient.GetWidgets({ subreddit: subredditName }, metadata);
+  const sidebarOrder = widgets.layout?.sidebar?.order ?? [];
+  const sidebarItems = sidebarOrder
+    .map((id) => widgets.items[id])
+    .filter((item): item is NonNullable<typeof widgets.items[string]> => !!item);
+  const existing = sidebarItems.find((item) => item.kind === 'button' && item.shortName === SIDEBAR_PLAY_WIDGET_NAME);
+  const desiredButton = buildSidebarPlayButton(targetUrl);
+  const desiredStyles = { backgroundColor: '#0b1220', headerColor: '#16a34a' };
+  const currentButton = existing?.buttons?.[0];
+  const currentUrl = currentButton?.url || currentButton?.linkUrl || '';
+  const needsUpdate = !existing
+    || existing.description !== SIDEBAR_PLAY_WIDGET_DESC
+    || currentButton?.text !== desiredButton.text
+    || currentButton?.fillColor !== desiredButton.fillColor
+    || currentButton?.textColor !== desiredButton.textColor
+    || currentUrl !== targetUrl;
+
+  let widgetId = existing?.id;
+  if (!existing) {
+    const created = await widgetsClient.AddButtonWidget({
+      subreddit: subredditName,
+      shortName: SIDEBAR_PLAY_WIDGET_NAME,
+      description: SIDEBAR_PLAY_WIDGET_DESC,
+      buttons: [desiredButton],
+      styles: desiredStyles,
+    }, metadata);
+    widgetId = created.id;
+    slog('[SIDEBAR] created play widget', { subredditName, postId, widgetId, targetUrl });
+  } else if (needsUpdate) {
+    const updated = await widgetsClient.UpdateButtonWidget({
+      subreddit: subredditName,
+      id: existing.id,
+      shortName: SIDEBAR_PLAY_WIDGET_NAME,
+      description: SIDEBAR_PLAY_WIDGET_DESC,
+      buttons: [desiredButton],
+      styles: desiredStyles,
+    }, metadata);
+    widgetId = updated.id;
+    slog('[SIDEBAR] updated play widget', { subredditName, postId, widgetId, targetUrl });
+  }
+
+  if (widgetId && sidebarOrder[0] !== widgetId) {
+    const reordered = [widgetId, ...sidebarOrder.filter((id) => id !== widgetId)];
+    await widgetsClient.OrderWidgets({ subreddit: subredditName, order: reordered }, metadata);
+    slog('[SIDEBAR] moved play widget to top', { subredditName, widgetId });
+  }
+}
+
+async function createCustomSharePost(title: string, payload: SharedPostPayload) {
+  const subredditName = context.subredditName || await reddit.getCurrentSubredditName();
+  const descriptor: SharePostDescriptor = { shareType: payload.kind, shareId: payload.shareId };
+  const fallbackText = buildShareFallbackText(payload);
+  const baseOptions = {
+    subredditName,
+    title,
+    postData: descriptor,
+    textFallback: { text: fallbackText },
+    splash: buildShareSplash(payload),
+  };
+
+  try {
+    const post = await reddit.submitCustomPost({
+      ...baseOptions,
+      runAs: 'USER',
+      userGeneratedContent: { text: fallbackText },
+    });
+    return { post, subredditName, sharedAs: 'USER' as const };
+  } catch (userError: any) {
+    slog('[SHARE] user-auth custom post failed, falling back to app account', { title, error: userError?.message || String(userError) });
+    const post = await reddit.submitCustomPost({
+      ...baseOptions,
+      runAs: 'APP',
+    });
+    return { post, subredditName, sharedAs: 'APP' as const };
+  }
+}
+
+async function enforceShareRateLimit(uid: string, kind: string) {
+  const key = SHARE_RATE(uid, kind);
+  const now = Date.now();
+  const last = parseInt((await redis.get(key)) || '0', 10);
+  if (last && now - last < SHARE_RATE_MS) {
+    const retryAfterMs = SHARE_RATE_MS - (now - last);
+    const error = new Error('Please wait a few seconds before sharing again.');
+    (error as Error & { retryAfterMs?: number }).retryAfterMs = retryAfterMs;
+    throw error;
+  }
+  await redis.set(key, String(now));
+  await redis.expire(key, 60);
+}
+
+function getBoardWinner(board: BoardJSON) {
+  const u1 = board.m_players?.[0]?.userId || '';
+  const u2 = board.m_players?.[1]?.userId || '';
+  const s1 = board.m_players?.[0]?.m_score ?? 0;
+  const s2 = board.m_players?.[1]?.m_score ?? 0;
+  if ((board.endedReason === 'player_left' || board.endedReason === 'opponent_left') && board.endedBy) {
+    const winnerUid = board.endedBy === u1 ? u2 : board.endedBy === u2 ? u1 : '';
+    const loserUid = board.endedBy === u1 ? u1 : board.endedBy === u2 ? u2 : '';
+    return { winnerUid, loserUid, tie: !winnerUid, byForfeit: !!winnerUid };
+  }
+  if (s1 === s2) return { winnerUid: '', loserUid: '', tie: true, byForfeit: false };
+  return {
+    winnerUid: s1 > s2 ? u1 : u2,
+    loserUid: s1 > s2 ? u2 : u1,
+    tie: false,
+    byForfeit: false
+  };
+}
+
+function normalizeShareError(error: any) {
+  const message = error?.message || String(error);
+  if (/RATELIMIT/i.test(message)) {
+    const normalized = new Error('Rate limited by Reddit. Please wait a few seconds before sharing again.');
+    (normalized as Error & { statusCode?: number }).statusCode = 429;
+    return normalized;
+  }
+  return error instanceof Error ? error : new Error(message);
+}
+
 /* =========================
    BASIC ROUTES
    ========================= */
 router.get<{ postId: string }, InitResponse | { status: string; message: string }>(
   '/api/init',
   async (_req, res): Promise<void> => {
-    const { postId } = context;
+    const { postId, postData } = context;
     if (!postId) return res.status(400).json({ status: 'error', message: 'postId is required but missing from context' });
     try {
-      const [count, username] = await Promise.all([redis.get('count'), reddit.getCurrentUsername()]);
+      const username = (await reddit.getCurrentUsername()) ?? '';
+      const appVersion = context.appVersion || 'unknown';
       // metrics: app start
       const uid = context.userId || '';
       await addUserToSet('app_start_users', uid);
       await incrCount('app_start_count', 1);
 
-      res.json({ type: 'init', postId, count: count ? parseInt(count) : 0, username: username ?? '' });
+      const descriptor = parseSharePostDescriptor(postData);
+      if (descriptor) {
+        const share = await loadSharePayload(descriptor.shareId);
+        if (!share || share.kind !== descriptor.shareType) {
+          return res.status(410).json({ status: 'error', message: 'This shared Euclid post is no longer available.' });
+        }
+        return res.json({ type: 'share', postId, username, appVersion, share });
+      }
+
+      void ensureSidebarPlayWidget(postId).catch((error) => {
+        console.error('[SIDEBAR] failed to ensure play widget', error);
+      });
+
+      const count = await redis.get('count');
+      res.json({ type: 'init', postId, count: count ? parseInt(count) : 0, username, appVersion });
     } catch (error: any) { res.status(400).json({ status: 'error', message: error?.message || 'Unknown init error' }); }
   }
 );
@@ -766,8 +1092,14 @@ router.post('/api/solo/record', async (req, res) => {
     const uid = context.userId;
     if (!uid) return res.status(401).json({ status: 'error', message: 'userId missing' });
 
-    const { difficulty, youScore, botScore } = (req.body || {}) as { difficulty: 'doofus'|'goldfish'|'beginner'|'coffee'|'tenderfoot'|'casual'|'offensive'|'defensive'|'brutal'; youScore:number; botScore:number };
+    const { difficulty, youScore, botScore, board } = (req.body || {}) as {
+      difficulty: AiDifficulty;
+      youScore: number;
+      botScore: number;
+      board?: SerializableBoard;
+    };
     if (!difficulty || !(difficulty in AI_BASE)) return res.status(400).json({ status: 'error', message: 'invalid difficulty' });
+    if (!isSerializableBoard(board)) return res.status(400).json({ status: 'error', message: 'final board is required' });
     const ys = Number(youScore) || 0;
     const bs = Number(botScore) || 0;
 
@@ -776,6 +1108,15 @@ router.post('/api/solo/record', async (req, res) => {
     const bot: EloRecord = { rating: AI_BASE[difficulty], games: 0, wins: 0, losses: 0, draws: 0 };
     const [meAfter] = updateEloPair(me, bot, result);
     await setElo(uid, 'hva', meAfter);
+    await redis.set(SOLO_LAST(uid), JSON.stringify({
+      difficulty,
+      youScore: ys,
+      botScore: bs,
+      result: result === 1 ? 'win' : result === 0 ? 'loss' : 'tie',
+      recordedAt: nowISO(),
+      board,
+    } satisfies SoloShareRecord));
+    await redis.expire(SOLO_LAST(uid), 7 * 24 * 60 * 60);
 
     // metrics
     await addUserToSet('ai_completed_users', uid);
@@ -817,27 +1158,7 @@ router.post('/api/metrics/ai-first', async (_req, res) => {
    ========================= */
 router.get('/api/rankings', async (_req, res) => {
   try {
-    const toRows = async (bucket: 'hvh'|'hva') => {
-      const ids = await getPlayers(bucket);
-      const rowsRaw = await Promise.all(ids.map(async uid => {
-        const rec = await getElo(uid, bucket);
-        const [name, avatar] = await Promise.all([redis.get(NAMEKEY(uid)), redis.get(AVAKEY(uid))]);
-        return {
-          userId: uid,
-          name: name || '',
-          avatar: avatar || '',
-          rating: rec.rating,
-          games: rec.games,
-          wins: rec.wins,
-          losses: rec.losses,
-          draws: rec.draws
-        };
-      }));
-      const rows = rowsRaw.filter(r => r.name && r.name.toLowerCase()!=='anonymous');
-      rows.sort((a,b)=> b.rating - a.rating || b.games - a.games || (a.name||'').localeCompare(b.name||''));
-      return rows;
-    };
-    const [hvh, hva] = await Promise.all([toRows('hvh'), toRows('hva')]);
+    const [hvh, hva] = await Promise.all([getRankingRows('hvh'), getRankingRows('hva')]);
     res.json({ hvh, hva });
   } catch (e:any) {
     console.error('[RANKINGS] error', e);
@@ -845,71 +1166,195 @@ router.get('/api/rankings', async (_req, res) => {
   }
 });
 
-  /* =========================
-     Share game result to Reddit
-     ========================= */
-  router.post('/api/rankings/share', async (req, res) => {
-    try {
-      const uid = context.userId;
-      if (!uid) return res.status(401).json({ status: 'error', message: 'userId missing' });
-  
-      const gid = await redis.get(USERMAP(uid));
-      if (!gid) return res.status(400).json({ ok: false, message: 'No active game found' });
-  
-      const board = await loadBoard(gid);
-      if (!board) return res.status(404).json({ ok: false, message: 'Game not found' });
-      if (!board.ended) return res.status(409).json({ ok: false, message: 'Game still in progress' });
-  
-      const u1 = board.m_players?.[0]?.userId;
-      const u2 = board.m_players?.[1]?.userId;
-      const names = board.playerNames || {};
-      const p1Name = names[u1] || 'Player 1';
-      const p2Name = names[u2] || 'Player 2';
-      const s1 = board.m_players[0].m_score;
-      const s2 = board.m_players[1].m_score;
-      
-      const winner = s1 > s2 ? p1Name : s2 > s1 ? p2Name : 'Tie';
-      const [r1, r2] = await Promise.all([getElo(u1, 'hvh'), getElo(u2, 'hvh')]);
-  
-      const comment = `🎮 **Euclid Game Complete!**\n\n` +
-        `${p1Name}: **${s1}** (Rating: ${r1.rating})\n` +
-        `${p2Name}: **${s2}** (Rating: ${r2.rating})\n\n` +
-        `${winner === 'Tie' ? '**Result: Tie Game!**' : `**Winner: ${winner}!**`}`;
-  
-      const { postId } = context;
-      if (!postId) return res.status(400).json({ ok: false, message: 'No post context' });
-  
-      try {
-        await reddit.submitComment({
-          id: postId,
-          text: comment
-        });
-  
-        slog('[SHARE] game result posted', { gid, postId });
-        return res.json({ ok: true, message: 'Game result shared!' });
-      } catch (redditError: any) {
-        // Handle Reddit-specific errors
-        if (redditError.message?.includes('RATELIMIT')) {
-          slog('[SHARE] rate limited', { gid, postId });
-          return res.status(429).json({ 
-            ok: false, 
-            message: 'Rate limited by Reddit. Please wait a few seconds before sharing again.',
-            retryAfter: 5000 // 5 seconds
-          });
-        }
-        
-        // Handle other Reddit errors
-        slog('[SHARE] reddit error', { gid, postId, error: redditError.message });
-        return res.status(502).json({ 
-          ok: false, 
-          message: 'Failed to post to Reddit. Please try again later.' 
-        });
-      }
-    } catch (e: any) {
-      console.error('[SHARE] general error', e);
-      res.status(500).json({ ok: false, message: e?.message || String(e) });
+/* =========================
+   Share custom posts to Reddit
+   ========================= */
+
+router.post('/api/share/rankings', async (req, res) => {
+  try {
+    const uid = context.userId;
+    if (!uid) return res.status(401).json({ ok: false, message: 'userId missing' });
+
+    const { bucket } = (req.body || {}) as { bucket?: ShareBucket };
+    if (bucket !== 'hvh' && bucket !== 'hva') return res.status(400).json({ ok: false, message: 'invalid rankings bucket' });
+
+    await enforceShareRateLimit(uid, `rankings:${bucket}`);
+    const rows = await getRankingRows(bucket);
+    if (rows.length === 0) return res.status(409).json({ ok: false, message: 'No rankings are available to share yet.' });
+
+    const sharedAt = nowISO();
+    const subredditName = context.subredditName || await reddit.getCurrentSubredditName();
+    const title = bucket === 'hvh'
+      ? `Euclid Rankings — Human vs Human — ${formatShareDate()}`
+      : `Euclid Rankings — Human vs AI — ${formatShareDate()}`;
+    const payload = await saveSharePayload({
+      kind: 'rankings',
+      subredditName,
+      sharedAt,
+      bucket,
+      title: 'Euclid Rankings',
+      subtitle: `${bucket === 'hvh' ? 'Human vs Human' : 'Human vs AI'} • ${formatShareDate(sharedAt)}`,
+      rows: rows.slice(0, 10),
+    });
+    const { post, sharedAs } = await createCustomSharePost(title, payload);
+    slog('[SHARE] rankings posted', { uid, bucket, postId: post.id, sharedAs });
+    return res.json({
+      ok: true,
+      message: `Rankings shared to r/${subredditName}${sharedAs === 'APP' ? ' via the app account.' : '.'}`,
+      postId: post.id,
+      permalink: post.permalink,
+      sharedAs
+    });
+  } catch (e:any) {
+    const normalized = normalizeShareError(e);
+    const retryAfterMs = (e as Error & { retryAfterMs?: number }).retryAfterMs;
+    if (retryAfterMs) {
+      return res.status(429).json({ ok: false, message: e.message, retryAfter: retryAfterMs });
     }
-  });
+    if ((normalized as Error & { statusCode?: number }).statusCode === 429) {
+      return res.status(429).json({ ok: false, message: normalized.message });
+    }
+    console.error('[SHARE] rankings error', normalized);
+    res.status(500).json({ ok: false, message: normalized.message });
+  }
+});
+
+router.post('/api/share/h2h-result', async (req, res) => {
+  try {
+    const uid = context.userId;
+    if (!uid) return res.status(401).json({ ok: false, message: 'userId missing' });
+
+    const gid = await redis.get(USERMAP(uid));
+    if (!gid) return res.status(400).json({ ok: false, message: 'No finished game found to share.' });
+
+    const board = await loadBoard(gid);
+    if (!board) return res.status(404).json({ ok: false, message: 'Game not found' });
+    if (!board.ended) return res.status(409).json({ ok: false, message: 'Game is still in progress.' });
+
+    const { winnerUid, tie, byForfeit } = getBoardWinner(board);
+    if (tie || !winnerUid) return res.status(409).json({ ok: false, message: 'Only a winning result can be shared.' });
+    if (winnerUid !== uid) return res.status(403).json({ ok: false, message: 'Only the winner can share this result.' });
+
+    await enforceShareRateLimit(uid, 'h2h');
+
+    const u1 = board.m_players?.[0]?.userId || '';
+    const u2 = board.m_players?.[1]?.userId || '';
+    const names = board.playerNames || {};
+    const p1Name = names[u1] || 'Player 1';
+    const p2Name = names[u2] || 'Player 2';
+    const winnerName = winnerUid === u1 ? p1Name : p2Name;
+    const loserName = winnerUid === u1 ? p2Name : p1Name;
+    const s1 = board.m_players?.[0]?.m_score ?? 0;
+    const s2 = board.m_players?.[1]?.m_score ?? 0;
+    const sharedAt = nowISO();
+    const subredditName = context.subredditName || await reddit.getCurrentSubredditName();
+    const title = byForfeit
+      ? `Euclid Result — ${winnerName} defeated ${loserName} by forfeit — ${formatShareDate()}`
+      : `Euclid Result — ${winnerName} defeated ${loserName} ${s1}-${s2} — ${formatShareDate()}`;
+    const boardForShare = serializeH2HBoard(board);
+    const payload = await saveSharePayload({
+      kind: 'result',
+      subredditName,
+      sharedAt,
+      mode: 'h2h',
+      title: 'Euclid Result',
+      subtitle: `Human vs Human • ${formatShareDate(sharedAt)}`,
+      headline: byForfeit ? `${winnerName} wins by forfeit` : `${winnerName} defeats ${loserName}`,
+      details: byForfeit
+        ? `${winnerName} advanced after ${loserName} left the match.`
+        : `${s1}-${s2} • ${shareScoringLabel(boardForShare.scoring)} scoring • ${boardForShare.W}x${boardForShare.H} board`,
+      footer: `First to ${boardForShare.winScore} points • Shared from r/${subredditName}`,
+      board: boardForShare,
+      p1Name,
+      p2Name,
+      p1Avatar: board.playerAvatars?.[u1],
+      p2Avatar: board.playerAvatars?.[u2],
+      winnerSide: winnerUid === u1 ? 1 : 2,
+    });
+    const { post, sharedAs } = await createCustomSharePost(title, payload);
+    slog('[SHARE] h2h result posted', { uid, gid, postId: post.id, sharedAs });
+    return res.json({
+      ok: true,
+      message: `Winning result shared to r/${subredditName}${sharedAs === 'APP' ? ' via the app account.' : '.'}`,
+      postId: post.id,
+      permalink: post.permalink,
+      sharedAs
+    });
+  } catch (e:any) {
+    const normalized = normalizeShareError(e);
+    const retryAfterMs = (e as Error & { retryAfterMs?: number }).retryAfterMs;
+    if (retryAfterMs) {
+      return res.status(429).json({ ok: false, message: e.message, retryAfter: retryAfterMs });
+    }
+    if ((normalized as Error & { statusCode?: number }).statusCode === 429) {
+      return res.status(429).json({ ok: false, message: normalized.message });
+    }
+    console.error('[SHARE] h2h result error', normalized);
+    res.status(500).json({ ok: false, message: normalized.message });
+  }
+});
+
+router.post('/api/share/ai-result', async (req, res) => {
+  try {
+    const uid = context.userId;
+    if (!uid) return res.status(401).json({ ok: false, message: 'userId missing' });
+
+    const recordRaw = await redis.get(SOLO_LAST(uid));
+    if (!recordRaw) return res.status(409).json({ ok: false, message: 'No recent AI result found to share.' });
+
+    const record = JSON.parse(recordRaw) as SoloShareRecord;
+    if (record.result !== 'win') return res.status(409).json({ ok: false, message: 'Only a winning AI result can be shared.' });
+
+    await enforceShareRateLimit(uid, 'ai');
+
+    const username = (await reddit.getCurrentUsername()) || 'Player';
+    const avatar = await redis.get(AVAKEY(uid));
+    const botName = difficultyLabel(record.difficulty);
+    const subredditName = context.subredditName || await reddit.getCurrentSubredditName();
+    const title = `Euclid Result — ${username} defeated ${botName} ${record.youScore}-${record.botScore} — ${formatShareDate(record.recordedAt)}`;
+    const payload = await saveSharePayload({
+      kind: 'result',
+      subredditName,
+      sharedAt: record.recordedAt,
+      mode: 'ai',
+      title: 'Euclid Result',
+      subtitle: `AI victory • ${formatShareDate(record.recordedAt)}`,
+      headline: `${username} defeats ${botName}`,
+      details: `${record.youScore}-${record.botScore} • ${shareScoringLabel(record.board.scoring)} scoring • ${record.board.W}x${record.board.H} board`,
+      footer: `First to ${record.board.winScore} points • Shared from r/${subredditName}`,
+      board: record.board,
+      p1Name: username,
+      p2Name: botName,
+      p1Avatar: avatar || undefined,
+      winnerSide: 1,
+    });
+    const { post, sharedAs } = await createCustomSharePost(title, payload);
+    slog('[SHARE] ai result posted', { uid, postId: post.id, sharedAs, difficulty: record.difficulty });
+    return res.json({
+      ok: true,
+      message: `AI victory shared to r/${subredditName}${sharedAs === 'APP' ? ' via the app account.' : '.'}`,
+      postId: post.id,
+      permalink: post.permalink,
+      sharedAs
+    });
+  } catch (e:any) {
+    const normalized = normalizeShareError(e);
+    const retryAfterMs = (e as Error & { retryAfterMs?: number }).retryAfterMs;
+    if (retryAfterMs) {
+      return res.status(429).json({ ok: false, message: e.message, retryAfter: retryAfterMs });
+    }
+    if ((normalized as Error & { statusCode?: number }).statusCode === 429) {
+      return res.status(429).json({ ok: false, message: normalized.message });
+    }
+    console.error('[SHARE] ai result error', normalized);
+    res.status(500).json({ ok: false, message: normalized.message });
+  }
+});
+
+router.post('/api/rankings/share', async (req, res) => {
+  req.url = '/api/share/rankings';
+  router.handle(req, res);
+});
 /* =========================
    Admin metrics summary
    ========================= */
@@ -1048,3 +1493,33 @@ const server = createServer(app);
 server.on('error', (err) => console.error(`server error; ${err.stack}`));
 server.listen(port);
 
+// Add menu item to create custom post with splash screen
+Devvit.addMenuItem({
+  label: 'Create Euclid Game Post',
+  location: 'subreddit',
+  onPress: async (_, ctx) => {
+    try {
+      const post = await ctx.reddit.submitCustomPost({
+        subredditName: ctx.subredditName!,
+        title: 'Euclid Game',
+        splash: {
+          appDisplayName: 'Euclid', // required
+          backgroundUri: 'background.png',
+          buttonLabel: 'Start Playing',
+          description: 'An exciting strategic game experience',
+          entryUri: 'index.html',
+          heading: 'Welcome to Euclid!'
+        },
+        postData: {
+          gameState: 'initial',
+          score: 0
+        }
+      });
+      ctx.ui.showToast(`Game post created successfully: ${post.id}`);
+      slog('[SPLASH] Created post with splash', { postId: post.id });
+    } catch (e: any) {
+      ctx.ui.showToast('Failed to create game post');
+      console.error('[SPLASH] Error creating post', e);
+    }
+  }
+});
