@@ -6,6 +6,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react(), tailwind()],
   build: {
+    emptyOutDir: true,
     outDir: '../../dist/client',
     sourcemap: true,
     rollupOptions: {
