@@ -10,6 +10,10 @@ export default defineConfig({
     outDir: '../../dist/client',
     sourcemap: true,
     rollupOptions: {
+      input: {
+        default: 'preview.html',
+        game: 'index.html',
+      },
       output: {
         entryFileNames: '[name].js',
         chunkFileNames: '[name].js',

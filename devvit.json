@@ -5,6 +5,11 @@
     "dir": "dist/client",
     "entrypoints": {
       "default": {
+        "entry": "preview.html",
+        "height": "tall",
+        "inline": true
+      },
+      "game": {
         "entry": "index.html"
       }
     }
@@ -13,8 +18,18 @@
     "dir": "dist/server",
     "entry": "index.cjs"
   },
+  "menu": {
+    "items": [
+      {
+        "label": "Create Euclid Game Post",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/create-post",
+        "postFilter": "none"
+      }
+    ]
+  },
   "dev": {
     "subreddit": "ripred_euclid_dev"
   }
 }
-

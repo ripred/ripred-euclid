@@ -7,10 +7,10 @@ export const createPost = async () => {
   }
 
   return await reddit.submitCustomPost({
-    splash: {
-      appDisplayName: 'ripred-euclid',
+    textFallback: {
+      text: 'Euclid is a strategy game about placing dots and completing squares. Open the post on reddit.com to play.',
     },
     subredditName: subredditName,
-    title: 'ripred-euclid',
+    title: 'Euclid',
   });
 };
