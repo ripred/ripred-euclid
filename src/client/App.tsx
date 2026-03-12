@@ -5,6 +5,13 @@ import type {
   ShareBucket,
   SharedPostPayload,
 } from '../shared/types/api';
+import {
+  applyThemeModeToDocument,
+  installThemeModeSync,
+  type ThemeMode,
+} from './theme';
+
+const PREVIEW_ONBOARDING_KEY = 'euclid_launch_onboarding_seen';
 
 /* ===== app version (tiny watermark) ===== */
 const VersionStamp: React.FC<{ version?: string }> = ({ version }) => {
@@ -489,55 +496,6 @@ type AdminMetrics = {
   daily: { dates: string[]; hvh: number[]; ai: Record<string, number[]> };
 };
 
-type ThemeMode = 'light' | 'dark';
-
-const normalizeThemeMode = (value: string | null | undefined): ThemeMode | null => {
-  if (!value) return null;
-  const lower = value.trim().toLowerCase();
-  if (!lower) return null;
-  if (lower.includes('dark')) return 'dark';
-  if (lower.includes('light')) return 'light';
-  return null;
-};
-
-const readThemeModeFromElement = (element: Element | null | undefined, sourceWindow: Window = window): ThemeMode | null => {
-  if (!element) return null;
-  const attrTheme = normalizeThemeMode(element.getAttribute('data-theme'))
-    || normalizeThemeMode(element.getAttribute('data-color-scheme'))
-    || normalizeThemeMode(element.getAttribute('color-scheme'));
-  if (attrTheme) return attrTheme;
-  if (element.classList.contains('dark')) return 'dark';
-  if (element.classList.contains('light')) return 'light';
-  try {
-    return normalizeThemeMode(sourceWindow.getComputedStyle(element).colorScheme);
-  } catch {
-    return null;
-  }
-};
-
-const detectThemeMode = (): ThemeMode => {
-  try {
-    if (window.parent && window.parent !== window) {
-      const parentTheme = readThemeModeFromElement(window.parent.document.documentElement, window.parent)
-        || readThemeModeFromElement(window.parent.document.body, window.parent);
-      if (parentTheme) return parentTheme;
-    }
-  } catch {}
-
-  return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-};
-
-const applyThemeModeToDocument = (theme: ThemeMode) => {
-  for (const element of [document.documentElement, document.body]) {
-    if (!element) continue;
-    element.dataset.theme = theme;
-    element.dataset.colorScheme = theme;
-    element.classList.toggle('dark', theme === 'dark');
-    element.classList.toggle('light', theme === 'light');
-    element.style.colorScheme = theme;
-  }
-};
-
 const formatDisplayDate = (input: string | number | Date = Date.now()) =>
   new Date(input).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
@@ -645,7 +603,8 @@ export const App=()=>{
   // Tutorial/onboarding
   const [showTutorial,setShowTutorial]=useState(false);
   useEffect(() => {
-    if ((mode === 'ai' || mode === 'multiplayer') && localStorage.getItem('euclid_first_play') !== 'true') {
+    const previewOnboardingSeen = localStorage.getItem(PREVIEW_ONBOARDING_KEY) === 'true';
+    if ((mode === 'ai' || mode === 'multiplayer') && !previewOnboardingSeen && localStorage.getItem('euclid_first_play') !== 'true') {
       setShowTutorial(true);
       localStorage.setItem('euclid_first_play', 'true');
     }
@@ -654,47 +613,11 @@ export const App=()=>{
   // window/theme basics
   useEffect(()=>{ const onResize=()=>setIsMobile(typeof window!=='undefined'&&window.innerWidth<=768); onResize(); window.addEventListener('resize',onResize); return()=>window.removeEventListener('resize',onResize);},[]);
   useEffect(()=>{
-    let rafId = 0;
-    const syncTheme = () => {
-      const nextTheme = detectThemeMode();
+    return installThemeModeSync((nextTheme) => {
       if (appliedThemeRef.current === nextTheme) return;
       applyThemeModeToDocument(nextTheme);
       appliedThemeRef.current = nextTheme;
-    };
-    const scheduleSync = () => {
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(syncTheme);
-    };
-
-    syncTheme();
-
-    const media = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
-    const mediaListener = () => scheduleSync();
-    if (media) {
-      if (typeof media.addEventListener === 'function') media.addEventListener('change', mediaListener);
-      else if (typeof media.addListener === 'function') media.addListener(mediaListener);
-    }
-
-    const observers: MutationObserver[] = [];
-    try {
-      if (window.parent && window.parent !== window) {
-        for (const target of [window.parent.document.documentElement, window.parent.document.body]) {
-          if (!target) continue;
-          const observer = new MutationObserver(scheduleSync);
-          observer.observe(target, { attributes: true, attributeFilter: ['class', 'data-theme', 'data-color-scheme'] });
-          observers.push(observer);
-        }
-      }
-    } catch {}
-
-    return ()=>{
-      cancelAnimationFrame(rafId);
-      if (media) {
-        if (typeof media.removeEventListener === 'function') media.removeEventListener('change', mediaListener);
-        else if (typeof media.removeListener === 'function') media.removeListener(mediaListener);
-      }
-      observers.forEach((observer) => observer.disconnect());
-    };
+    });
   },[]);
   useEffect(()=>{
     let active = true;
