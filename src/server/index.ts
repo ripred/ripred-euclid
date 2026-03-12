@@ -10,9 +10,8 @@ import {
   ResultSharePayload,
 } from '../shared/types/api';
 import { redis, reddit, createServer, context, getServerPort } from '@devvit/web/server';
-import { Devvit } from '@devvit/public-api';
-
-Devvit.configure({ redditAPI: true });
+import type { UiResponse } from '@devvit/web/shared';
+import { createPost } from './core/post';
 
 const app = express();
 app.use(express.json({ limit: '15mb' }));
@@ -473,7 +472,6 @@ function buildShareSplash(payload: SharedPostPayload) {
     appDisplayName: 'Euclid',
     backgroundUri: 'snoo.png',
     buttonLabel: 'Open Post',
-    entry: 'default' as const,
     heading: payload.title,
     description: payload.kind === 'rankings' ? payload.subtitle : payload.headline,
   };
@@ -561,6 +559,7 @@ async function createCustomSharePost(title: string, payload: SharedPostPayload) 
   const baseOptions = {
     subredditName,
     title,
+    entry: 'game' as const,
     postData: descriptor,
     textFallback: { text: fallbackText },
     splash: buildShareSplash(payload),
@@ -1484,6 +1483,28 @@ router.post('/api/h2h/chat', async (req, res) => {
   }
 });
 
+router.post('/internal/menu/create-post', async (_req, res) => {
+  try {
+    const post = await createPost();
+    slog('[MENU] created game post', { postId: post.id, postUrl: post.url });
+
+    const response: UiResponse = {
+      navigateTo: post.url,
+      showToast: {
+        text: 'Euclid post created',
+        appearance: 'success',
+      },
+    };
+    return res.json(response);
+  } catch (e: any) {
+    console.error('[MENU] Error creating post', e);
+    const response: UiResponse = {
+      showToast: 'Failed to create game post',
+    };
+    return res.status(200).json(response);
+  }
+});
+
 /* =========================
    Attach router + start
    ========================= */
@@ -1492,34 +1513,3 @@ const port = getServerPort();
 const server = createServer(app);
 server.on('error', (err) => console.error(`server error; ${err.stack}`));
 server.listen(port);
-
-// Add menu item to create custom post with splash screen
-Devvit.addMenuItem({
-  label: 'Create Euclid Game Post',
-  location: 'subreddit',
-  onPress: async (_, ctx) => {
-    try {
-      const post = await ctx.reddit.submitCustomPost({
-        subredditName: ctx.subredditName!,
-        title: 'Euclid Game',
-        splash: {
-          appDisplayName: 'Euclid', // required
-          backgroundUri: 'background.png',
-          buttonLabel: 'Start Playing',
-          description: 'An exciting strategic game experience',
-          entryUri: 'index.html',
-          heading: 'Welcome to Euclid!'
-        },
-        postData: {
-          gameState: 'initial',
-          score: 0
-        }
-      });
-      ctx.ui.showToast(`Game post created successfully: ${post.id}`);
-      slog('[SPLASH] Created post with splash', { postId: post.id });
-    } catch (e: any) {
-      ctx.ui.showToast('Failed to create game post');
-      console.error('[SPLASH] Error creating post', e);
-    }
-  }
-});
