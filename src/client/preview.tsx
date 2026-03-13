@@ -4,6 +4,7 @@ import { requestExpandedMode } from '@devvit/web/client';
 import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import type { InitResponse } from '../shared/types/api';
 import {
   DEMO_STEPS,
   IDLE_FRAME,
@@ -11,6 +12,7 @@ import {
   type DemoStep,
   type Owner,
 } from './preview-demo';
+import { SharePreview } from './share-preview';
 import {
   applyThemeModeToDocument,
   installThemeModeSync,
@@ -18,11 +20,14 @@ import {
 } from './theme';
 
 const PREVIEW_ONBOARDING_KEY = 'euclid_launch_onboarding_seen';
+const HUMAN_VS_EUCLID_LABEL = 'Redditor vs Euclid';
+const EUCLID_LABEL = 'Euclid';
 const DEMO_START_DELAY_MS = 7000;
 const DEMO_POST_STEP_PAUSE_MS = 2000;
 const DEMO_STEP_MS = 3600 + DEMO_POST_STEP_PAUSE_MS;
 const DEMO_MOVE_DELAY_MS = 850;
 const DEMO_SQUARE_DELAY_MS = 1650;
+const DEMO_TEXT_FADE_MS = 420;
 
 const boardLayout = {
   cols: 8,
@@ -39,6 +44,7 @@ const pointAt = (x: number, y: number) => ({
 
 const boardWidth = boardLayout.startX * 2 + boardLayout.gap * (boardLayout.cols - 1);
 const boardHeight = boardLayout.startY * 2 + boardLayout.gap * (boardLayout.rows - 1);
+const PREVIEW_BOARD_LANE_WIDTH = 218;
 
 const previewPalette: Record<ThemeMode, {
   shellBg: string;
@@ -56,7 +62,7 @@ const previewPalette: Record<ThemeMode, {
   squareRed: string;
 }> = {
   dark: {
-    shellBg: 'radial-gradient(circle at top, rgba(37,99,235,.25), transparent 34%), linear-gradient(180deg, #041124 0%, #07182f 58%, #0b2242 100%)',
+    shellBg: 'radial-gradient(circle at top, rgba(37,99,235,.25), transparent 34%), linear-gradient(180deg, #041124 0%, #07182f 56%, #0b2242 82%, #153b73 100%)',
     cardBg: 'rgba(4,18,36,.78)',
     cardBorder: 'rgba(148,163,184,.22)',
     panelBg: 'rgba(15,23,42,.55)',
@@ -71,7 +77,7 @@ const previewPalette: Record<ThemeMode, {
     squareRed: 'rgba(239,68,68,.9)',
   },
   light: {
-    shellBg: 'radial-gradient(circle at top, rgba(191,219,254,.85), transparent 34%), linear-gradient(180deg, #eff6ff 0%, #e0ecff 58%, #dbeafe 100%)',
+    shellBg: 'radial-gradient(circle at top, rgba(191,219,254,.85), transparent 34%), linear-gradient(180deg, #eff6ff 0%, #e0ecff 56%, #dbeafe 82%, #c7ddff 100%)',
     cardBg: 'rgba(255,255,255,.80)',
     cardBorder: 'rgba(148,163,184,.28)',
     panelBg: 'rgba(248,250,252,.85)',
@@ -92,6 +98,57 @@ const dotColor = (owner: Owner, emptyDot: string) =>
 
 const squareStroke = (owner: Owner, palette: typeof previewPalette.dark) =>
   owner === 1 ? palette.squareRed : palette.squareBlue;
+
+function PreviewStatus({
+  theme,
+  title,
+  body,
+}: {
+  theme: ThemeMode;
+  title: string;
+  body: string;
+}) {
+  const palette = previewPalette[theme];
+
+  return (
+    <div
+      style={{
+        background: palette.shellBg,
+        color: palette.title,
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        padding: '8px 12px 6px',
+        minHeight: '100vh',
+        boxSizing: 'border-box',
+      }}
+    >
+      <div
+        style={{
+          width: 'min(760px, 100%)',
+          borderRadius: 22,
+          border: `1px solid ${palette.cardBorder}`,
+          background: palette.cardBg,
+          boxShadow: theme === 'dark' ? '0 28px 64px rgba(2,8,23,.38)' : '0 18px 44px rgba(15,23,42,.12)',
+          padding: '22px 20px',
+          display: 'grid',
+          gap: 8,
+          backdropFilter: 'blur(10px)',
+        }}
+      >
+        <div style={{ color: palette.accent, fontSize: 12, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+          Euclid
+        </div>
+        <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.04 }}>
+          {title}
+        </div>
+        <div style={{ color: palette.text, fontSize: 14, lineHeight: 1.5 }}>
+          {body}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ScorePill({
   label,
@@ -148,20 +205,15 @@ function PreviewBoard({
       ? demoStep.after
       : demoStep.before
     : IDLE_FRAME;
-  const scoreFrame: DemoFrame = demoStep
-    ? demoStep.after.newSquares.length === 0
-      ? demoPhase >= 1
-        ? demoStep.after
-        : demoStep.before
-      : demoPhase === 2
-        ? demoStep.after
-        : demoStep.before
-    : IDLE_FRAME;
   const displayedDots = activeFrame.dots;
   const pendingMove = demoStep?.after.move;
   const visibleSquares = demoStep && demoPhase === 2 ? demoStep.after.newSquares : [];
   const visibleSquareKeys = new Set(visibleSquares.map((square) => square.key));
   const priorSquares = activeFrame.allSquares.filter((square) => !visibleSquareKeys.has(square.key));
+  const displayedScores = activeFrame.allSquares.reduce<[number, number]>((scores, square) => {
+    scores[square.owner - 1] += square.points;
+    return scores;
+  }, [0, 0]);
   const squarePoints = (corners: DemoFrame['allSquares'][number]['corners']) =>
     corners.map((point) => {
       const translated = pointAt(point.x, point.y);
@@ -183,8 +235,8 @@ function PreviewBoard({
       }}
     >
       <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-        <ScorePill label="Red" score={scoreFrame.scores[0]} owner={1} palette={palette} />
-        <ScorePill label="Blue" score={scoreFrame.scores[1]} owner={2} palette={palette} />
+        <ScorePill label="Red" score={displayedScores[0]} owner={1} palette={palette} />
+        <ScorePill label="Blue" score={displayedScores[1]} owner={2} palette={palette} />
       </div>
 
       <svg viewBox={`0 0 ${boardWidth} ${boardHeight}`} style={{ width: 200, maxWidth: '100%', height: 'auto', display: 'block', justifySelf: 'center' }}>
@@ -290,9 +342,13 @@ function PreviewBoard({
 
 const PreviewApp = () => {
   const [theme, setTheme] = useState<ThemeMode>('dark');
+  const [initState, setInitState] = useState<InitResponse | null>(null);
+  const [initError, setInitError] = useState<string | null>(null);
   const [demoActive, setDemoActive] = useState(false);
   const [demoStepIndex, setDemoStepIndex] = useState(0);
   const [demoPhase, setDemoPhase] = useState<0 | 1 | 2>(0);
+  const [displayedDemoStep, setDisplayedDemoStep] = useState<DemoStep | null>(null);
+  const [demoTextVisible, setDemoTextVisible] = useState(true);
   const [idleVersion, setIdleVersion] = useState(0);
   const [reduceMotion, setReduceMotion] = useState(false);
   const lastInteractionRef = useRef(0);
@@ -302,6 +358,28 @@ const PreviewApp = () => {
       applyThemeModeToDocument(nextTheme);
       setTheme((current) => (current === nextTheme ? current : nextTheme));
     });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        setInitError(null);
+        const response = await fetch('/api/init');
+        const data = await response.json();
+        if (!response.ok) throw new Error(data?.message || 'Unable to load Euclid.');
+        if (!cancelled) setInitState(data as InitResponse);
+      } catch (error: any) {
+        if (!cancelled) setInitError(error?.message || 'Unable to load Euclid.');
+      }
+    };
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -381,6 +459,35 @@ const PreviewApp = () => {
 
   const palette = previewPalette[theme];
   const demoStep = demoActive ? DEMO_STEPS[demoStepIndex] : null;
+  const textStep = displayedDemoStep ?? demoStep;
+  const sharedPost = initState?.type === 'share' ? initState.share : null;
+
+  useEffect(() => {
+    if (reduceMotion) {
+      setDisplayedDemoStep(demoStep);
+      setDemoTextVisible(true);
+      return;
+    }
+    if (!demoStep) {
+      setDisplayedDemoStep(null);
+      setDemoTextVisible(true);
+      return;
+    }
+    if (!displayedDemoStep) {
+      setDisplayedDemoStep(demoStep);
+      setDemoTextVisible(true);
+      return;
+    }
+    if (displayedDemoStep.id === demoStep.id) return;
+
+    setDemoTextVisible(false);
+    const timer = window.setTimeout(() => {
+      setDisplayedDemoStep(demoStep);
+      window.requestAnimationFrame(() => setDemoTextVisible(true));
+    }, DEMO_TEXT_FADE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [demoStep, displayedDemoStep, reduceMotion]);
 
   const openGame = (event: React.MouseEvent<HTMLButtonElement>) => {
     try {
@@ -389,6 +496,18 @@ const PreviewApp = () => {
     } catch {}
     requestExpandedMode(event.nativeEvent, 'game');
   };
+
+  if (initError) {
+    return <PreviewStatus theme={theme} title="Unable to load Euclid" body={initError} />;
+  }
+
+  if (!initState) {
+    return <PreviewStatus theme={theme} title="Loading Euclid" body="Preparing this post…" />;
+  }
+
+  if (sharedPost) {
+    return <SharePreview share={sharedPost} theme={theme} />;
+  }
 
   return (
     <div
@@ -402,10 +521,6 @@ const PreviewApp = () => {
       }}
     >
       <style>{`
-        @keyframes previewCardIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
         @keyframes previewPulseRing {
           0%, 100% { transform: scale(.86); opacity: .38; }
           50% { transform: scale(1.06); opacity: 1; }
@@ -424,65 +539,112 @@ const PreviewApp = () => {
         data-demo-steps={DEMO_STEPS.length}
         style={{
           width: 'min(760px, 100%)',
+          alignSelf: 'flex-start',
+          minHeight: 'calc(100vh - 14px)',
           borderRadius: 22,
           border: `1px solid ${palette.cardBorder}`,
-          background: palette.cardBg,
+          background: `${
+            theme === 'dark'
+              ? 'linear-gradient(180deg, rgba(4,18,36,.76), rgba(4,18,36,.76))'
+              : 'linear-gradient(180deg, rgba(255,255,255,.78), rgba(255,255,255,.78))'
+          }, ${palette.shellBg}`,
           boxShadow: theme === 'dark' ? '0 28px 64px rgba(2,8,23,.38)' : '0 18px 44px rgba(15,23,42,.12)',
-          padding: '12px 14px 10px',
+          padding: '18px 14px 14px',
           display: 'grid',
-          gap: 8,
+          gridTemplateRows: '1fr auto auto',
+          gap: 10,
+          overflow: 'hidden',
           backdropFilter: 'blur(10px)',
+          boxSizing: 'border-box',
         }}
       >
         <div
           style={{
             display: 'flex',
-            alignItems: 'flex-start',
+            alignItems: 'stretch',
             justifyContent: 'space-between',
             gap: 10,
             flexWrap: 'wrap',
+            minHeight: 0,
           }}
         >
-          <div style={{ display: 'grid', gap: 6, flex: '1 1 280px', minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 800,
-                letterSpacing: '0.16em',
-                textTransform: 'uppercase',
-                color: palette.accent,
-              }}
-            >
-              Reddit Strategy Game
-            </div>
-            <div style={{ fontSize: 34, fontWeight: 900, lineHeight: 1 }}>
-              Euclid
-            </div>
-            <div style={{ color: palette.text, fontSize: 14, maxWidth: 420 }}>
-              Place dots. Complete squares. Rotated shapes count. Beat the AI or
-              outplay another human.
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingTop: 1 }}>
-              <button
-                onClick={openGame}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateRows: 'auto 1fr',
+              alignSelf: 'stretch',
+              gap: 14,
+              flex: '1 1 280px',
+              minWidth: 0,
+            }}
+          >
+            <div style={{ display: 'grid', gap: 6 }}>
+              <div
                 style={{
-                  border: 'none',
-                  cursor: 'pointer',
-                  borderRadius: 999,
-                  background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
-                  color: '#f8fafc',
-                  padding: '11px 20px',
-                  fontSize: 15,
+                  fontSize: 12,
                   fontWeight: 800,
-                  boxShadow: '0 10px 24px rgba(22,163,74,.32)',
+                  letterSpacing: '0.16em',
+                  textTransform: 'uppercase',
+                  color: palette.accent,
                 }}
               >
-                Start Playing
-              </button>
-              <div style={{ color: palette.accent, fontSize: 13, fontWeight: 700 }}>
-                AI, human, spectate, and rankings live in the full game.
+                Reddit Strategy Game
               </div>
+              <div style={{ fontSize: 34, fontWeight: 900, lineHeight: 1 }}>
+                Euclid
+              </div>
+              <div style={{ color: palette.text, fontSize: 14, maxWidth: 420 }}>
+                Place dots. Complete squares. Rotated shapes count. Beat {EUCLID_LABEL} or
+                outplay another redditor.
+              </div>
+            </div>
+
+            <div
+              style={{
+                borderRadius: 16,
+                background: palette.panelBg,
+                border: `1px solid ${palette.panelBorder}`,
+                width: 'calc(100% + 10px)',
+                marginRight: -10,
+                padding: '10px 12px',
+                minHeight: 152,
+                color: palette.text,
+                fontSize: 13,
+                lineHeight: 1.5,
+                overflow: 'hidden',
+                display: 'grid',
+                alignContent: 'center',
+              }}
+            >
+              <div style={{ color: palette.accent, fontSize: 12, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                <span style={{ display: 'inline-block', transform: 'translateY(-10px)' }}>
+                  {textStep ? 'Quick Demo' : 'First Time Here?'}
+                </span>
+              </div>
+              {textStep ? (
+                <div
+                  style={{
+                    display: 'grid',
+                    gap: 6,
+                    opacity: demoTextVisible ? 1 : 0,
+                    transition: reduceMotion ? 'none' : `opacity ${DEMO_TEXT_FADE_MS}ms ease`,
+                  }}
+                >
+                  <div style={{ fontSize: 15, fontWeight: 800, color: palette.title }}>
+                    {textStep.title}
+                  </div>
+                  <div>{textStep.body}</div>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: palette.title }}>
+                    8×8 Demo
+                  </div>
+                  <div>
+                    Pause here for a few seconds and Euclid will replay a short 8×8 game sequence to explain the rules.
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -495,38 +657,42 @@ const PreviewApp = () => {
             background: palette.panelBg,
             border: `1px solid ${palette.panelBorder}`,
             padding: '10px 12px',
-            height: 100,
-            color: palette.text,
-            fontSize: 13,
-            lineHeight: 1.5,
-            overflow: 'hidden',
-            display: 'grid',
-            alignContent: 'start',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+            flexWrap: 'wrap',
           }}
         >
-          {demoStep ? (
-            <div key={demoStep.id} style={{ display: 'grid', gap: 6, animation: 'previewCardIn 260ms ease' }}>
-              <div style={{ color: palette.accent, fontSize: 12, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                Quick Demo
-              </div>
-              <div style={{ fontSize: 15, fontWeight: 800, color: palette.title }}>
-                {demoStep.title}
-              </div>
-              <div>{demoStep.body}</div>
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gap: 6 }}>
-              <div style={{ color: palette.accent, fontSize: 12, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                First Time Here?
-              </div>
-              <div style={{ fontSize: 15, fontWeight: 800, color: palette.title }}>
-                Legal 8×8 Demo
-              </div>
-              <div>
-                Pause here for a few seconds and Euclid will replay a short legal 8×8 game sequence to explain the rules.
-              </div>
-            </div>
-          )}
+          <div style={{ color: palette.accent, fontSize: 13, fontWeight: 700, flex: '1 1 320px', minWidth: 0 }}>
+            Redditor vs Euclid, Redditor vs Redditor, Watch other redditor's live games, Leaderboard, and much more live in the full game!
+          </div>
+          <div
+            style={{
+              flex: `0 0 ${PREVIEW_BOARD_LANE_WIDTH}px`,
+              maxWidth: '100%',
+              display: 'flex',
+              justifyContent: 'center',
+              transform: 'translateX(10px)',
+            }}
+          >
+            <button
+              onClick={openGame}
+              style={{
+                border: 'none',
+                cursor: 'pointer',
+                borderRadius: 999,
+                background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                color: '#f8fafc',
+                padding: '11px 20px',
+                fontSize: 15,
+                fontWeight: 800,
+                boxShadow: '0 10px 24px rgba(22,163,74,.32)',
+              }}
+            >
+              Start Playing!
+            </button>
+          </div>
         </div>
 
         <div
