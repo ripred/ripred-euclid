@@ -10,8 +10,15 @@ import {
   installThemeModeSync,
   type ThemeMode,
 } from './theme';
+import { ReplayBoardCard } from './share-replay';
 
 const PREVIEW_ONBOARDING_KEY = 'euclid_launch_onboarding_seen';
+const HUMAN_VS_EUCLID_LABEL = 'Redditor vs Euclid';
+const HUMAN_VS_HUMAN_LABEL = 'Redditor vs Redditor';
+const WATCH_LIVE_GAMES_LABEL = 'Watch Live Games';
+const WATCH_OTHER_REDDITORS_LIVE_GAMES_LABEL = "Watch Other Redditor's Live Games";
+const LEADERBOARD_LABEL = 'Leaderboard';
+const EUCLID_LABEL = 'Euclid';
 
 /* ===== app version (tiny watermark) ===== */
 const VersionStamp: React.FC<{ version?: string }> = ({ version }) => {
@@ -681,7 +688,7 @@ export const App=()=>{
     }catch{
       soloRecordedRef.current=false;
       setSoloShareReady(false);
-      setNotice('Unable to save this AI result yet. Use Share Win to retry.');
+      setNotice(`Unable to save this ${HUMAN_VS_EUCLID_LABEL} result yet. Use Share Win to retry.`);
       return false;
     } finally {
       setSoloRecordBusy(false);
@@ -711,7 +718,7 @@ export const App=()=>{
         setFinalSide(side);
         setFinalReason(j.endedReason||'game_over');
         if ((j.endedReason||'') === 'tie') setNotice('Tie game!');
-        else if ((j.endedReason||'') === 'opponent_left') setNotice('Opponent left—you win!');
+        else if ((j.endedReason||'') === 'opponent_left') setNotice("The other redditor left — You Win!");
         else if ((j.endedReason||'') === 'player_left') setNotice('You left the game.');
         stopPolling(); pollActiveRef.current='none';
       }
@@ -933,7 +940,7 @@ export const App=()=>{
     if (!text) { setChatOpen(false); return; }
     if (mode==='ai') {
       const you:ChatItem = { id: ++localSeqRef.current, ts: Date.now(), sender: 'You', text };
-      const bot:ChatItem = { id: ++localSeqRef.current, ts: Date.now()+1, sender: 'Bot', text };
+      const bot:ChatItem = { id: ++localSeqRef.current, ts: Date.now()+1, sender: EUCLID_LABEL, text };
       setLocalChat(prev => [...prev.slice(-10), you, bot]);
       setChatText(''); setChatOpen(false);
     } else if (mode==='multiplayer') {
@@ -1000,7 +1007,7 @@ export const App=()=>{
           <ul style={{paddingLeft: '1.2em', listStyle:'disc'}}>
               <li>Players take turns placing a dot on a grid.</li>
               <li>A <b>square</b> is completed when all four of its corner cells are your color. The four corners don't need to be axis-aligned — they can form a rotated square.</li>
-              <li><b>Scoring (AI mode configurable):</b> <i>Bounding Rectangle</i> or <i>True Area</i> (side²).</li>
+              <li><b>Scoring ({HUMAN_VS_EUCLID_LABEL} mode configurable):</b> <i>Bounding Rectangle</i> or <i>True Area</i> (side²).</li>
               <li>One move can complete multiple squares; you score the sum.</li>
               <li>First to the selected <b>Win Score</b> wins; if the board fills with unequal points, higher total wins.</li>
           </ul>
@@ -1017,7 +1024,7 @@ export const App=()=>{
       <div onClick={(e)=>e.stopPropagation()} style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`, borderRadius:12, padding:'16px 22px', maxWidth:680, width:'min(92vw, 680px)', maxHeight:'82vh', overflowY:'auto', fontSize:'0.95rem'}}>
         <div style={{fontSize:'1.125rem', fontWeight:800, marginBottom:8}}>Welcome to Euclid — Tutorial</div>
         <ol style={{paddingLeft: '1.2em', listStyle:'decimal'}}>
-          <li>Place dots on the grid alternately with your opponent.</li>
+          <li>Place dots on the grid alternately with the other side.</li>
           <li>Form squares by connecting four dots of your color (can be rotated).</li>
           <li>Score points based on square size (bounding or true area).</li>
           <li>Reach the win score first to victory!</li>
@@ -1039,7 +1046,7 @@ export const App=()=>{
           value={chatText}
           onChange={(e)=>setChatText(e.target.value)}
           onKeyDown={(e)=>{ if(e.key==='Enter') { e.preventDefault(); sendChat(); } else if (e.key==='Escape'){ e.preventDefault(); setChatOpen(false); } }}
-          placeholder={mode==='ai' ? 'Say something to the bot (echo)…' : 'Say something to your opponent…'}
+          placeholder={mode==='ai' ? `Say something to ${EUCLID_LABEL} (echo)…` : 'Say something to the other redditor…'}
           maxLength={140}
           style={{flex:1, background:'transparent', color:'var(--text)', border:'none', outline:'none', height: '48px', lineHeight: '1.5'}}
         />
@@ -1109,7 +1116,7 @@ export const App=()=>{
               const b=new Board(p1,p2,{ W:boardW, H:boardH, scoring:scoringMode, winScore });
               setBoard(b); setWinner(null); soloRecordedRef.current=false; soloRecordStartedRef.current=false; setSoloShareReady(false); setSoloRecordBusy(false); aiFirstSentRef.current=false; setAiTie(false); setLocalChat([]); setSharedWins((current) => ({ ...current, ai: false })); setMode('ai');
             }}>
-            Play vs AI
+            {HUMAN_VS_EUCLID_LABEL}
           </button>
 
           <button className="rounded cursor-pointer" style={{background:'#ef4444', color:'#fff', padding:'8px 16px'}}
@@ -1129,21 +1136,21 @@ export const App=()=>{
                     setSpectating(false); setMode('multiplayer'); setStatus('Paired — loading board…'); pollMapping();
                   }
                 } else {
-                  setSpectating(false); setMode('multiplayer'); setStatus('Waiting for an opponent…'); pollMapping();
+                  setSpectating(false); setMode('multiplayer'); setStatus('Waiting for another redditor…'); pollMapping();
                 }
               }catch(e:any){ setStatus('Queue failed: '+(e?.message||e)); }
             }}>
-            Play vs Human
+            {HUMAN_VS_HUMAN_LABEL}
           </button>
 
           <button className="rounded cursor-pointer" style={{background:'#7c3aed', color:'#fff', padding:'8px 16px'}}
             onClick={async()=>{ await loadGames(); setMode('spectate'); }}>
-            Spectate
+            {WATCH_LIVE_GAMES_LABEL}
           </button>
 
           <button className="rounded cursor-pointer" style={{background:'#16a34a', color:'#fff', padding:'8px 16px'}}
             onClick={async()=>{ await loadRankings(); setMode('rankings'); }}>
-            Rankings
+            {LEADERBOARD_LABEL}
           </button>
 
           <button className="rounded cursor-pointer" style={{background:'#6b7280', color:'#fff', padding:'8px 16px'}}
@@ -1173,7 +1180,7 @@ export const App=()=>{
         {/* Scrollable content area */}
         <div className="flex-1 overflow-y-auto w-full flex flex-col items-center" style={{paddingBottom:8}}>
           <div className="w-[min(760px,96vw)]" style={{background:'var(--card-bg)', border:`1px solid var(--card-border)`, borderRadius:12, padding:'12px 16px'}}>
-            <div className="font-bold mb-2" style={{color:'var(--muted)'}}>AI Game Settings</div>
+            <div className="font-bold mb-2" style={{color:'var(--muted)'}}>{HUMAN_VS_EUCLID_LABEL} Settings</div>
             <div className="grid" style={{gridTemplateColumns:'repeat(auto-fit, minmax(220px,1fr))', gap:12}}>
               <div>
                 <label className="font-medium block mb-1" style={{color:'var(--muted)'}}>Difficulty</label>
@@ -1238,6 +1245,17 @@ export const App=()=>{
               </div>
             </div>
           </div>
+
+          <div className="w-[min(760px,96vw)]" style={{background:'var(--card-bg)', border:`1px solid var(--card-border)`, borderRadius:12, padding:'12px 16px', marginTop:12}}>
+            <div className="font-bold mb-2" style={{color:'var(--muted)'}}>About Euclid</div>
+            <div style={{color:'var(--text)', lineHeight:1.6}}>
+              Euclid is a Reddit strategy game about placing dots, completing squares, and outscoring {EUCLID_LABEL} or another redditor.
+              Straight and rotated squares both count, and one move can complete multiple squares at once.
+            </div>
+            <div style={{color:'var(--muted)', fontSize:'0.875rem', marginTop:10}}>
+              Version: <b style={{color:'var(--text)'}}>{initState?.appVersion || 'loading'}</b>
+            </div>
+          </div>
         </div>
 
         {/* Footer / OK */}
@@ -1277,7 +1295,7 @@ export const App=()=>{
               <thead>
                 <tr>
                   <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell, textAlign:'left' as const}}>Rank</th>
-                  <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell, textAlign:'left' as const}}>Player</th>
+                  <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell, textAlign:'left' as const}}>Redditor</th>
                   <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell}}>Rating</th>
                   <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell}}>Games</th>
                   <th style={{padding:'8px 12px', borderBottom:`1px solid var(--card-border)`, ...headCell}}>Wins</th>
@@ -1314,7 +1332,7 @@ export const App=()=>{
             style={{background:'#16a34a', color:'#fff', padding:'6px 12px', opacity:shareBusy === `rankings:${bucket}` ? 0.7 : 1}}
             onClick={()=>shareRankings(bucket)}
           >
-            {shareBusy === `rankings:${bucket}` ? 'Sharing…' : 'Share Rankings'}
+            {shareBusy === `rankings:${bucket}` ? 'Sharing…' : `Share ${LEADERBOARD_LABEL}`}
           </button>
         </div>
       </div>
@@ -1324,11 +1342,11 @@ export const App=()=>{
       <div className="flex flex-col items-center" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
         {notice && <div className="text-sm mb-2" style={{color:'var(--muted)'}}>{notice}</div>}
         <div style={{paddingTop:16, paddingBottom:8}}>
-          <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — Rankings</h1>
+          <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — {LEADERBOARD_LABEL}</h1>
         </div>
         <div className="flex-1 overflow-y-auto w-full flex flex-col items-center gap-6" style={{paddingBottom:8}}>
-          <Section title="Head-to-Head (Human vs Human)" rows={rankings.hvh} accent="red" bucket="hvh" captureRef={rankingsHvhRef} />
-          <Section title="Human vs Computer (All Difficulties)" rows={rankings.hva} accent="blue" bucket="hva" captureRef={rankingsHvaRef} />
+          <Section title={HUMAN_VS_HUMAN_LABEL} rows={rankings.hvh} accent="red" bucket="hvh" captureRef={rankingsHvhRef} />
+          <Section title={HUMAN_VS_EUCLID_LABEL} rows={rankings.hva} accent="blue" bucket="hva" captureRef={rankingsHvaRef} />
         </div>
         <div style={{padding:12}}>
           <button className="rounded cursor-pointer" data-share-exclude="true" style={{background:'#6b7280', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setMode(null); }}>
@@ -1344,7 +1362,7 @@ export const App=()=>{
     content = (
       <div className="flex flex-col items-center" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
         <div style={{paddingTop:16, paddingBottom:8}}>
-          <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — Spectate Active Games</h1>
+          <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — {WATCH_OTHER_REDDITORS_LIVE_GAMES_LABEL}</h1>
         </div>
         <div className="flex-1 overflow-y-auto w-full flex flex-col items-center gap-4" style={{paddingBottom:8}}>
           {loadingGames ? (
@@ -1355,8 +1373,8 @@ export const App=()=>{
             games.map(g => {
               const p1Id = Object.keys(g.names)[0] || '';
               const p2Id = Object.keys(g.names)[1] || '';
-              const p1Name = g.names[p1Id] || 'Player 1';
-              const p2Name = g.names[p2Id] || 'Player 2';
+              const p1Name = g.names[p1Id] || 'Redditor 1';
+              const p2Name = g.names[p2Id] || 'Redditor 2';
               return (
                 <div key={g.gameId} className="w-[min(720px,92vw)]" style={{background:'var(--card-bg)', border:`1px solid var(--card-border)`, borderRadius:12, padding:'12px 16px'}}>
                   <div className="flex justify-between items-center">
@@ -1370,7 +1388,7 @@ export const App=()=>{
                         setMode('multiplayer');
                         pollGame();
                       }}>
-                      Spectate
+                      Watch
                     </button>
                   </div>
                   <div className="text-xs" style={{color:'var(--muted)', marginTop:4}}>Last updated: {new Date(g.lastSaved).toLocaleTimeString()}</div>
@@ -1403,38 +1421,38 @@ export const App=()=>{
   						<tr>
   							<td style={{padding:4, verticalAlign:'top', border:'1px solid var(--card-border)', color:'var(--text)'}}>
   								<div className="font-bold mb-2" style={{color:'var(--muted)'}}>Unique users</div>
-  								<ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
-  									<li>App started: {admin?.uniques?.app_start_users ?? 0}</li>
-  									<li>H2H clicked: {admin?.uniques?.h2h_click_users ?? 0}</li>
-  									<li>H2H started: {admin?.uniques?.h2h_started_users ?? 0}</li>
-  									<li>H2H completed: {admin?.uniques?.h2h_completed_users ?? 0}</li>
-  									<li>AI clicked: {admin?.uniques?.ai_click_users ?? 0}</li>
-  									<li>AI first move: {admin?.uniques?.ai_first_users ?? 0}</li>
-  									<li>AI completed: {admin?.uniques?.ai_completed_users ?? 0}</li>
-  								</ul>
-  								<div className="font-bold mt-4 mb-2" style={{color:'var(--muted)'}}>Computed (never …)</div>
-  								<ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
-  									<li>H2H: clicked but never played: {admin?.computed?.h2h_clicked_never_started ?? 0}</li>
-  									<li>H2H: started but never finished: {admin?.computed?.h2h_started_never_finished ?? 0}</li>
-  									<li>AI: clicked but never played: {admin?.computed?.ai_clicked_never_started ?? 0}</li>
-  									<li>AI: started but never finished: {admin?.computed?.ai_started_never_finished ?? 0}</li>
-  								</ul>
+                                <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
+                                  <li>App started: {admin?.uniques?.app_start_users ?? 0}</li>
+                                  <li>H2H clicked: {admin?.uniques?.h2h_click_users ?? 0}</li>
+                                  <li>H2H started: {admin?.uniques?.h2h_started_users ?? 0}</li>
+                                  <li>H2H completed: {admin?.uniques?.h2h_completed_users ?? 0}</li>
+                                  <li>{HUMAN_VS_EUCLID_LABEL} clicked: {admin?.uniques?.ai_click_users ?? 0}</li>
+                                  <li>{HUMAN_VS_EUCLID_LABEL} first move: {admin?.uniques?.ai_first_users ?? 0}</li>
+                                  <li>{HUMAN_VS_EUCLID_LABEL} completed: {admin?.uniques?.ai_completed_users ?? 0}</li>
+                                </ul>
+                                <div className="font-bold mt-4 mb-2" style={{color:'var(--muted)'}}>Computed (never …)</div>
+                                <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
+                                  <li>H2H: clicked but never played: {admin?.computed?.h2h_clicked_never_started ?? 0}</li>
+                                  <li>H2H: started but never finished: {admin?.computed?.h2h_started_never_finished ?? 0}</li>
+                                  <li>{HUMAN_VS_EUCLID_LABEL}: clicked but never played: {admin?.computed?.ai_clicked_never_started ?? 0}</li>
+                                  <li>{HUMAN_VS_EUCLID_LABEL}: started but never finished: {admin?.computed?.ai_started_never_finished ?? 0}</li>
+                                </ul>
   							</td>
   							<td style={{padding:4, verticalAlign:'top', border:'1px solid var(--card-border)', color:'var(--text)'}}>
   								<div className="font-bold mb-2" style={{color:'var(--muted)'}}>Event counts</div>
-  								<ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
-  									<li>App starts: {admin?.counts?.app_start_count ?? 0}</li>
-  									<li>H2H clicks: {admin?.counts?.h2h_click_count ?? 0}</li>
-  									<li>H2H pairs: {admin?.counts?.h2h_started_count ?? 0}</li>
-  									<li>H2H game overs: {admin?.counts?.h2h_game_over_count ?? 0}</li>
-  									<li>H2H cancel queue: {admin?.counts?.h2h_cancel_queue_count ?? 0}</li>
-  									<li>H2H opponent left: {admin?.counts?.h2h_opponent_left_count ?? 0}</li>
-  									<li>H2H player left: {admin?.counts?.h2h_player_left_count ?? 0}</li>
-  									<li>AI clicks: {admin?.counts?.ai_click_count ?? 0}</li>
-  									<li>AI first moves: {admin?.counts?.ai_first_count ?? 0}</li>
-  									<li>AI completes: {admin?.counts?.ai_completed_count ?? 0}</li>
-  								</ul>
-  								<div className="font-bold mt-4 mb-2" style={{color:'var(--muted)'}}>AI difficulty breakdown</div>
+                                <ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
+                                  <li>App starts: {admin?.counts?.app_start_count ?? 0}</li>
+                                  <li>H2H clicks: {admin?.counts?.h2h_click_count ?? 0}</li>
+                                  <li>H2H pairs: {admin?.counts?.h2h_started_count ?? 0}</li>
+                                  <li>H2H game overs: {admin?.counts?.h2h_game_over_count ?? 0}</li>
+                                  <li>H2H cancel queue: {admin?.counts?.h2h_cancel_queue_count ?? 0}</li>
+                                  <li>H2H opponent left: {admin?.counts?.h2h_opponent_left_count ?? 0}</li>
+                                  <li>H2H player left: {admin?.counts?.h2h_player_left_count ?? 0}</li>
+                                  <li>{HUMAN_VS_EUCLID_LABEL} clicks: {admin?.counts?.ai_click_count ?? 0}</li>
+                                  <li>{HUMAN_VS_EUCLID_LABEL} first moves: {admin?.counts?.ai_first_count ?? 0}</li>
+                                  <li>{HUMAN_VS_EUCLID_LABEL} completes: {admin?.counts?.ai_completed_count ?? 0}</li>
+                                </ul>
+                                <div className="font-bold mt-4 mb-2" style={{color:'var(--muted)'}}>{EUCLID_LABEL} difficulty breakdown</div>
   								<ul style={{color:'var(--text)', lineHeight:1.6, fontVariantNumeric:'tabular-nums'}}>
   									<li>doofus: {admin?.aiDiffs?.doofus ?? 0}</li>
   									<li>Goldfish: {admin?.aiDiffs?.goldfish ?? 0}</li>
@@ -1491,7 +1509,7 @@ export const App=()=>{
   			</table>
   			<div className="p-4 flex flex-wrap items-center justify-between" style={{borderTop:`1px solid var(--card-border)`, color:'var(--text)'}}>
   				<div>Active H2H games: <b>{admin?.activeGames ?? 0}</b></div>
-  				<div>Ranked players — H2H: <b>{admin?.rankedPlayers?.hvh ?? 0}</b> / HvA: <b>{admin?.rankedPlayers?.hva ?? 0}</b></div>
+                <div>Leaderboard entries — HvH: <b>{admin?.rankedPlayers?.hvh ?? 0}</b> / HvE: <b>{admin?.rankedPlayers?.hva ?? 0}</b></div>
   			</div>
   		</div>
   
@@ -1538,7 +1556,7 @@ export const App=()=>{
               setBoard(b); setWinner(null); soloRecordedRef.current=false; soloRecordStartedRef.current=false; setSoloShareReady(false); setSoloRecordBusy(false); aiFirstSentRef.current=false; setAiTie(false); setLocalChat([]); setSharedWins((current) => ({ ...current, ai: false }));
               setMode('ai');
             }}>
-            Play the Computer Instead …
+            Play against {EUCLID_LABEL} instead…
           </button>
         </div>
       </div>
@@ -1549,7 +1567,7 @@ export const App=()=>{
   else if(mode==='multiplayer' && isBoardValid(board)){
     const p1Id=(board as any).m_players?.[0]?.userId||''; const p2Id=(board as any).m_players?.[1]?.userId||'';
     const names=(board as any).playerNames||{}; const avatars=(board as any).playerAvatars||{};
-    const p1Name=names[p1Id]||'Player 1'; const p2Name=names[p2Id]||'Player 2';
+    const p1Name=names[p1Id]||'Redditor 1'; const p2Name=names[p2Id]||'Redditor 2';
     const isMyTurn=(board.m_turn===0)===isPlayer1;
 
     const onCellClick=async(x:number,y:number)=>{
@@ -1570,14 +1588,14 @@ export const App=()=>{
     };
 
     const midText = finalSide
-      ? ((finalSide===1 ? p1Name : p2Name) + ' wins!')
+      ? ((finalSide===1 ? p1Name : p2Name) + ' Wins!')
       : (spectating ? 'Spectating — read only' : (isMyTurn ? 'Your move' : `Waiting on ${(board.m_turn===0?p1Name:p2Name)}…`));
 
     const decided = finalSide ?? winner ?? null;
     const showWinner=!!decided;
     const winnerLabel = decided===1 ? p1Name : p2Name;
     const youAreWinner = (decided===1 && isPlayer1) || (decided===2 && !isPlayer1);
-    const winnerText = youAreWinner ? 'You win!' : `${winnerLabel} wins!`;
+    const winnerText = youAreWinner ? 'You Win!' : `${winnerLabel} Wins!`;
 
     const overlay = (notice || showWinner) ? (
       <div className="anim__animated anim__zoomIn"
@@ -1618,7 +1636,7 @@ export const App=()=>{
       if (!chat || !chat.items) return [];
       return chat.items.slice(-8).map((it:any)=>({
         id: it.id,
-        sender: names[it.sender] || (it.sender===p1Id?p1Name: it.sender===p2Id?p2Name: 'Player'),
+        sender: names[it.sender] || (it.sender===p1Id?p1Name: it.sender===p2Id?p2Name: 'Redditor'),
         text: it.text
       }));
     })();
@@ -1652,15 +1670,15 @@ export const App=()=>{
     const style=selectedStyle;
     const p1Name='You';
     const p2Name =
-      style===Board.PS_BRUTAL     ? 'Bot (Brutal)'          :
-      style===Board.PS_OFFENSIVE  ? 'Bot (Offensive)'       :
-      style===Board.PS_DEFENSIVE  ? 'Bot (Defensive)'       :
-      style===Board.PS_DOOFUS     ? 'Bot (doofus)'          :
-      style===Board.PS_GOLDFISH   ? 'Bot (Goldfish)'        :
-      style===Board.PS_BEGINNER   ? 'Bot (Beginner)'        :
-      style===Board.PS_COFFEE     ? 'Bot (Coffee-Deprived)' :
-      style===Board.PS_TENDERFOOT ? 'Bot (Tenderfoot)'      :
-                                    'Bot (Casual)';
+      style===Board.PS_BRUTAL     ? `${EUCLID_LABEL} (Brutal)`          :
+      style===Board.PS_OFFENSIVE  ? `${EUCLID_LABEL} (Offensive)`       :
+      style===Board.PS_DEFENSIVE  ? `${EUCLID_LABEL} (Defensive)`       :
+      style===Board.PS_DOOFUS     ? `${EUCLID_LABEL} (doofus)`          :
+      style===Board.PS_GOLDFISH   ? `${EUCLID_LABEL} (Goldfish)`        :
+      style===Board.PS_BEGINNER   ? `${EUCLID_LABEL} (Beginner)`        :
+      style===Board.PS_COFFEE     ? `${EUCLID_LABEL} (Coffee-Deprived)` :
+      style===Board.PS_TENDERFOOT ? `${EUCLID_LABEL} (Tenderfoot)`      :
+                                    `${EUCLID_LABEL} (Casual)`;
 
     const onCellClick=(x:number,y:number)=>{
       if(board.m_turn!==0 || board.m_board[y*board.W+x]>0 || winner || aiTie) return;
@@ -1695,14 +1713,14 @@ export const App=()=>{
       setBoard(board.clone());
     };
 
-    const midText = winner ? ((winner===1?'You':'Bot') + ' win!') : (aiTie ? 'Tie game!' : (board.m_turn===0 ? 'Your move' : 'Waiting on Bot…'));
+    const midText = winner ? (winner===1 ? 'You Win!' : `${EUCLID_LABEL} Wins!`) : (aiTie ? 'Tie game!' : (board.m_turn===0 ? 'Your move' : `Waiting on ${EUCLID_LABEL}…`));
 
     const overlay = (winner || aiTie) ? (
       <div className="anim__animated anim__zoomIn"
            style={{position:'fixed', inset:0, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50, background:'rgba(0,0,0,.55)'}}>
         <Confetti show={!!winner} />
         <div style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`, borderRadius:12, padding:'16px 22px', textAlign:'center'}}>
-          <div style={{fontSize:'1.2rem', fontWeight:800, marginBottom:8}}>{winner ? (winner===1?'You win!':'Bot wins!') : 'Tie game!'}</div>
+          <div style={{fontSize:'1.2rem', fontWeight:800, marginBottom:8}}>{winner ? (winner===1 ? 'You Win!' : `${EUCLID_LABEL} Wins!`) : 'Tie game!'}</div>
           {notice && <div style={{color:'var(--muted)', marginBottom:12}}>{notice}</div>}
           <button className="rounded cursor-pointer" data-share-exclude="true" style={{background:'#ef4444', color:'#fff', padding:'6px 12px'}}
             onClick={closeAiGame}>
@@ -2186,9 +2204,8 @@ const SharedPostView: React.FC<{ share: SharedPostPayload }> = ({ share }) => {
     );
   }
 
-  const board = Board.fromJSON(share.board);
-  const score1 = board.m_players[0]?.m_score ?? 0;
-  const score2 = board.m_players[1]?.m_score ?? 0;
+  const score1 = share.board.m_players[0]?.m_score ?? 0;
+  const score2 = share.board.m_players[1]?.m_score ?? 0;
 
   return (
     <div style={{minHeight:'100vh', overflowY:'auto', background:'radial-gradient(circle at top right, #17304f 0%, #07101d 48%)'}}>
@@ -2216,13 +2233,13 @@ const SharedPostView: React.FC<{ share: SharedPostPayload }> = ({ share }) => {
 
           <div style={{marginTop:24, background:'#132743', border:'1px solid #315781', borderRadius:26, padding:'20px 24px'}}>
             <div style={{color:'#86efac', fontSize:30, fontWeight:800}}>
-              {share.winnerSide === 1 ? `${share.p1Name} wins!` : `${share.p2Name} wins!`}
+              {share.winnerSide === 1 ? `${share.p1Name} Wins!` : `${share.p2Name} Wins!`}
             </div>
             <div style={{marginTop:8, color:'#cbd5e1', fontSize:18}}>{share.footer}</div>
           </div>
 
           <div style={{marginTop:28}}>
-            <BoardSnapshot board={board} />
+            <ReplayBoardCard board={share.board} theme="dark" />
           </div>
 
           <div style={{marginTop:20, color:'#94a3b8', fontSize:16}}>
