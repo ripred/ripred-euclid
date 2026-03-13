@@ -56,6 +56,10 @@ const SOLO_LAST = (uid: string) => `euclid:solo:last:${uid}`;
 const SHARE_RATE_MS = 10 * 1000;
 const SIDEBAR_PLAY_WIDGET_NAME = 'Euclid';
 const SIDEBAR_PLAY_WIDGET_DESC = 'Start a fresh Euclid match from the live game post.';
+const HUMAN_VS_EUCLID_LABEL = 'Redditor vs Euclid';
+const HUMAN_VS_HUMAN_LABEL = 'Redditor vs Redditor';
+const LEADERBOARD_LABEL = 'Leaderboard';
+const EUCLID_LABEL = 'Euclid';
 
 // AI baselines per difficulty
 const AI_BASE: Record<'doofus'|'goldfish'|'beginner'|'coffee'|'tenderfoot'|'casual'|'offensive'|'defensive'|'brutal', number> = {
@@ -367,15 +371,15 @@ function formatShareDate(input: string | number | Date = Date.now()) {
 
 function difficultyLabel(difficulty: AiDifficulty): string {
   switch (difficulty) {
-    case 'brutal': return 'Bot (Brutal)';
-    case 'offensive': return 'Bot (Offensive)';
-    case 'defensive': return 'Bot (Defensive)';
-    case 'doofus': return 'Bot (doofus)';
-    case 'goldfish': return 'Bot (Goldfish)';
-    case 'beginner': return 'Bot (Beginner)';
-    case 'coffee': return 'Bot (Coffee-Deprived)';
-    case 'tenderfoot': return 'Bot (Tenderfoot)';
-    default: return 'Bot (Casual)';
+    case 'brutal': return `${EUCLID_LABEL} (Brutal)`;
+    case 'offensive': return `${EUCLID_LABEL} (Offensive)`;
+    case 'defensive': return `${EUCLID_LABEL} (Defensive)`;
+    case 'doofus': return `${EUCLID_LABEL} (doofus)`;
+    case 'goldfish': return `${EUCLID_LABEL} (Goldfish)`;
+    case 'beginner': return `${EUCLID_LABEL} (Beginner)`;
+    case 'coffee': return `${EUCLID_LABEL} (Coffee-Deprived)`;
+    case 'tenderfoot': return `${EUCLID_LABEL} (Tenderfoot)`;
+    default: return `${EUCLID_LABEL} (Casual)`;
   }
 }
 
@@ -1184,22 +1188,22 @@ router.post('/api/share/rankings', async (req, res) => {
     const sharedAt = nowISO();
     const subredditName = context.subredditName || await reddit.getCurrentSubredditName();
     const title = bucket === 'hvh'
-      ? `Euclid Rankings — Human vs Human — ${formatShareDate()}`
-      : `Euclid Rankings — Human vs AI — ${formatShareDate()}`;
+      ? `Euclid ${LEADERBOARD_LABEL} — ${HUMAN_VS_HUMAN_LABEL} — ${formatShareDate()}`
+      : `Euclid ${LEADERBOARD_LABEL} — ${HUMAN_VS_EUCLID_LABEL} — ${formatShareDate()}`;
     const payload = await saveSharePayload({
       kind: 'rankings',
       subredditName,
       sharedAt,
       bucket,
-      title: 'Euclid Rankings',
-      subtitle: `${bucket === 'hvh' ? 'Human vs Human' : 'Human vs AI'} • ${formatShareDate(sharedAt)}`,
+      title: `Euclid ${LEADERBOARD_LABEL}`,
+      subtitle: `${bucket === 'hvh' ? HUMAN_VS_HUMAN_LABEL : HUMAN_VS_EUCLID_LABEL} • ${formatShareDate(sharedAt)}`,
       rows: rows.slice(0, 10),
     });
     const { post, sharedAs } = await createCustomSharePost(title, payload);
     slog('[SHARE] rankings posted', { uid, bucket, postId: post.id, sharedAs });
     return res.json({
       ok: true,
-      message: `Rankings shared to r/${subredditName}${sharedAs === 'APP' ? ' via the app account.' : '.'}`,
+      message: `${LEADERBOARD_LABEL} shared to r/${subredditName}${sharedAs === 'APP' ? ' via the app account.' : '.'}`,
       postId: post.id,
       permalink: post.permalink,
       sharedAs
@@ -1239,8 +1243,8 @@ router.post('/api/share/h2h-result', async (req, res) => {
     const u1 = board.m_players?.[0]?.userId || '';
     const u2 = board.m_players?.[1]?.userId || '';
     const names = board.playerNames || {};
-    const p1Name = names[u1] || 'Player 1';
-    const p2Name = names[u2] || 'Player 2';
+    const p1Name = names[u1] || 'Redditor 1';
+    const p2Name = names[u2] || 'Redditor 2';
     const winnerName = winnerUid === u1 ? p1Name : p2Name;
     const loserName = winnerUid === u1 ? p2Name : p1Name;
     const s1 = board.m_players?.[0]?.m_score ?? 0;
@@ -1248,17 +1252,17 @@ router.post('/api/share/h2h-result', async (req, res) => {
     const sharedAt = nowISO();
     const subredditName = context.subredditName || await reddit.getCurrentSubredditName();
     const title = byForfeit
-      ? `Euclid Result — ${winnerName} defeated ${loserName} by forfeit — ${formatShareDate()}`
-      : `Euclid Result — ${winnerName} defeated ${loserName} ${s1}-${s2} — ${formatShareDate()}`;
+      ? `${winnerName} Wins! — by forfeit — ${formatShareDate()}`
+      : `${winnerName} Wins! — ${s1}-${s2} — ${formatShareDate()}`;
     const boardForShare = serializeH2HBoard(board);
     const payload = await saveSharePayload({
       kind: 'result',
       subredditName,
       sharedAt,
       mode: 'h2h',
-      title: 'Euclid Result',
-      subtitle: `Human vs Human • ${formatShareDate(sharedAt)}`,
-      headline: byForfeit ? `${winnerName} wins by forfeit` : `${winnerName} defeats ${loserName}`,
+      title: `${winnerName} Wins!`,
+      subtitle: `${HUMAN_VS_HUMAN_LABEL} • ${formatShareDate(sharedAt)}`,
+      headline: byForfeit ? `${winnerName} Wins!` : `${winnerName} Wins!`,
       details: byForfeit
         ? `${winnerName} advanced after ${loserName} left the match.`
         : `${s1}-${s2} • ${shareScoringLabel(boardForShare.scoring)} scoring • ${boardForShare.W}x${boardForShare.H} board`,
@@ -1274,7 +1278,7 @@ router.post('/api/share/h2h-result', async (req, res) => {
     slog('[SHARE] h2h result posted', { uid, gid, postId: post.id, sharedAs });
     return res.json({
       ok: true,
-      message: `Winning result shared to r/${subredditName}${sharedAs === 'APP' ? ' via the app account.' : '.'}`,
+      message: `Win shared to r/${subredditName}${sharedAs === 'APP' ? ' via the app account.' : '.'}`,
       postId: post.id,
       permalink: post.permalink,
       sharedAs
@@ -1299,26 +1303,26 @@ router.post('/api/share/ai-result', async (req, res) => {
     if (!uid) return res.status(401).json({ ok: false, message: 'userId missing' });
 
     const recordRaw = await redis.get(SOLO_LAST(uid));
-    if (!recordRaw) return res.status(409).json({ ok: false, message: 'No recent AI result found to share.' });
+    if (!recordRaw) return res.status(409).json({ ok: false, message: `No recent ${HUMAN_VS_EUCLID_LABEL} result found to share.` });
 
     const record = JSON.parse(recordRaw) as SoloShareRecord;
-    if (record.result !== 'win') return res.status(409).json({ ok: false, message: 'Only a winning AI result can be shared.' });
+    if (record.result !== 'win') return res.status(409).json({ ok: false, message: `Only a winning ${HUMAN_VS_EUCLID_LABEL} result can be shared.` });
 
     await enforceShareRateLimit(uid, 'ai');
 
-    const username = (await reddit.getCurrentUsername()) || 'Player';
+    const username = (await reddit.getCurrentUsername()) || 'Redditor';
     const avatar = await redis.get(AVAKEY(uid));
     const botName = difficultyLabel(record.difficulty);
     const subredditName = context.subredditName || await reddit.getCurrentSubredditName();
-    const title = `Euclid Result — ${username} defeated ${botName} ${record.youScore}-${record.botScore} — ${formatShareDate(record.recordedAt)}`;
+    const title = `${username} Wins! — ${record.youScore}-${record.botScore} — ${formatShareDate(record.recordedAt)}`;
     const payload = await saveSharePayload({
       kind: 'result',
       subredditName,
       sharedAt: record.recordedAt,
       mode: 'ai',
-      title: 'Euclid Result',
-      subtitle: `AI victory • ${formatShareDate(record.recordedAt)}`,
-      headline: `${username} defeats ${botName}`,
+      title: `${username} Wins!`,
+      subtitle: `${HUMAN_VS_EUCLID_LABEL} • ${formatShareDate(record.recordedAt)}`,
+      headline: `${username} Wins!`,
       details: `${record.youScore}-${record.botScore} • ${shareScoringLabel(record.board.scoring)} scoring • ${record.board.W}x${record.board.H} board`,
       footer: `First to ${record.board.winScore} points • Shared from r/${subredditName}`,
       board: record.board,
@@ -1331,7 +1335,7 @@ router.post('/api/share/ai-result', async (req, res) => {
     slog('[SHARE] ai result posted', { uid, postId: post.id, sharedAs, difficulty: record.difficulty });
     return res.json({
       ok: true,
-      message: `AI victory shared to r/${subredditName}${sharedAs === 'APP' ? ' via the app account.' : '.'}`,
+      message: `Win shared to r/${subredditName}${sharedAs === 'APP' ? ' via the app account.' : '.'}`,
       postId: post.id,
       permalink: post.permalink,
       sharedAs

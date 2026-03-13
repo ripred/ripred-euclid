@@ -1,5 +1,5 @@
 export type Owner = 1 | 2;
-export type DemoStepId = 'place' | 'straight' | 'rotated' | 'size' | 'multi';
+export type DemoStepId = 'place' | 'straight' | 'rotated' | 'size' | 'block' | 'multi';
 export type DotSpec = { x: number; y: number; owner: Owner };
 export type PointSpec = { x: number; y: number };
 export type SquareSpec = {
@@ -35,58 +35,79 @@ const BOARD_W = 8;
 const BOARD_H = 8;
 
 const RECORDED_GAME: DemoMove[] = [
-  { x: 5, y: 5, owner: 1 },
+  { x: 0, y: 0, owner: 1 },
   { x: 1, y: 1, owner: 2 },
-  { x: 4, y: 1, owner: 1 },
+  { x: 7, y: 7, owner: 1 },
   { x: 3, y: 1, owner: 2 },
-  { x: 5, y: 2, owner: 1 },
+  { x: 0, y: 7, owner: 1 },
   { x: 1, y: 3, owner: 2 },
-  { x: 3, y: 2, owner: 1 },
-  { x: 3, y: 3, owner: 2 },
-  { x: 4, y: 3, owner: 1 },
-  { x: 0, y: 4, owner: 2 },
   { x: 6, y: 6, owner: 1 },
-  { x: 3, y: 4, owner: 2 },
-  { x: 6, y: 1, owner: 1 },
-  { x: 0, y: 7, owner: 2 },
-  { x: 7, y: 2, owner: 1 },
-  { x: 3, y: 7, owner: 2 },
-  { x: 6, y: 3, owner: 1 },
+  { x: 3, y: 3, owner: 2 },
+  { x: 5, y: 1, owner: 1 },
+  { x: 4, y: 0, owner: 2 },
+  { x: 6, y: 2, owner: 1 },
+  { x: 7, y: 0, owner: 2 },
+  { x: 5, y: 3, owner: 1 },
+  { x: 4, y: 3, owner: 2 },
+  { x: 4, y: 2, owner: 1 },
+  { x: 7, y: 3, owner: 2 },
+  { x: 0, y: 4, owner: 1 },
+  { x: 7, y: 1, owner: 2 },
+  { x: 2, y: 4, owner: 1 },
+  { x: 7, y: 2, owner: 2 },
+  { x: 0, y: 6, owner: 1 },
+  { x: 2, y: 6, owner: 2 },
+  { x: 5, y: 4, owner: 1 },
+  { x: 2, y: 0, owner: 2 },
+  { x: 7, y: 4, owner: 1 },
+  { x: 3, y: 0, owner: 2 },
+  { x: 7, y: 6, owner: 1 },
+  { x: 5, y: 0, owner: 2 },
+  { x: 3, y: 4, owner: 1 },
+  { x: 6, y: 0, owner: 2 },
+  { x: 3, y: 6, owner: 1 },
+  { x: 0, y: 1, owner: 2 },
+  { x: 5, y: 6, owner: 1 },
 ];
 
 const CAPTURED_STEPS = new Map<number, CapturedStepMeta>([
-  [7, {
+  [1, {
     id: 'place',
     title: 'Every turn places one dot',
-    buildBody: () => 'This real game starts with a normal setup move: one new dot on one empty point, then the turn passes.',
+    buildBody: () => 'This demo starts with a normal setup move: one new dot on one empty point, then the turn passes.',
   }],
   [8, {
     id: 'straight',
-    title: 'Straight squares score immediately',
+    title: 'Straight squares score immediately!',
     buildBody: (frame) => {
       const points = frame.newSquares.reduce((sum, square) => sum + square.points, 0);
       return `Blue closes a straight square here and scores ${points} points on that move.`;
     },
   }],
-  [9, {
+  [15, {
     id: 'rotated',
-    title: 'Rotated squares count too',
+    title: 'Rotated squares count too!',
     buildBody: (frame) => {
       const points = frame.newSquares.reduce((sum, square) => sum + square.points, 0);
-      return `Red answers in the same game with a leaning square for ${points} points. Rotated squares are fully legal.`;
+      return `Red answers in the same demo with a leaning square for ${points} points. Rotated squares are fully legal.`;
     },
   }],
   [16, {
     id: 'size',
-    title: 'Larger squares swing the score',
+    title: 'Larger squares swing the score!',
     buildBody: (frame) => {
       const points = frame.newSquares.reduce((sum, square) => sum + square.points, 0);
       return `Later, Blue finishes a larger square worth ${points} points and jumps ahead ${frame.scores[1]} to ${frame.scores[0]}.`;
     },
   }],
-  [17, {
+  [22, {
+    id: 'block',
+    title: 'You can block squares too!',
+    buildBody: () => 'Blue claims the last open corner Red needed, blocking that square before it can ever score.',
+  }],
+  [33, {
     id: 'multi',
-    title: 'One move can finish multiple squares',
+    title: 'One move can finish multiple squares!',
     buildBody: (frame) => {
       const count = frame.newSquares.length;
       const points = frame.newSquares.reduce((sum, square) => sum + square.points, 0);
