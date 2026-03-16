@@ -123,7 +123,8 @@ function pointIndex(x: number, y: number): number {
 function scoreSquare(corners: PointSpec[]): number {
   const xs = corners.map((point) => point.x);
   const ys = corners.map((point) => point.y);
-  return (Math.max(...xs) - Math.min(...xs) + 1) * (Math.max(...ys) - Math.min(...ys) + 1);
+  const side = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  return side * side;
 }
 
 function orderSquareCorners(corners: PointSpec[]): PointSpec[] {
