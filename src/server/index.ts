@@ -54,8 +54,6 @@ const SHARE_POST = (id: string) => `euclid:share:post:${id}`;
 const SHARE_RATE = (uid: string, kind: string) => `euclid:share:last:${kind}:${uid}`;
 const SOLO_LAST = (uid: string) => `euclid:solo:last:${uid}`;
 const SHARE_RATE_MS = 10 * 1000;
-const SIDEBAR_PLAY_WIDGET_NAME = 'Euclid';
-const SIDEBAR_PLAY_WIDGET_DESC = 'Start a fresh Euclid match from the live game post.';
 const HUMAN_VS_EUCLID_LABEL = 'Redditor vs Euclid';
 const HUMAN_VS_HUMAN_LABEL = 'Redditor vs Redditor';
 const LEADERBOARD_LABEL = 'Leaderboard';
@@ -481,81 +479,6 @@ function buildShareSplash(payload: SharedPostPayload) {
   };
 }
 
-function buildSidebarPlayButton(targetUrl: string) {
-  return {
-    kind: '',
-    text: 'Play New Game!',
-    url: targetUrl,
-    fillColor: '#16a34a',
-    textColor: '#ffffff',
-    color: '#14532d',
-  };
-}
-
-function fullRedditUrl(permalink: string) {
-  return new URL(permalink, 'https://www.reddit.com').toString();
-}
-
-async function ensureSidebarPlayWidget(postId: string) {
-  const metadata = context.metadata;
-  if (!metadata) return;
-
-  const subredditName = context.subredditName || await reddit.getCurrentSubredditName();
-  if (!subredditName) return;
-
-  const post = await reddit.getPostById(postId);
-  if (!post?.permalink) return;
-
-  const targetUrl = fullRedditUrl(post.permalink);
-  const widgetsClient = Devvit.redditAPIPlugins.Widgets;
-  const widgets = await widgetsClient.GetWidgets({ subreddit: subredditName }, metadata);
-  const sidebarOrder = widgets.layout?.sidebar?.order ?? [];
-  const sidebarItems = sidebarOrder
-    .map((id) => widgets.items[id])
-    .filter((item): item is NonNullable<typeof widgets.items[string]> => !!item);
-  const existing = sidebarItems.find((item) => item.kind === 'button' && item.shortName === SIDEBAR_PLAY_WIDGET_NAME);
-  const desiredButton = buildSidebarPlayButton(targetUrl);
-  const desiredStyles = { backgroundColor: '#0b1220', headerColor: '#16a34a' };
-  const currentButton = existing?.buttons?.[0];
-  const currentUrl = currentButton?.url || currentButton?.linkUrl || '';
-  const needsUpdate = !existing
-    || existing.description !== SIDEBAR_PLAY_WIDGET_DESC
-    || currentButton?.text !== desiredButton.text
-    || currentButton?.fillColor !== desiredButton.fillColor
-    || currentButton?.textColor !== desiredButton.textColor
-    || currentUrl !== targetUrl;
-
-  let widgetId = existing?.id;
-  if (!existing) {
-    const created = await widgetsClient.AddButtonWidget({
-      subreddit: subredditName,
-      shortName: SIDEBAR_PLAY_WIDGET_NAME,
-      description: SIDEBAR_PLAY_WIDGET_DESC,
-      buttons: [desiredButton],
-      styles: desiredStyles,
-    }, metadata);
-    widgetId = created.id;
-    slog('[SIDEBAR] created play widget', { subredditName, postId, widgetId, targetUrl });
-  } else if (needsUpdate) {
-    const updated = await widgetsClient.UpdateButtonWidget({
-      subreddit: subredditName,
-      id: existing.id,
-      shortName: SIDEBAR_PLAY_WIDGET_NAME,
-      description: SIDEBAR_PLAY_WIDGET_DESC,
-      buttons: [desiredButton],
-      styles: desiredStyles,
-    }, metadata);
-    widgetId = updated.id;
-    slog('[SIDEBAR] updated play widget', { subredditName, postId, widgetId, targetUrl });
-  }
-
-  if (widgetId && sidebarOrder[0] !== widgetId) {
-    const reordered = [widgetId, ...sidebarOrder.filter((id) => id !== widgetId)];
-    await widgetsClient.OrderWidgets({ subreddit: subredditName, order: reordered }, metadata);
-    slog('[SIDEBAR] moved play widget to top', { subredditName, widgetId });
-  }
-}
-
 async function createCustomSharePost(title: string, payload: SharedPostPayload) {
   const subredditName = context.subredditName || await reddit.getCurrentSubredditName();
   const descriptor: SharePostDescriptor = { shareType: payload.kind, shareId: payload.shareId };
@@ -653,10 +576,6 @@ router.get<{ postId: string }, InitResponse | { status: string; message: string 
         }
         return res.json({ type: 'share', postId, username, appVersion, share });
       }
-
-      void ensureSidebarPlayWidget(postId).catch((error) => {
-        console.error('[SIDEBAR] failed to ensure play widget', error);
-      });
 
       const count = await redis.get('count');
       res.json({ type: 'init', postId, count: count ? parseInt(count) : 0, username, appVersion });
@@ -1354,10 +1273,6 @@ router.post('/api/share/ai-result', async (req, res) => {
   }
 });
 
-router.post('/api/rankings/share', async (req, res) => {
-  req.url = '/api/share/rankings';
-  router.handle(req, res);
-});
 /* =========================
    Admin metrics summary
    ========================= */
