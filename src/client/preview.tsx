@@ -4,7 +4,7 @@ import { requestExpandedMode } from '@devvit/web/client';
 import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import type { InitResponse } from '../shared/types/api';
+import type { InitResponse, RankingsShareRow } from '../shared/types/api';
 import {
   DEMO_STEPS,
   IDLE_FRAME,
@@ -28,6 +28,8 @@ const DEMO_STEP_MS = 3600 + DEMO_POST_STEP_PAUSE_MS;
 const DEMO_MOVE_DELAY_MS = 850;
 const DEMO_SQUARE_DELAY_MS = 1650;
 const DEMO_TEXT_FADE_MS = 420;
+const DEMO_TO_LEADERBOARD_DELAY_MS = 5000;
+const LEADERBOARD_IDLE_MS = 10000;
 
 const boardLayout = {
   cols: 8,
@@ -45,6 +47,13 @@ const pointAt = (x: number, y: number) => ({
 const boardWidth = boardLayout.startX * 2 + boardLayout.gap * (boardLayout.cols - 1);
 const boardHeight = boardLayout.startY * 2 + boardLayout.gap * (boardLayout.rows - 1);
 const PREVIEW_BOARD_LANE_WIDTH = 218;
+const LEADERBOARD_REFRESH_MS = 60_000;
+
+type PreviewSurfaceMode = 'intro' | 'demo' | 'leaderboard';
+type PreviewRankings = {
+  hvh: RankingsShareRow[];
+  hva: RankingsShareRow[];
+};
 
 const previewPalette: Record<ThemeMode, {
   shellBg: string;
@@ -340,18 +349,263 @@ function PreviewBoard({
   );
 }
 
+function LeaderboardRow({
+  row,
+  index,
+  palette,
+}: {
+  row: RankingsShareRow;
+  index: number;
+  palette: typeof previewPalette.dark;
+}) {
+  const initial = row.name.trim().charAt(0).toUpperCase() || '?';
+
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'auto minmax(0, 1fr) auto',
+        gap: 10,
+        alignItems: 'center',
+        padding: '8px 10px',
+        borderRadius: 12,
+        background: palette.panelBg,
+        border: `1px solid ${palette.panelBorder}`,
+      }}
+    >
+      <div
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: '999px',
+          background: index < 3 ? 'linear-gradient(135deg, #f59e0b 0%, #f97316 100%)' : 'rgba(59,130,246,.18)',
+          color: index < 3 ? '#1f2937' : palette.accent,
+          display: 'grid',
+          placeItems: 'center',
+          fontSize: 12,
+          fontWeight: 900,
+        }}
+      >
+        {initial}
+      </div>
+
+      <div style={{ minWidth: 0, display: 'grid', gap: 1 }}>
+        <div
+          style={{
+            color: palette.title,
+            fontSize: 13,
+            fontWeight: 800,
+            lineHeight: 1.2,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {row.name}
+        </div>
+        <div style={{ color: palette.text, fontSize: 11, lineHeight: 1.25 }}>
+          {row.wins}W · {row.losses}L · {row.draws}D · {row.games}G
+        </div>
+      </div>
+
+      <div style={{ textAlign: 'right', minWidth: 48 }}>
+        <div style={{ color: palette.title, fontSize: 13, fontWeight: 900 }}>
+          {row.rating}
+        </div>
+        <div style={{ color: palette.text, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          rating
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LeaderboardBucket({
+  title,
+  subtitle,
+  rows,
+  palette,
+}: {
+  title: string;
+  subtitle: string;
+  rows: RankingsShareRow[];
+  palette: typeof previewPalette.dark;
+}) {
+  return (
+    <div
+      style={{
+        minHeight: 0,
+        display: 'grid',
+        gridTemplateRows: 'auto minmax(0, 1fr)',
+        gap: 8,
+      }}
+    >
+      <div style={{ display: 'grid', gap: 2 }}>
+        <div style={{ color: palette.title, fontSize: 14, fontWeight: 900 }}>
+          {title}
+        </div>
+        <div style={{ color: palette.text, fontSize: 11, lineHeight: 1.35 }}>
+          {subtitle}
+        </div>
+      </div>
+
+      {rows.length ? (
+        <div style={{ display: 'grid', gap: 6 }}>
+          {rows.map((row, index) => (
+            <LeaderboardRow key={`${title}-${row.userId}-${index}`} row={row} index={index} palette={palette} />
+          ))}
+        </div>
+      ) : (
+        <div
+          style={{
+            borderRadius: 12,
+            border: `1px dashed ${palette.panelBorder}`,
+            padding: '12px 10px',
+            color: palette.text,
+            fontSize: 12,
+            lineHeight: 1.45,
+          }}
+        >
+          No entries yet. Be the first redditor to claim this board.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PreviewLeaderboard({
+  palette,
+  rankings,
+  rankingsLoading,
+  rankingsError,
+  onInteract,
+}: {
+  palette: typeof previewPalette.dark;
+  rankings: PreviewRankings;
+  rankingsLoading: boolean;
+  rankingsError: string | null;
+  onInteract: () => void;
+}) {
+  const hasRows = rankings.hvh.length > 0 || rankings.hva.length > 0;
+
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateRows: 'auto minmax(0, 1fr)',
+        gap: 10,
+        flex: '1 1 100%',
+        minHeight: 0,
+      }}
+    >
+      <div style={{ display: 'grid', gap: 6 }}>
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 800,
+            letterSpacing: '0.16em',
+            textTransform: 'uppercase',
+            color: palette.accent,
+          }}
+        >
+          Euclid Leaderboard
+        </div>
+        <div style={{ fontSize: 30, fontWeight: 900, lineHeight: 1 }}>
+          Top Redditors Right Now
+        </div>
+        <div style={{ color: palette.text, fontSize: 14, maxWidth: 520 }}>
+          Watch the splash cycle into live standings, then jump into the full game whenever you’re ready.
+        </div>
+      </div>
+
+      <div
+        style={{
+          borderRadius: 18,
+          background: palette.panelBg,
+          border: `1px solid ${palette.panelBorder}`,
+          padding: '12px 12px 10px',
+          minHeight: 0,
+          display: 'grid',
+          gridTemplateRows: 'auto minmax(0, 1fr)',
+          gap: 10,
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ color: palette.title, fontSize: 15, fontWeight: 900 }}>
+            Live standings
+          </div>
+          <div style={{ color: palette.text, fontSize: 12 }}>
+            Scroll to explore both boards.
+          </div>
+        </div>
+
+        {rankingsLoading && !hasRows ? (
+          <div style={{ color: palette.text, fontSize: 13, lineHeight: 1.5 }}>
+            Loading leaderboard…
+          </div>
+        ) : rankingsError && !hasRows ? (
+          <div style={{ color: palette.text, fontSize: 13, lineHeight: 1.5 }}>
+            Unable to load the live leaderboard right now. Open the full game to see the latest standings.
+          </div>
+        ) : (
+          <div
+            onPointerDown={onInteract}
+            onTouchStart={onInteract}
+            onWheel={onInteract}
+            onScroll={onInteract}
+            style={{
+              minHeight: 0,
+              overflowY: 'auto',
+              paddingRight: 4,
+            }}
+          >
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: 10,
+                alignItems: 'start',
+              }}
+            >
+              <LeaderboardBucket
+                title="Redditor vs Redditor"
+                subtitle="Competitive matches between two human players."
+                rows={rankings.hvh}
+                palette={palette}
+              />
+              <LeaderboardBucket
+                title={HUMAN_VS_EUCLID_LABEL}
+                subtitle="Best records against Euclid."
+                rows={rankings.hva}
+                palette={palette}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const PreviewApp = () => {
   const [theme, setTheme] = useState<ThemeMode>('dark');
   const [initState, setInitState] = useState<InitResponse | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
-  const [demoActive, setDemoActive] = useState(false);
+  const [surfaceMode, setSurfaceMode] = useState<PreviewSurfaceMode>('intro');
   const [demoStepIndex, setDemoStepIndex] = useState(0);
   const [demoPhase, setDemoPhase] = useState<0 | 1 | 2>(0);
   const [displayedDemoStep, setDisplayedDemoStep] = useState<DemoStep | null>(null);
   const [demoTextVisible, setDemoTextVisible] = useState(true);
-  const [idleVersion, setIdleVersion] = useState(0);
+  const [rankings, setRankings] = useState<PreviewRankings>({ hvh: [], hva: [] });
+  const [rankingsLoading, setRankingsLoading] = useState(false);
+  const [rankingsError, setRankingsError] = useState<string | null>(null);
+  const [leaderboardActivityVersion, setLeaderboardActivityVersion] = useState(0);
   const [reduceMotion, setReduceMotion] = useState(false);
-  const lastInteractionRef = useRef(0);
+  const [isDocumentVisible, setIsDocumentVisible] = useState(
+    typeof document === 'undefined' ? true : document.visibilityState === 'visible',
+  );
+  const rankingsLoadedAtRef = useRef(0);
 
   useEffect(() => {
     return installThemeModeSync((nextTheme) => {
@@ -383,6 +637,12 @@ const PreviewApp = () => {
   }, []);
 
   useEffect(() => {
+    const onVisibility = () => setIsDocumentVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+
+  useEffect(() => {
     const media = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
     const sync = () => setReduceMotion(Boolean(media?.matches));
     sync();
@@ -396,83 +656,80 @@ const PreviewApp = () => {
   }, []);
 
   useEffect(() => {
-    if (reduceMotion || demoActive || document.visibilityState !== 'visible') return;
+    if (!initState || initState.type === 'share') return;
+    let cancelled = false;
+
+    const loadRankings = async (showSpinner: boolean) => {
+      if (showSpinner) setRankingsLoading(true);
+      try {
+        setRankingsError(null);
+        const response = await fetch('/api/rankings');
+        const data = await response.json();
+        if (!response.ok) throw new Error(data?.message || 'Unable to load the leaderboard.');
+        if (cancelled) return;
+        setRankings({
+          hvh: Array.isArray(data?.hvh) ? data.hvh as RankingsShareRow[] : [],
+          hva: Array.isArray(data?.hva) ? data.hva as RankingsShareRow[] : [],
+        });
+        rankingsLoadedAtRef.current = Date.now();
+      } catch (error: any) {
+        if (!cancelled) setRankingsError(error?.message || 'Unable to load the leaderboard.');
+      } finally {
+        if (!cancelled) setRankingsLoading(false);
+      }
+    };
+
+    void loadRankings(true);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initState]);
+
+  useEffect(() => {
+    if (surfaceMode !== 'intro' || !isDocumentVisible) return;
     const timer = window.setTimeout(() => {
       setDemoStepIndex(0);
-      setDemoActive(true);
+      setDemoPhase(0);
+      setSurfaceMode('demo');
     }, DEMO_START_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [demoActive, idleVersion, reduceMotion]);
+  }, [isDocumentVisible, surfaceMode]);
 
   useEffect(() => {
-    if (!demoActive || reduceMotion) return;
-    const timer = window.setInterval(() => {
-      setDemoStepIndex((current) => (current + 1) % DEMO_STEPS.length);
-    }, DEMO_STEP_MS);
-    return () => window.clearInterval(timer);
-  }, [demoActive, reduceMotion]);
-
-  useEffect(() => {
-    if (!demoActive) {
-      setDemoPhase(0);
-      return;
-    }
+    if (surfaceMode !== 'demo' || !isDocumentVisible) return;
     setDemoPhase(0);
     const moveTimer = window.setTimeout(() => setDemoPhase(1), DEMO_MOVE_DELAY_MS);
     const squareTimer = window.setTimeout(() => setDemoPhase(2), DEMO_SQUARE_DELAY_MS);
+    const isLastStep = demoStepIndex >= DEMO_STEPS.length - 1;
+    const nextTimer = window.setTimeout(() => {
+      if (isLastStep) {
+        setSurfaceMode('leaderboard');
+        setLeaderboardActivityVersion(0);
+        return;
+      }
+      setDemoStepIndex((current) => current + 1);
+    }, isLastStep ? DEMO_SQUARE_DELAY_MS + DEMO_TO_LEADERBOARD_DELAY_MS : DEMO_STEP_MS);
+
     return () => {
       window.clearTimeout(moveTimer);
       window.clearTimeout(squareTimer);
+      window.clearTimeout(nextTimer);
     };
-  }, [demoActive, demoStepIndex]);
-
-  useEffect(() => {
-    const noteActivity = () => {
-      const now = Date.now();
-      if (now - lastInteractionRef.current < 300) return;
-      lastInteractionRef.current = now;
-      setDemoActive(false);
-      setDemoPhase(0);
-      setDemoStepIndex(0);
-      setIdleVersion((current) => current + 1);
-    };
-
-    const onVisibility = () => {
-      if (document.visibilityState !== 'visible') {
-        setDemoActive(false);
-        setDemoPhase(0);
-        setDemoStepIndex(0);
-        return;
-      }
-      setIdleVersion((current) => current + 1);
-    };
-
-    const events: Array<keyof WindowEventMap> = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'];
-    for (const eventName of events) window.addEventListener(eventName, noteActivity, { passive: true });
-    document.addEventListener('visibilitychange', onVisibility);
-
-    return () => {
-      for (const eventName of events) window.removeEventListener(eventName, noteActivity);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, []);
+  }, [demoStepIndex, isDocumentVisible, surfaceMode]);
 
   const palette = previewPalette[theme];
-  const demoStep = demoActive ? DEMO_STEPS[demoStepIndex] : null;
+  const demoStep = surfaceMode === 'demo' ? DEMO_STEPS[demoStepIndex] : null;
   const textStep = displayedDemoStep ?? demoStep;
   const sharedPost = initState?.type === 'share' ? initState.share : null;
 
   useEffect(() => {
-    if (reduceMotion) {
-      setDisplayedDemoStep(demoStep);
-      setDemoTextVisible(true);
-      return;
-    }
-    if (!demoStep) {
+    if (surfaceMode !== 'demo') {
       setDisplayedDemoStep(null);
       setDemoTextVisible(true);
       return;
     }
+    if (!demoStep) return;
     if (!displayedDemoStep) {
       setDisplayedDemoStep(demoStep);
       setDemoTextVisible(true);
@@ -487,7 +744,61 @@ const PreviewApp = () => {
     }, DEMO_TEXT_FADE_MS);
 
     return () => window.clearTimeout(timer);
-  }, [demoStep, displayedDemoStep, reduceMotion]);
+  }, [demoStep, displayedDemoStep, reduceMotion, surfaceMode]);
+
+  useEffect(() => {
+    if (surfaceMode !== 'leaderboard' || !isDocumentVisible) return;
+    const timer = window.setTimeout(() => {
+      setSurfaceMode('intro');
+      setDemoStepIndex(0);
+      setDemoPhase(0);
+      setDisplayedDemoStep(null);
+      setDemoTextVisible(true);
+    }, LEADERBOARD_IDLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [isDocumentVisible, leaderboardActivityVersion, surfaceMode]);
+
+  useEffect(() => {
+    if (
+      surfaceMode !== 'leaderboard'
+      || rankingsLoading
+      || !initState
+      || initState.type === 'share'
+      || Date.now() - rankingsLoadedAtRef.current < LEADERBOARD_REFRESH_MS
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const refreshRankings = async () => {
+      try {
+        setRankingsError(null);
+        const response = await fetch('/api/rankings');
+        const data = await response.json();
+        if (!response.ok) throw new Error(data?.message || 'Unable to load the leaderboard.');
+        if (cancelled) return;
+        setRankings({
+          hvh: Array.isArray(data?.hvh) ? data.hvh as RankingsShareRow[] : [],
+          hva: Array.isArray(data?.hva) ? data.hva as RankingsShareRow[] : [],
+        });
+        rankingsLoadedAtRef.current = Date.now();
+      } catch (error: any) {
+        if (!cancelled) setRankingsError(error?.message || 'Unable to load the leaderboard.');
+      }
+    };
+
+    void refreshRankings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initState, rankingsLoading, surfaceMode]);
+
+  const noteLeaderboardInteraction = () => {
+    if (surfaceMode !== 'leaderboard') return;
+    setLeaderboardActivityVersion((current) => current + 1);
+  };
 
   const openGame = (event: React.MouseEvent<HTMLButtonElement>) => {
     try {
@@ -557,100 +868,109 @@ const PreviewApp = () => {
           backdropFilter: 'blur(10px)',
           boxSizing: 'border-box',
         }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'stretch',
-            justifyContent: 'space-between',
-            gap: 10,
-            flexWrap: 'wrap',
-            minHeight: 0,
-          }}
         >
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateRows: 'auto 1fr',
-              alignSelf: 'stretch',
-              gap: 14,
-              flex: '1 1 280px',
-              minWidth: 0,
-            }}
-          >
-            <div style={{ display: 'grid', gap: 6 }}>
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: 800,
-                  letterSpacing: '0.16em',
-                  textTransform: 'uppercase',
-                  color: palette.accent,
-                }}
-              >
-                Reddit Strategy Game
-              </div>
-              <div style={{ fontSize: 34, fontWeight: 900, lineHeight: 1 }}>
-                Euclid
-              </div>
-              <div style={{ color: palette.text, fontSize: 14, maxWidth: 420 }}>
-                Place dots. Complete squares. Rotated shapes count. Beat {EUCLID_LABEL} or
-                outplay another redditor.
-              </div>
-            </div>
-
+          {surfaceMode === 'leaderboard' ? (
+            <PreviewLeaderboard
+              palette={palette}
+              rankings={rankings}
+              rankingsLoading={rankingsLoading}
+              rankingsError={rankingsError}
+              onInteract={noteLeaderboardInteraction}
+            />
+          ) : (
             <div
               style={{
-                borderRadius: 16,
-                background: palette.panelBg,
-                border: `1px solid ${palette.panelBorder}`,
-                width: 'calc(100% + 10px)',
-                marginRight: -10,
-                padding: '10px 12px',
-                minHeight: 152,
-                color: palette.text,
-                fontSize: 13,
-                lineHeight: 1.5,
-                overflow: 'hidden',
-                display: 'grid',
-                alignContent: 'center',
+                display: 'flex',
+                alignItems: 'stretch',
+                justifyContent: 'space-between',
+                gap: 10,
+                flexWrap: 'wrap',
+                minHeight: 0,
               }}
             >
-              <div style={{ color: palette.accent, fontSize: 12, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                <span style={{ display: 'inline-block', transform: 'translateY(-10px)' }}>
-                  {textStep ? 'Quick Demo' : 'First Time Here?'}
-                </span>
-              </div>
-              {textStep ? (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateRows: 'auto 1fr',
+                  alignSelf: 'stretch',
+                  gap: 14,
+                  flex: '1 1 280px',
+                  minWidth: 0,
+                }}
+              >
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 800,
+                      letterSpacing: '0.16em',
+                      textTransform: 'uppercase',
+                      color: palette.accent,
+                    }}
+                  >
+                    Reddit Strategy Game
+                  </div>
+                  <div style={{ fontSize: 34, fontWeight: 900, lineHeight: 1 }}>
+                    Euclid
+                  </div>
+                  <div style={{ color: palette.text, fontSize: 14, maxWidth: 420 }}>
+                    Place dots. Complete squares. Rotated shapes count. Beat {EUCLID_LABEL} or
+                    outplay another redditor.
+                  </div>
+                </div>
+
                 <div
                   style={{
+                    borderRadius: 16,
+                    background: palette.panelBg,
+                    border: `1px solid ${palette.panelBorder}`,
+                    width: 'calc(100% + 10px)',
+                    marginRight: -10,
+                    padding: '10px 12px',
+                    minHeight: 152,
+                    color: palette.text,
+                    fontSize: 13,
+                    lineHeight: 1.5,
+                    overflow: 'hidden',
                     display: 'grid',
-                    gap: 6,
-                    opacity: demoTextVisible ? 1 : 0,
-                    transition: reduceMotion ? 'none' : `opacity ${DEMO_TEXT_FADE_MS}ms ease`,
+                    alignContent: 'center',
                   }}
                 >
-                  <div style={{ fontSize: 15, fontWeight: 800, color: palette.title }}>
-                    {textStep.title}
+                  <div style={{ color: palette.accent, fontSize: 12, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                    <span style={{ display: 'inline-block', transform: 'translateY(-10px)' }}>
+                      {textStep ? 'Quick Demo' : 'First Time Here?'}
+                    </span>
                   </div>
-                  <div>{textStep.body}</div>
+                  {textStep ? (
+                    <div
+                      style={{
+                        display: 'grid',
+                        gap: 6,
+                        opacity: demoTextVisible ? 1 : 0,
+                        transition: reduceMotion ? 'none' : `opacity ${DEMO_TEXT_FADE_MS}ms ease`,
+                      }}
+                    >
+                      <div style={{ fontSize: 15, fontWeight: 800, color: palette.title }}>
+                        {textStep.title}
+                      </div>
+                      <div>{textStep.body}</div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: palette.title }}>
+                        8×8 Demo
+                      </div>
+                      <div>
+                        Pause here for a few seconds and Euclid will replay a short 8×8 game sequence to explain the rules.
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div style={{ display: 'grid', gap: 6 }}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: palette.title }}>
-                    8×8 Demo
-                  </div>
-                  <div>
-                    Pause here for a few seconds and Euclid will replay a short 8×8 game sequence to explain the rules.
-                  </div>
-                </div>
-              )}
+              </div>
+
+              <PreviewBoard demoStep={demoStep} demoPhase={demoPhase} palette={palette} />
             </div>
-          </div>
-
-          <PreviewBoard demoStep={demoStep} demoPhase={demoPhase} palette={palette} />
-        </div>
-
+          )}
         <div
           style={{
             borderRadius: 16,
