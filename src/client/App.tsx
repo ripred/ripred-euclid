@@ -272,13 +272,18 @@ class Board{
   pointAt(x:number,y:number){ return new Point(x,y, y*this.W + x); }
   createRandomizedRange(size:number){ const a=[...Array(size).keys()]; for(let p=0;p<size*size;p++){ const i=Math.floor(Math.random()*size),j=Math.floor(Math.random()*size); if(i!==j){[a[i],a[j]]=[a[j],a[i]]}} return a; }
 
+  private enclosingSquareScore(p1:Point,p2:Point,p3:Point,p4:Point):number{
+    const left = Math.min(p1.x,p2.x,p3.x,p4.x);
+    const right = Math.max(p1.x,p2.x,p3.x,p4.x);
+    const top = Math.min(p1.y,p2.y,p3.y,p4.y);
+    const bottom = Math.max(p1.y,p2.y,p3.y,p4.y);
+    const side = Math.max(right-left, bottom-top);
+    return side * side;
+  }
+
   private scoreSquare(p1:Point,p2:Point,p3:Point,p4:Point):number{
     if(this.scoring==='bbox'){
-      const left = Math.min(p1.x,p2.x,p3.x,p4.x);
-      const right = Math.max(p1.x,p2.x,p3.x,p4.x);
-      const top = Math.min(p1.y,p2.y,p3.y,p4.y);
-      const bottom = Math.max(p1.y,p2.y,p3.y,p4.y);
-      return (right-left+1)*(bottom-top+1);
+      return this.enclosingSquareScore(p1,p2,p3,p4);
     } else {
       const pts=[p1,p2,p3,p4]; let minD2=Infinity;
       for(let i=0;i<4;i++) for(let j=i+1;j<4;j++){
@@ -312,8 +317,12 @@ class Board{
           this.m_players[this.m_turn].m_lastNumSquares++;
         }
       } else if(potential){
-        const left=Math.min(x,col,x1,x2), top=Math.min(y,row,y1,y2), right=Math.max(x,col,x1,x2), bottom=Math.max(y,row,y1,y2);
-        sq.points=(right-left+1)*(bottom-top+1);
+        sq.points=this.enclosingSquareScore(
+          this.pointAt(x,y),
+          this.pointAt(col,row),
+          this.pointAt(x1,y1),
+          this.pointAt(x2,y2),
+        );
         if(!potential.some(s=>s.p1.index===sq.p1.index&&s.p2.index===sq.p2.index&&s.p3.index===sq.p3.index&&s.p4.index===sq.p4.index&&s.points===sq.points&&s.remain===sq.remain&&s.clr===sq.clr)){
           potential.push(sq);
         }
@@ -459,11 +468,15 @@ const isBoardValid = (b:any): b is Board =>
 function bestCaseScorePerPlayer(W:number,H:number, scoring:'bbox'|'true'): number {
   const seen = new Set<string>();
   let sum = 0;
+  const enclosingSquareScore = (p1:{x:number;y:number},p2:{x:number;y:number},p3:{x:number;y:number},p4:{x:number;y:number})=>{
+    const left=Math.min(p1.x,p2.x,p3.x,p4.x), right=Math.max(p1.x,p2.x,p3.x,p4.x);
+    const top=Math.min(p1.y,p2.y,p3.y,p4.y), bottom=Math.max(p1.y,p2.y,p3.y,p4.y);
+    const side=Math.max(right-left, bottom-top);
+    return side*side;
+  };
   const scoreSquare = (p1:{x:number;y:number},p2:{x:number;y:number},p3:{x:number;y:number},p4:{x:number;y:number})=>{
     if (scoring==='bbox'){
-      const left=Math.min(p1.x,p2.x,p3.x,p4.x), right=Math.max(p1.x,p2.x,p3.x,p4.x);
-      const top=Math.min(p1.y,p2.y,p3.y,p4.y), bottom=Math.max(p1.y,p2.y,p3.y,p4.y);
-      return (right-left+1)*(bottom-top+1);
+      return enclosingSquareScore(p1,p2,p3,p4);
     } else {
       let minD2=Infinity;
       const pts=[p1,p2,p3,p4];
@@ -507,7 +520,7 @@ const formatDisplayDate = (input: string | number | Date = Date.now()) =>
   new Date(input).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
 const boardScoringLabel = (scoring: SerializableBoard['scoring']) =>
-  scoring === 'true' ? 'True Area' : 'Bounding Rectangle';
+  scoring === 'true' ? 'True Area' : 'Enclosing Square';
 
 /* ===== App (UI + flows) ===== */
 type Mode='ai'|'multiplayer'|'spectate'|'rankings'|'admin'|'options'|null;
@@ -1003,7 +1016,7 @@ export const App=()=>{
           <ul style={{paddingLeft: '1.2em', listStyle:'disc'}}>
               <li>Players take turns placing a dot on a grid.</li>
               <li>A <b>square</b> is completed when all four of its corner cells are your color. The four corners don't need to be axis-aligned — they can form a rotated square.</li>
-              <li><b>Scoring ({HUMAN_VS_EUCLID_LABEL} mode configurable):</b> <i>Bounding Rectangle</i> or <i>True Area</i> (side²).</li>
+              <li><b>Scoring ({HUMAN_VS_EUCLID_LABEL} mode configurable):</b> <i>Enclosing Square</i> or <i>True Area</i> (side²).</li>
               <li>One move can complete multiple squares; you score the sum.</li>
               <li>First to the selected <b>Win Score</b> wins; if the board fills with unequal points, higher total wins.</li>
           </ul>
@@ -1022,7 +1035,7 @@ export const App=()=>{
         <ol style={{paddingLeft: '1.2em', listStyle:'decimal'}}>
           <li>Place dots on the grid alternately with the other side.</li>
           <li>Form squares by connecting four dots of your color (can be rotated).</li>
-          <li>Score points based on square size (bounding or true area).</li>
+          <li>Score points based on square size (enclosing square or true area).</li>
           <li>Reach the win score first to victory!</li>
         </ol>
         <div style={{display:'flex', justifyContent:'flex-end', marginTop:12}}>
@@ -1100,7 +1113,7 @@ export const App=()=>{
 
         {/* Brief settings summary */}
         <div className="glint-wrap text-sm" style={{color:'var(--muted)'}}>
-          Board: {boardW}×{boardH} • Scoring: {scoringMode==='bbox'?'Bounding':'True'} • Win: {winScore} • Difficulty: {styleName} • Assist: {assistOn?'On':'Off'}
+          Board: {boardW}×{boardH} • Scoring: {scoringMode==='bbox'?'Enclosing':'True'} • Win: {winScore} • Difficulty: {styleName} • Assist: {assistOn?'On':'Off'}
         </div>
 
         {/* Primary Buttons */}
@@ -1210,7 +1223,7 @@ export const App=()=>{
               <div>
                 <label className="font-medium block mb-1" style={{color:'var(--muted)'}}>Scoring</label>
                 <select className="rounded px-3 py-2 w-full" style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`}} value={scoringMode} onChange={(e)=>setScoringMode(e.target.value as 'bbox'|'true')}>
-                  <option value="bbox">Bounding Rectangle</option>
+                  <option value="bbox">Enclosing Square</option>
                   <option value="true">True Area (side²)</option>
                 </select>
               </div>

@@ -382,7 +382,7 @@ function difficultyLabel(difficulty: AiDifficulty): string {
 }
 
 function shareScoringLabel(scoring: SerializableBoard['scoring']) {
-  return scoring === 'true' ? 'True Area' : 'Bounding Rectangle';
+  return scoring === 'true' ? 'True Area' : 'Enclosing Square';
 }
 
 function serializeH2HBoard(board: BoardJSON): SerializableBoard {
