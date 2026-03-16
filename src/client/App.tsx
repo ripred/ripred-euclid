@@ -553,10 +553,6 @@ export const App=()=>{
   const [soloRecordBusy, setSoloRecordBusy] = useState(false);
   const [shareBusy, setShareBusy] = useState<string | null>(null);
   const [sharedWins, setSharedWins] = useState({ ai: false, multiplayer: false });
-  const rankingsHvhRef = useRef<HTMLDivElement | null>(null);
-  const rankingsHvaRef = useRef<HTMLDivElement | null>(null);
-  const multiplayerCaptureRef = useRef<HTMLDivElement | null>(null);
-  const aiCaptureRef = useRef<HTMLDivElement | null>(null);
 
   // Chat (global overlay + data)
   const [chatOpen,setChatOpen]=useState(false);
@@ -1276,17 +1272,15 @@ export const App=()=>{
       title,
       rows,
       accent,
-      bucket,
-      captureRef
+      bucket
     }:{
       title:string;
       rows:any[];
       accent:'red'|'blue';
       bucket: ShareBucket;
-      captureRef: React.RefObject<HTMLDivElement | null>;
     }) => (
       <div className="w-[min(720px,92vw)]">
-        <div ref={captureRef}>
+        <div>
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-xl font-extrabold" style={{color:'var(--text)'}}>{title}</h2>
           </div>
@@ -1327,7 +1321,6 @@ export const App=()=>{
         <div style={{marginTop:8, display:'flex', justifyContent:'flex-end'}}>
           <button
             className="rounded cursor-pointer"
-            data-share-exclude="true"
             disabled={shareBusy === `rankings:${bucket}`}
             style={{background:'#16a34a', color:'#fff', padding:'6px 12px', opacity:shareBusy === `rankings:${bucket}` ? 0.7 : 1}}
             onClick={()=>shareRankings(bucket)}
@@ -1345,11 +1338,11 @@ export const App=()=>{
           <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)'}}>Euclid — {LEADERBOARD_LABEL}</h1>
         </div>
         <div className="flex-1 overflow-y-auto w-full flex flex-col items-center gap-6" style={{paddingBottom:8}}>
-          <Section title={HUMAN_VS_HUMAN_LABEL} rows={rankings.hvh} accent="red" bucket="hvh" captureRef={rankingsHvhRef} />
-          <Section title={HUMAN_VS_EUCLID_LABEL} rows={rankings.hva} accent="blue" bucket="hva" captureRef={rankingsHvaRef} />
+          <Section title={HUMAN_VS_HUMAN_LABEL} rows={rankings.hvh} accent="red" bucket="hvh" />
+          <Section title={HUMAN_VS_EUCLID_LABEL} rows={rankings.hva} accent="blue" bucket="hva" />
         </div>
         <div style={{padding:12}}>
-          <button className="rounded cursor-pointer" data-share-exclude="true" style={{background:'#6b7280', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setMode(null); }}>
+          <button className="rounded cursor-pointer" style={{background:'#6b7280', color:'#fff', padding:'6px 12px'}} onClick={()=>{ setMode(null); }}>
             Back
           </button>
         </div>
@@ -1611,14 +1604,13 @@ export const App=()=>{
           ) : (
             <div style={{fontSize:'1.1rem', fontWeight:800, marginBottom:8}}>{notice}</div>
           )}
-          <button className="rounded cursor-pointer" data-share-exclude="true" style={{background:'#ef4444', color:'#fff', padding:'6px 12px'}}
+          <button className="rounded cursor-pointer" style={{background:'#ef4444', color:'#fff', padding:'6px 12px'}}
             onClick={leaveMultiplayer}>
             Close
           </button>
           {mode === 'multiplayer' && showWinner && youAreWinner && !spectating && !sharedWins.multiplayer && (
             <button
               className="rounded cursor-pointer ml-2"
-              data-share-exclude="true"
               disabled={shareBusy === 'multiplayer'}
               style={{background:'#16a34a', color:'#fff', padding:'6px 12px', opacity:shareBusy === 'multiplayer' ? 0.7 : 1}}
               onClick={shareMultiplayerWin}
@@ -1660,7 +1652,6 @@ export const App=()=>{
         chatItems={chatItems}
         assistOn={assistOn}
         myColor={isPlayer1?1:2}
-        captureRef={multiplayerCaptureRef}
       />
     );
   }
@@ -1722,14 +1713,13 @@ export const App=()=>{
         <div style={{background:'var(--card-bg)', color:'var(--text)', border:`1px solid var(--card-border)`, borderRadius:12, padding:'16px 22px', textAlign:'center'}}>
           <div style={{fontSize:'1.2rem', fontWeight:800, marginBottom:8}}>{winner ? (winner===1 ? 'You Win!' : `${EUCLID_LABEL} Wins!`) : 'Tie game!'}</div>
           {notice && <div style={{color:'var(--muted)', marginBottom:12}}>{notice}</div>}
-          <button className="rounded cursor-pointer" data-share-exclude="true" style={{background:'#ef4444', color:'#fff', padding:'6px 12px'}}
+          <button className="rounded cursor-pointer" style={{background:'#ef4444', color:'#fff', padding:'6px 12px'}}
             onClick={closeAiGame}>
             Close
           </button>
           {winner===1 && !sharedWins.ai && (
             <button
               className="rounded cursor-pointer ml-2"
-              data-share-exclude="true"
               disabled={shareBusy === 'ai' || soloRecordBusy}
               style={{background:'#16a34a', color:'#fff', padding:'6px 12px', opacity:(shareBusy === 'ai' || soloRecordBusy) ? 0.7 : 1}}
               onClick={()=>{ if (soloShareReady) { void shareAiWin(); } else { void persistSoloResult(); } }}
@@ -1761,7 +1751,6 @@ export const App=()=>{
           chatItems={chatItems}
           assistOn={assistOn}
           myColor={1}
-          captureRef={aiCaptureRef}
         />
       </div>
     );
@@ -1812,8 +1801,7 @@ const GameScreen:React.FC<{
   chatItems?: { id:number; sender:string; text:string }[];
   assistOn?: boolean;
   myColor?: 1|2;
-  captureRef?: React.RefObject<HTMLDivElement | null>;
-}> = ({ modeName, isMobile, board, onCellClick, onLeave, p1Name, p2Name, yourTurn, midText, glowSide, dimSide, overlay, p1Avatar, p2Avatar, chatItems, assistOn=false, myColor, captureRef })=>{
+}> = ({ modeName, isMobile, board, onCellClick, onLeave, p1Name, p2Name, yourTurn, midText, glowSide, dimSide, overlay, p1Avatar, p2Avatar, chatItems, assistOn=false, myColor })=>{
   // Responsive cell/dot sizes
   const vw = typeof window!=='undefined' ? window.innerWidth : 1024;
   const vh = typeof window!=='undefined' ? window.innerHeight : 768;
@@ -1941,7 +1929,7 @@ const GameScreen:React.FC<{
   const [showLog, setShowLog] = useState(true);
 
   return (
-    <div ref={captureRef} className="flex flex-col items-center gap-4 p-4" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
+    <div className="flex flex-col items-center gap-4 p-4" style={{background:'var(--bg)', height:'100vh', overflow:'hidden'}}>
       {/* overlay (winner/notice) */}
       {overlay}
       <h1 className="text-2xl font-bold text-center" style={{color:'var(--text)', marginTop: -4}}>Euclid</h1>
@@ -2053,81 +2041,9 @@ const GameScreen:React.FC<{
 
       {/* Leave/Back */}
       <div className="flex gap-2 mt-2" style={{ marginBottom: stackScores ? 96 : 76 }}>
-        <button className="rounded cursor-pointer" data-share-exclude="true" style={{background:'#ef4444', color:'#fff', padding:'6px 12px'}} onClick={onLeave}>
+        <button className="rounded cursor-pointer" style={{background:'#ef4444', color:'#fff', padding:'6px 12px'}} onClick={onLeave}>
           {modeName==='Multiplayer' ? 'Leave Game' : 'Back'}
         </button>
-      </div>
-    </div>
-  );
-};
-
-const BoardSnapshot: React.FC<{ board: Board }> = ({ board }) => {
-  const cell = Math.max(22, Math.min(52, Math.floor(Math.min(760 / board.W, 460 / board.H))));
-  const dot = Math.max(14, Math.floor(cell * 0.58));
-  const bw = board.W * cell;
-  const bh = board.H * cell;
-
-  const orderByAngle = (pts: Point[]) => {
-    const cx = (pts[0].x + pts[1].x + pts[2].x + pts[3].x) / 4;
-    const cy = (pts[0].y + pts[1].y + pts[2].y + pts[3].y) / 4;
-    return pts.slice().sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
-  };
-
-  const lines: JSX.Element[] = [];
-  const addLines = (squares: Square[], rgb: string, side: string) => {
-    squares.forEach((square, index) => {
-      const alpha = squares.length <= 1 ? 0.85 : 0.18 + (index / Math.max(1, squares.length - 1)) * 0.62;
-      const pts = orderByAngle([square.p1, square.p2, square.p3, square.p4]).map((p) => ({
-        x: (p.x + 0.5) * cell,
-        y: (p.y + 0.5) * cell,
-      }));
-      lines.push(
-        <polygon
-          key={`${side}-${index}`}
-          points={pts.map((pt) => `${pt.x},${pt.y}`).join(' ')}
-          fill="none"
-          stroke={`rgba(${rgb}, ${alpha})`}
-          strokeWidth="3"
-        />
-      );
-    });
-  };
-
-  addLines(board.m_players[0]?.m_squares || [], '239,68,68', 'red');
-  addLines(board.m_players[1]?.m_squares || [], '59,130,246', 'blue');
-
-  return (
-    <div style={{background:'#09121f', border:'1px solid #294466', borderRadius:28, padding:22, overflowX:'auto'}}>
-      <div className="relative" style={{width:bw, height:bh, margin:'0 auto'}}>
-        <svg className="absolute top-0 left-0 w-full h-full" viewBox={`0 0 ${bw} ${bh}`} style={{pointerEvents:'none'}}>
-          {lines}
-        </svg>
-        <div className="grid" style={{gridTemplateColumns:`repeat(${board.W}, ${cell}px)`, gridAutoRows:`${cell}px`, gap:0}}>
-          {Array.from({length:board.H},(_,y)=>
-            Array.from({length:board.W},(_,x)=>{
-              const idx = y * board.W + x;
-              const value = board.m_board[idx];
-              const isLast = value > 0 && board.m_last?.x === x && board.m_last?.y === y;
-              const fill = value === 1 ? '#fecaca' : value === 2 ? '#bfdbfe' : '#f1f5f9';
-              const stroke = value === 1 ? '#ef4444' : value === 2 ? '#2563eb' : '#64748b';
-              const shadow = isLast ? '0 0 0 4px rgba(248,250,252,.75), 0 0 20px rgba(148,163,184,.45)' : 'none';
-              return (
-                <div key={`${y}-${x}`} className="flex items-center justify-center">
-                  <div
-                    className="rounded-full"
-                    style={{
-                      width: dot,
-                      height: dot,
-                      background: fill,
-                      border: `3px solid ${stroke}`,
-                      boxShadow: shadow,
-                    }}
-                  />
-                </div>
-              );
-            })
-          )}
-        </div>
       </div>
     </div>
   );
