@@ -1,7 +1,7 @@
 {
   "private": true,
   "name": "ripred-euclid",
-  "version": "0.1.89",
+  "version": "0.1.90",
   "license": "BSD-3-Clause",
   "type": "module",
   "scripts": {
