@@ -586,6 +586,7 @@ export const App=()=>{
   // Sounds
   const [soundOn, setSoundOn] = useState(false);
   const audioContext = useMemo(() => new (window.AudioContext || (window as any).webkitAudioContext)(), []);
+  const SOUND_GAIN = 0.125;
   const playBeep = () => {
     if (!soundOn) return;
     const oscillator = audioContext.createOscillator();
@@ -594,7 +595,7 @@ export const App=()=>{
     gainNode.connect(audioContext.destination);
     oscillator.type = 'square';
     oscillator.frequency.value = 880; // A5 note
-    gainNode.gain.value = 0.5;
+    gainNode.gain.value = SOUND_GAIN;
     oscillator.start();
     setTimeout(() => oscillator.stop(), 100);
   };
@@ -609,7 +610,7 @@ export const App=()=>{
         gainNode.connect(audioContext.destination);
         oscillator.type = 'sine';
         oscillator.frequency.value = freq;
-        gainNode.gain.value = 0.5;
+        gainNode.gain.value = SOUND_GAIN;
         oscillator.start();
         setTimeout(() => oscillator.stop(), 200);
       }, i * 250);
