@@ -635,7 +635,7 @@ router.post('/api/h2h/queue', async (_req, res) => {
       if (a1) avatars[user1] = a1!;
       if (a2) avatars[user2] = a2!;
 
-      const gid = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      const gid = `${Date.now()}_${randomUUID()}`;
       const board = makeInitialBoardJson(user1, user2, { names, avatars });
 
       await Promise.all([
