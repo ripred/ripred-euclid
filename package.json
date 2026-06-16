@@ -24,7 +24,7 @@
     "type-check": "tsc --build"
   },
   "dependencies": {
-    "@devvit/web": "0.12.14",
+    "@devvit/web": "0.12.24",
     "clsx": "2.1.1",
     "devvit": "^1.0.0",
     "express": "5.1.0",
