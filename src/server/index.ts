@@ -479,8 +479,12 @@ function buildShareSplash(payload: SharedPostPayload) {
   };
 }
 
+async function getCurrentSubredditName() {
+  return context.subredditName || (await reddit.getCurrentSubreddit()).name;
+}
+
 async function createCustomSharePost(title: string, payload: SharedPostPayload) {
-  const subredditName = context.subredditName || await reddit.getCurrentSubredditName();
+  const subredditName = await getCurrentSubredditName();
   const descriptor: SharePostDescriptor = { shareType: payload.kind, shareId: payload.shareId };
   const fallbackText = buildShareFallbackText(payload);
   const baseOptions = {
@@ -1105,7 +1109,7 @@ router.post('/api/share/rankings', async (req, res) => {
     if (rows.length === 0) return res.status(409).json({ ok: false, message: 'No rankings are available to share yet.' });
 
     const sharedAt = nowISO();
-    const subredditName = context.subredditName || await reddit.getCurrentSubredditName();
+    const subredditName = await getCurrentSubredditName();
     const title = bucket === 'hvh'
       ? `Euclid ${LEADERBOARD_LABEL} — ${HUMAN_VS_HUMAN_LABEL} — ${formatShareDate()}`
       : `Euclid ${LEADERBOARD_LABEL} — ${HUMAN_VS_EUCLID_LABEL} — ${formatShareDate()}`;
@@ -1169,7 +1173,7 @@ router.post('/api/share/h2h-result', async (req, res) => {
     const s1 = board.m_players?.[0]?.m_score ?? 0;
     const s2 = board.m_players?.[1]?.m_score ?? 0;
     const sharedAt = nowISO();
-    const subredditName = context.subredditName || await reddit.getCurrentSubredditName();
+    const subredditName = await getCurrentSubredditName();
     const title = byForfeit
       ? `${winnerName} Wins! — by forfeit — ${formatShareDate()}`
       : `${winnerName} Wins! — ${s1}-${s2} — ${formatShareDate()}`;
@@ -1232,7 +1236,7 @@ router.post('/api/share/ai-result', async (req, res) => {
     const username = (await reddit.getCurrentUsername()) || 'Redditor';
     const avatar = await redis.get(AVAKEY(uid));
     const botName = difficultyLabel(record.difficulty);
-    const subredditName = context.subredditName || await reddit.getCurrentSubredditName();
+    const subredditName = await getCurrentSubredditName();
     const title = `${username} Wins! — ${record.youScore}-${record.botScore} — ${formatShareDate(record.recordedAt)}`;
     const payload = await saveSharePayload({
       kind: 'result',
