@@ -1,12 +1,21 @@
+import { scoreGridFootprint } from "../shared/scoring";
+
 export type Owner = 1 | 2;
-export type DemoStepId = 'place' | 'straight' | 'rotated' | 'size' | 'block' | 'multi';
+export type DemoStepId =
+  | "place"
+  | "straight"
+  | "rotated"
+  | "size"
+  | "block"
+  | "multi";
 export type DotSpec = { x: number; y: number; owner: Owner };
 export type PointSpec = { x: number; y: number };
+export type SquareCorners = [PointSpec, PointSpec, PointSpec, PointSpec];
 export type SquareSpec = {
   key: string;
   owner: Owner;
   points: number;
-  corners: PointSpec[];
+  corners: SquareCorners;
 };
 export type DemoFrame = {
   dots: DotSpec[];
@@ -34,6 +43,8 @@ type CapturedStepMeta = {
 const BOARD_W = 8;
 const BOARD_H = 8;
 
+// One fixed legal game makes the tutorial deterministic while demonstrating
+// every scoring and blocking concept in a single coherent sequence.
 const RECORDED_GAME: DemoMove[] = [
   { x: 0, y: 0, owner: 1 },
   { x: 1, y: 1, owner: 2 },
@@ -70,99 +81,143 @@ const RECORDED_GAME: DemoMove[] = [
   { x: 5, y: 6, owner: 1 },
 ];
 
+// Keys are one-based move numbers whose before/after frames become teaching
+// beats; moves between them establish the board context without extra slides.
 const CAPTURED_STEPS = new Map<number, CapturedStepMeta>([
-  [1, {
-    id: 'place',
-    title: 'Every turn places one dot',
-    buildBody: () => 'This demo starts with a normal setup move: one new dot on one empty point, then the turn passes.',
-  }],
-  [8, {
-    id: 'straight',
-    title: 'Straight squares score immediately!',
-    buildBody: (frame) => {
-      const points = frame.newSquares.reduce((sum, square) => sum + square.points, 0);
-      return `Blue closes a straight square here and scores ${points} points on that move.`;
+  [
+    1,
+    {
+      id: "place",
+      title: "Every turn places one dot",
+      buildBody: () =>
+        "This demo starts with a normal setup move: one new dot on one empty point, then the turn passes.",
     },
-  }],
-  [15, {
-    id: 'rotated',
-    title: 'Rotated squares count too!',
-    buildBody: (frame) => {
-      const points = frame.newSquares.reduce((sum, square) => sum + square.points, 0);
-      return `Red answers in the same demo with a leaning square for ${points} points. Rotated squares are fully legal.`;
+  ],
+  [
+    8,
+    {
+      id: "straight",
+      title: "Straight squares score immediately!",
+      buildBody: (frame) => {
+        const points = frame.newSquares.reduce(
+          (sum, square) => sum + square.points,
+          0,
+        );
+        return `Blue closes a straight square here and scores ${points} points on that move.`;
+      },
     },
-  }],
-  [16, {
-    id: 'size',
-    title: 'Larger squares swing the score!',
-    buildBody: (frame) => {
-      const points = frame.newSquares.reduce((sum, square) => sum + square.points, 0);
-      return `Later, Blue finishes a larger square worth ${points} points and jumps ahead ${frame.scores[1]} to ${frame.scores[0]}.`;
+  ],
+  [
+    15,
+    {
+      id: "rotated",
+      title: "Rotated squares count too!",
+      buildBody: (frame) => {
+        const points = frame.newSquares.reduce(
+          (sum, square) => sum + square.points,
+          0,
+        );
+        return `Red answers in the same demo with a leaning square for ${points} points. Rotated squares are fully legal.`;
+      },
     },
-  }],
-  [22, {
-    id: 'block',
-    title: 'You can block squares too!',
-    buildBody: () => 'Blue claims the last open corner Red needed, blocking that square before it can ever score.',
-  }],
-  [33, {
-    id: 'multi',
-    title: 'One move can finish multiple squares!',
-    buildBody: (frame) => {
-      const count = frame.newSquares.length;
-      const points = frame.newSquares.reduce((sum, square) => sum + square.points, 0);
-      return `Careful setup can let one final dot complete ${count} squares at once for ${points} total points.`;
+  ],
+  [
+    16,
+    {
+      id: "size",
+      title: "Larger squares swing the score!",
+      buildBody: (frame) => {
+        const points = frame.newSquares.reduce(
+          (sum, square) => sum + square.points,
+          0,
+        );
+        return `Later, Blue finishes a larger square worth ${points} points and jumps ahead ${frame.scores[1]} to ${frame.scores[0]}.`;
+      },
     },
-  }],
+  ],
+  [
+    22,
+    {
+      id: "block",
+      title: "You can block squares too!",
+      buildBody: () =>
+        "Blue claims the last open corner Red needed, blocking that square before it can ever score.",
+    },
+  ],
+  [
+    33,
+    {
+      id: "multi",
+      title: "One move can finish multiple squares!",
+      buildBody: (frame) => {
+        const count = frame.newSquares.length;
+        const points = frame.newSquares.reduce(
+          (sum, square) => sum + square.points,
+          0,
+        );
+        return `Careful setup can let one final dot complete ${count} squares at once for ${points} total points.`;
+      },
+    },
+  ],
 ]);
 
 function pointIndex(x: number, y: number): number {
   return y * BOARD_W + x;
 }
 
-function scoreSquare(corners: PointSpec[]): number {
-  const xs = corners.map((point) => point.x);
-  const ys = corners.map((point) => point.y);
-  const side = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
-  return side * side;
-}
+function orderSquareCorners(corners: SquareCorners): SquareCorners {
+  const centerX =
+    corners.reduce((sum, point) => sum + point.x, 0) / corners.length;
+  const centerY =
+    corners.reduce((sum, point) => sum + point.y, 0) / corners.length;
 
-function orderSquareCorners(corners: PointSpec[]): PointSpec[] {
-  const centerX = corners.reduce((sum, point) => sum + point.x, 0) / corners.length;
-  const centerY = corners.reduce((sum, point) => sum + point.y, 0) / corners.length;
-
-  const ordered = [...corners].sort((left, right) => {
+  const ordered: SquareCorners = [...corners];
+  ordered.sort((left, right) => {
     const leftAngle = Math.atan2(left.y - centerY, left.x - centerX);
     const rightAngle = Math.atan2(right.y - centerY, right.x - centerX);
     return leftAngle - rightAngle;
   });
 
   let startIndex = 0;
-  for (let index = 1; index < ordered.length; index++) {
-    const point = ordered[index];
-    const current = ordered[startIndex];
-    if (point.y < current.y || (point.y === current.y && point.x < current.x)) {
+  let firstPoint = ordered[0];
+  for (const [index, point] of ordered.entries()) {
+    if (
+      point.y < firstPoint.y ||
+      (point.y === firstPoint.y && point.x < firstPoint.x)
+    ) {
       startIndex = index;
+      firstPoint = point;
     }
   }
 
-  return ordered.slice(startIndex).concat(ordered.slice(0, startIndex));
+  const first = ordered[startIndex % 4];
+  const second = ordered[(startIndex + 1) % 4];
+  const third = ordered[(startIndex + 2) % 4];
+  const fourth = ordered[(startIndex + 3) % 4];
+  return first && second && third && fourth
+    ? [first, second, third, fourth]
+    : ordered;
 }
 
 function squareKey(corners: PointSpec[]): string {
   return corners
     .map((point) => pointIndex(point.x, point.y))
     .sort((left, right) => left - right)
-    .join(',');
+    .join(",");
 }
 
-function computeCompletedSquares(board: number[], move: DemoMove): SquareSpec[] {
+function computeCompletedSquares(
+  board: number[],
+  move: DemoMove,
+): SquareSpec[] {
   const other = move.owner === 1 ? 2 : 1;
   const seen = new Set<string>();
   const squares: SquareSpec[] = [];
 
   for (let row = 0; row < BOARD_H; row++) {
     for (let col = 0; col < BOARD_W; col++) {
+      // Treat move-to-candidate as one side and rotate its vector 90 degrees to
+      // derive the remaining corners, including tilted squares.
       const dx = col - move.x;
       const dy = row - move.y;
       const x1 = move.x - dy;
@@ -171,10 +226,14 @@ function computeCompletedSquares(board: number[], move: DemoMove): SquareSpec[] 
       const y2 = row + dx;
 
       if (
-        x1 < 0 || x1 >= BOARD_W ||
-        y1 < 0 || y1 >= BOARD_H ||
-        x2 < 0 || x2 >= BOARD_W ||
-        y2 < 0 || y2 >= BOARD_H ||
+        x1 < 0 ||
+        x1 >= BOARD_W ||
+        y1 < 0 ||
+        y1 >= BOARD_H ||
+        x2 < 0 ||
+        x2 >= BOARD_W ||
+        y2 < 0 ||
+        y2 >= BOARD_H ||
         (col === move.x && row === move.y)
       ) {
         continue;
@@ -186,10 +245,12 @@ function computeCompletedSquares(board: number[], move: DemoMove): SquareSpec[] 
         { x: x1, y: y1 },
         { x: x2, y: y2 },
       ]);
-      const values = corners.map((point) => board[pointIndex(point.x, point.y)]);
+      const values = corners.map(
+        (point) => board[pointIndex(point.x, point.y)],
+      );
 
-      if (values.some((value) => value === other)) continue;
-      if (values.some((value) => value === 0)) continue;
+      if (values.some((value) => value === other || value !== move.owner))
+        continue;
 
       const key = squareKey(corners);
       if (seen.has(key)) continue;
@@ -198,7 +259,7 @@ function computeCompletedSquares(board: number[], move: DemoMove): SquareSpec[] 
       squares.push({
         key,
         owner: move.owner,
-        points: scoreSquare(corners),
+        points: scoreGridFootprint(corners),
         corners,
       });
     }
@@ -232,10 +293,10 @@ function makeFrame(
   return {
     dots: toDots(board),
     scores: [...scores] as [number, number],
-    move,
     moveNumber,
     newSquares,
     allSquares,
+    ...(move ? { move } : {}),
   };
 }
 
@@ -254,18 +315,30 @@ function buildDemoSteps(): DemoStep[] {
 
     const boardIndex = pointIndex(move.x, move.y);
     if (board[boardIndex] !== 0) {
-      throw new Error(`Preview demo move ${moveNumber} tries to reuse an occupied point.`);
+      throw new Error(
+        `Preview demo move ${moveNumber} tries to reuse an occupied point.`,
+      );
     }
 
-    const before = makeFrame(board, scores, moveNumber - 1, undefined, [], [...allSquares.values()]);
+    const before = makeFrame(
+      board,
+      scores,
+      moveNumber - 1,
+      undefined,
+      [],
+      [...allSquares.values()],
+    );
 
     board[boardIndex] = move.owner;
     const newSquares = computeCompletedSquares(board, move);
     const points = newSquares.reduce((sum, square) => sum + square.points, 0);
-    scores[move.owner - 1] += points;
+    if (move.owner === 1) scores[0] += points;
+    else scores[1] += points;
     for (const square of newSquares) allSquares.set(square.key, square);
 
-    const after = makeFrame(board, scores, moveNumber, move, newSquares, [...allSquares.values()]);
+    const after = makeFrame(board, scores, moveNumber, move, newSquares, [
+      ...allSquares.values(),
+    ]);
     const stepMeta = CAPTURED_STEPS.get(moveNumber);
     if (!stepMeta) return;
 
@@ -279,11 +352,14 @@ function buildDemoSteps(): DemoStep[] {
   });
 
   if (steps.length !== CAPTURED_STEPS.size) {
-    throw new Error('Preview demo is missing one or more instructional steps.');
+    throw new Error("Preview demo is missing one or more instructional steps.");
   }
 
   return steps;
 }
 
 export const DEMO_STEPS = buildDemoSteps();
-export const IDLE_FRAME = DEMO_STEPS[0].before;
+const firstDemoStep = DEMO_STEPS[0];
+if (!firstDemoStep)
+  throw new Error("Preview demo must contain at least one step.");
+export const IDLE_FRAME = firstDemoStep.before;
