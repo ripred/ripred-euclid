@@ -1,27 +1,41 @@
-import './index.css';
+import "./index.css";
 
-import { requestExpandedMode } from '@devvit/web/client';
-import { StrictMode, useEffect, useRef, useState } from 'react';
-import { createRoot } from 'react-dom/client';
+import { requestExpandedMode } from "@devvit/web/client";
+import {
+  StrictMode,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
+import { createRoot } from "react-dom/client";
 
-import type { InitResponse, RankingsShareRow } from '../shared/types/api';
+import type {
+  InitResponse,
+  RankingsResponse,
+  RankingsShareRow,
+} from "../shared/types/api";
 import {
   DEMO_STEPS,
   IDLE_FRAME,
   type DemoFrame,
   type DemoStep,
   type Owner,
-} from './preview-demo';
-import { SharePreview } from './share-preview';
+} from "./preview-demo";
+import {
+  isFinalDemoStep,
+  PREVIEW_ONBOARDING_KEY,
+  storeCompletion,
+} from "./onboarding";
+import { SharePreview } from "./share-preview";
 import {
   applyThemeModeToDocument,
   installThemeModeSync,
   type ThemeMode,
-} from './theme';
+} from "./theme";
 
-const PREVIEW_ONBOARDING_KEY = 'euclid_launch_onboarding_seen';
-const HUMAN_VS_EUCLID_LABEL = 'Redditor vs Euclid';
-const EUCLID_LABEL = 'Euclid';
+const HUMAN_VS_EUCLID_LABEL = "Redditor vs Euclid";
+const EUCLID_LABEL = "Euclid";
 const DEMO_START_DELAY_MS = 7000;
 const DEMO_POST_STEP_PAUSE_MS = 2000;
 const DEMO_STEP_MS = 3600 + DEMO_POST_STEP_PAUSE_MS;
@@ -44,66 +58,80 @@ const pointAt = (x: number, y: number) => ({
   y: boardLayout.startY + y * boardLayout.gap,
 });
 
-const boardWidth = boardLayout.startX * 2 + boardLayout.gap * (boardLayout.cols - 1);
-const boardHeight = boardLayout.startY * 2 + boardLayout.gap * (boardLayout.rows - 1);
+const boardWidth =
+  boardLayout.startX * 2 + boardLayout.gap * (boardLayout.cols - 1);
+const boardHeight =
+  boardLayout.startY * 2 + boardLayout.gap * (boardLayout.rows - 1);
 const PREVIEW_BOARD_LANE_WIDTH = 218;
 const LEADERBOARD_REFRESH_MS = 60_000;
 
-type PreviewSurfaceMode = 'intro' | 'demo' | 'leaderboard';
+type PreviewSurfaceMode = "intro" | "demo" | "leaderboard";
 type PreviewRankings = {
   hvh: RankingsShareRow[];
   hva: RankingsShareRow[];
+  hvaRules?: RankingsResponse["hvaRules"];
 };
 
-const previewPalette: Record<ThemeMode, {
-  shellBg: string;
-  cardBg: string;
-  cardBorder: string;
-  panelBg: string;
-  panelBorder: string;
-  title: string;
-  text: string;
-  accent: string;
-  emptyDot: string;
-  boardBg: string;
-  boardLine: string;
-  squareBlue: string;
-  squareRed: string;
-}> = {
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+const previewPalette: Record<
+  ThemeMode,
+  {
+    shellBg: string;
+    cardBg: string;
+    cardBorder: string;
+    panelBg: string;
+    panelBorder: string;
+    title: string;
+    text: string;
+    accent: string;
+    emptyDot: string;
+    boardBg: string;
+    boardLine: string;
+    squareBlue: string;
+    squareRed: string;
+  }
+> = {
   dark: {
-    shellBg: 'radial-gradient(circle at top, rgba(37,99,235,.25), transparent 34%), linear-gradient(180deg, #041124 0%, #07182f 56%, #0b2242 82%, #153b73 100%)',
-    cardBg: 'rgba(4,18,36,.78)',
-    cardBorder: 'rgba(148,163,184,.22)',
-    panelBg: 'rgba(15,23,42,.55)',
-    panelBorder: 'rgba(148,163,184,.16)',
-    title: '#f8fafc',
-    text: '#cbd5e1',
-    accent: '#93c5fd',
-    emptyDot: 'rgba(148,163,184,.28)',
-    boardBg: 'radial-gradient(circle at top, rgba(59,130,246,.15), transparent 40%), rgba(2,12,27,.55)',
-    boardLine: 'rgba(148,163,184,.16)',
-    squareBlue: 'rgba(59,130,246,.88)',
-    squareRed: 'rgba(239,68,68,.9)',
+    shellBg:
+      "radial-gradient(circle at top, rgba(37,99,235,.25), transparent 34%), linear-gradient(180deg, #041124 0%, #07182f 56%, #0b2242 82%, #153b73 100%)",
+    cardBg: "rgba(4,18,36,.78)",
+    cardBorder: "rgba(148,163,184,.22)",
+    panelBg: "rgba(15,23,42,.55)",
+    panelBorder: "rgba(148,163,184,.16)",
+    title: "#f8fafc",
+    text: "#cbd5e1",
+    accent: "#93c5fd",
+    emptyDot: "rgba(148,163,184,.28)",
+    boardBg:
+      "radial-gradient(circle at top, rgba(59,130,246,.15), transparent 40%), rgba(2,12,27,.55)",
+    boardLine: "rgba(148,163,184,.16)",
+    squareBlue: "rgba(59,130,246,.88)",
+    squareRed: "rgba(239,68,68,.9)",
   },
   light: {
-    shellBg: 'radial-gradient(circle at top, rgba(191,219,254,.85), transparent 34%), linear-gradient(180deg, #eff6ff 0%, #e0ecff 56%, #dbeafe 82%, #c7ddff 100%)',
-    cardBg: 'rgba(255,255,255,.80)',
-    cardBorder: 'rgba(148,163,184,.28)',
-    panelBg: 'rgba(248,250,252,.85)',
-    panelBorder: 'rgba(148,163,184,.20)',
-    title: '#0f172a',
-    text: '#334155',
-    accent: '#0369a1',
-    emptyDot: 'rgba(148,163,184,.26)',
-    boardBg: 'radial-gradient(circle at top, rgba(59,130,246,.10), transparent 40%), rgba(248,250,252,.68)',
-    boardLine: 'rgba(100,116,139,.15)',
-    squareBlue: 'rgba(37,99,235,.82)',
-    squareRed: 'rgba(220,38,38,.86)',
+    shellBg:
+      "radial-gradient(circle at top, rgba(191,219,254,.85), transparent 34%), linear-gradient(180deg, #eff6ff 0%, #e0ecff 56%, #dbeafe 82%, #c7ddff 100%)",
+    cardBg: "rgba(255,255,255,.80)",
+    cardBorder: "rgba(148,163,184,.28)",
+    panelBg: "rgba(248,250,252,.85)",
+    panelBorder: "rgba(148,163,184,.20)",
+    title: "#0f172a",
+    text: "#334155",
+    accent: "#0369a1",
+    emptyDot: "rgba(148,163,184,.26)",
+    boardBg:
+      "radial-gradient(circle at top, rgba(59,130,246,.10), transparent 40%), rgba(248,250,252,.68)",
+    boardLine: "rgba(100,116,139,.15)",
+    squareBlue: "rgba(37,99,235,.82)",
+    squareRed: "rgba(220,38,38,.86)",
   },
 };
 
 const dotColor = (owner: Owner, emptyDot: string) =>
-  owner === 1 ? '#ef4444' : owner === 2 ? '#3b82f6' : emptyDot;
+  owner === 1 ? "#ef4444" : owner === 2 ? "#3b82f6" : emptyDot;
 
 const squareStroke = (owner: Owner, palette: typeof previewPalette.dark) =>
   owner === 1 ? palette.squareRed : palette.squareBlue;
@@ -124,28 +152,39 @@ function PreviewStatus({
       style={{
         background: palette.shellBg,
         color: palette.title,
-        display: 'flex',
-        alignItems: 'flex-start',
-        justifyContent: 'center',
-        padding: '8px 12px 6px',
-        minHeight: '100vh',
-        boxSizing: 'border-box',
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "center",
+        padding: "8px 12px 6px",
+        minHeight: "100vh",
+        boxSizing: "border-box",
       }}
     >
       <div
         style={{
-          width: 'min(760px, 100%)',
+          width: "min(760px, 100%)",
           borderRadius: 22,
           border: `1px solid ${palette.cardBorder}`,
           background: palette.cardBg,
-          boxShadow: theme === 'dark' ? '0 28px 64px rgba(2,8,23,.38)' : '0 18px 44px rgba(15,23,42,.12)',
-          padding: '22px 20px',
-          display: 'grid',
+          boxShadow:
+            theme === "dark"
+              ? "0 28px 64px rgba(2,8,23,.38)"
+              : "0 18px 44px rgba(15,23,42,.12)",
+          padding: "22px 20px",
+          display: "grid",
           gap: 8,
-          backdropFilter: 'blur(10px)',
+          backdropFilter: "blur(10px)",
         }}
       >
-        <div style={{ color: palette.accent, fontSize: 12, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+        <div
+          style={{
+            color: palette.accent,
+            fontSize: 12,
+            fontWeight: 800,
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+          }}
+        >
           Euclid
         </div>
         <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.04 }}>
@@ -173,13 +212,13 @@ function ScorePill({
   return (
     <div
       style={{
-        display: 'inline-flex',
-        alignItems: 'center',
+        display: "inline-flex",
+        alignItems: "center",
         gap: 7,
         borderRadius: 999,
         border: `1px solid ${palette.panelBorder}`,
         background: palette.panelBg,
-        padding: '4px 9px',
+        padding: "4px 9px",
         color: palette.text,
         fontSize: 12,
         fontWeight: 700,
@@ -189,9 +228,12 @@ function ScorePill({
         style={{
           width: 9,
           height: 9,
-          borderRadius: '999px',
+          borderRadius: "999px",
           background: dotColor(owner, palette.emptyDot),
-          boxShadow: owner === 1 ? '0 0 0 3px rgba(239,68,68,.16)' : '0 0 0 3px rgba(59,130,246,.16)',
+          boxShadow:
+            owner === 1
+              ? "0 0 0 3px rgba(239,68,68,.16)"
+              : "0 0 0 3px rgba(59,130,246,.16)",
         }}
       />
       <span>{label}</span>
@@ -216,39 +258,74 @@ function PreviewBoard({
     : IDLE_FRAME;
   const displayedDots = activeFrame.dots;
   const pendingMove = demoStep?.after.move;
-  const visibleSquares = demoStep && demoPhase === 2 ? demoStep.after.newSquares : [];
+  const visibleSquares =
+    demoStep && demoPhase === 2 ? demoStep.after.newSquares : [];
   const visibleSquareKeys = new Set(visibleSquares.map((square) => square.key));
-  const priorSquares = activeFrame.allSquares.filter((square) => !visibleSquareKeys.has(square.key));
-  const displayedScores = activeFrame.allSquares.reduce<[number, number]>((scores, square) => {
-    scores[square.owner - 1] += square.points;
-    return scores;
-  }, [0, 0]);
-  const squarePoints = (corners: DemoFrame['allSquares'][number]['corners']) =>
-    corners.map((point) => {
-      const translated = pointAt(point.x, point.y);
-      return `${translated.x},${translated.y}`;
-    }).join(' ');
+  const priorSquares = activeFrame.allSquares.filter(
+    (square) => !visibleSquareKeys.has(square.key),
+  );
+  const displayedScores = activeFrame.allSquares.reduce<[number, number]>(
+    (scores, square) => {
+      if (square.owner === 1) scores[0] += square.points;
+      else scores[1] += square.points;
+      return scores;
+    },
+    [0, 0],
+  );
+  const squarePoints = (corners: DemoFrame["allSquares"][number]["corners"]) =>
+    corners
+      .map((point) => {
+        const translated = pointAt(point.x, point.y);
+        return `${translated.x},${translated.y}`;
+      })
+      .join(" ");
 
   return (
     <div
       aria-hidden="true"
       style={{
-        position: 'relative',
+        position: "relative",
         minWidth: 0,
         borderRadius: 18,
         background: palette.boardBg,
         border: `1px solid ${palette.panelBorder}`,
-        padding: '8px 8px 6px',
-        display: 'grid',
+        padding: "8px 8px 6px",
+        display: "grid",
         gap: 6,
       }}
     >
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-        <ScorePill label="Red" score={displayedScores[0]} owner={1} palette={palette} />
-        <ScorePill label="Blue" score={displayedScores[1]} owner={2} palette={palette} />
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          justifyContent: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        <ScorePill
+          label="Red"
+          score={displayedScores[0]}
+          owner={1}
+          palette={palette}
+        />
+        <ScorePill
+          label="Blue"
+          score={displayedScores[1]}
+          owner={2}
+          palette={palette}
+        />
       </div>
 
-      <svg viewBox={`0 0 ${boardWidth} ${boardHeight}`} style={{ width: 200, maxWidth: '100%', height: 'auto', display: 'block', justifySelf: 'center' }}>
+      <svg
+        viewBox={`0 0 ${boardWidth} ${boardHeight}`}
+        style={{
+          width: 200,
+          maxWidth: "100%",
+          height: "auto",
+          display: "block",
+          justifySelf: "center",
+        }}
+      >
         {Array.from({ length: boardLayout.cols }).map((_, col) => {
           const point = pointAt(col, 0);
           return (
@@ -294,13 +371,13 @@ function PreviewBoard({
         {displayedDots.map((piece, index) => {
           const point = pointAt(piece.x, piece.y);
           const isLastMove = Boolean(
-            demoStep
-              && demoPhase >= 1
-              && pendingMove
-              && piece.x === pendingMove.x
-              && piece.y === pendingMove.y
-              && piece.owner === pendingMove.owner
-              && index === displayedDots.length - 1,
+            demoStep &&
+              demoPhase >= 1 &&
+              pendingMove &&
+              piece.x === pendingMove.x &&
+              piece.y === pendingMove.y &&
+              piece.owner === pendingMove.owner &&
+              index === displayedDots.length - 1,
           );
 
           return (
@@ -312,7 +389,11 @@ function PreviewBoard({
               fill={dotColor(piece.owner, palette.emptyDot)}
               stroke="rgba(255,255,255,.18)"
               strokeWidth="1.6"
-              style={isLastMove ? { animation: 'previewPlaceDot .7s ease-out both' } : undefined}
+              style={
+                isLastMove
+                  ? { animation: "previewPlaceDot .7s ease-out both" }
+                  : undefined
+              }
             />
           );
         })}
@@ -323,9 +404,13 @@ function PreviewBoard({
             cy={pointAt(pendingMove.x, pendingMove.y).y}
             r="15"
             fill="none"
-            stroke={pendingMove.owner === 1 ? 'rgba(239,68,68,.58)' : 'rgba(59,130,246,.58)'}
+            stroke={
+              pendingMove.owner === 1
+                ? "rgba(239,68,68,.58)"
+                : "rgba(59,130,246,.58)"
+            }
             strokeWidth="3"
-            style={{ animation: 'previewPulseRing 1.2s ease-in-out infinite' }}
+            style={{ animation: "previewPulseRing 1.2s ease-in-out infinite" }}
           />
         ) : null}
 
@@ -341,7 +426,7 @@ function PreviewBoard({
             pathLength={1}
             strokeDasharray="1"
             strokeDashoffset="1"
-            style={{ animation: 'previewDrawSquare .6s ease-out forwards' }}
+            style={{ animation: "previewDrawSquare .6s ease-out forwards" }}
           />
         ))}
       </svg>
@@ -358,16 +443,16 @@ function LeaderboardRow({
   index: number;
   palette: typeof previewPalette.dark;
 }) {
-  const initial = row.name.trim().charAt(0).toUpperCase() || '?';
+  const initial = row.name.trim().charAt(0).toUpperCase() || "?";
 
   return (
     <div
       style={{
-        display: 'grid',
-        gridTemplateColumns: 'auto minmax(0, 1fr) auto',
+        display: "grid",
+        gridTemplateColumns: "auto minmax(0, 1fr) auto",
         gap: 10,
-        alignItems: 'center',
-        padding: '8px 10px',
+        alignItems: "center",
+        padding: "8px 10px",
         borderRadius: 12,
         background: palette.panelBg,
         border: `1px solid ${palette.panelBorder}`,
@@ -377,11 +462,14 @@ function LeaderboardRow({
         style={{
           width: 28,
           height: 28,
-          borderRadius: '999px',
-          background: index < 3 ? 'linear-gradient(135deg, #f59e0b 0%, #f97316 100%)' : 'rgba(59,130,246,.18)',
-          color: index < 3 ? '#1f2937' : palette.accent,
-          display: 'grid',
-          placeItems: 'center',
+          borderRadius: "999px",
+          background:
+            index < 3
+              ? "linear-gradient(135deg, #f59e0b 0%, #f97316 100%)"
+              : "rgba(59,130,246,.18)",
+          color: index < 3 ? "#1f2937" : palette.accent,
+          display: "grid",
+          placeItems: "center",
           fontSize: 12,
           fontWeight: 900,
         }}
@@ -389,16 +477,16 @@ function LeaderboardRow({
         {initial}
       </div>
 
-      <div style={{ minWidth: 0, display: 'grid', gap: 1 }}>
+      <div style={{ minWidth: 0, display: "grid", gap: 1 }}>
         <div
           style={{
             color: palette.title,
             fontSize: 13,
             fontWeight: 800,
             lineHeight: 1.2,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
           }}
         >
           {row.name}
@@ -408,11 +496,18 @@ function LeaderboardRow({
         </div>
       </div>
 
-      <div style={{ textAlign: 'right', minWidth: 48 }}>
+      <div style={{ textAlign: "right", minWidth: 48 }}>
         <div style={{ color: palette.title, fontSize: 13, fontWeight: 900 }}>
           {row.rating}
         </div>
-        <div style={{ color: palette.text, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+        <div
+          style={{
+            color: palette.text,
+            fontSize: 10,
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+          }}
+        >
           rating
         </div>
       </div>
@@ -435,12 +530,12 @@ function LeaderboardBucket({
     <div
       style={{
         minHeight: 0,
-        display: 'grid',
-        gridTemplateRows: 'auto minmax(0, 1fr)',
+        display: "grid",
+        gridTemplateRows: "auto minmax(0, 1fr)",
         gap: 8,
       }}
     >
-      <div style={{ display: 'grid', gap: 2 }}>
+      <div style={{ display: "grid", gap: 2 }}>
         <div style={{ color: palette.title, fontSize: 14, fontWeight: 900 }}>
           {title}
         </div>
@@ -450,9 +545,14 @@ function LeaderboardBucket({
       </div>
 
       {rows.length ? (
-        <div style={{ display: 'grid', gap: 6 }}>
+        <div style={{ display: "grid", gap: 6 }}>
           {rows.map((row, index) => (
-            <LeaderboardRow key={`${title}-${row.userId}-${index}`} row={row} index={index} palette={palette} />
+            <LeaderboardRow
+              key={`${title}-${row.userId}-${index}`}
+              row={row}
+              index={index}
+              palette={palette}
+            />
           ))}
         </div>
       ) : (
@@ -460,7 +560,7 @@ function LeaderboardBucket({
           style={{
             borderRadius: 12,
             border: `1px dashed ${palette.panelBorder}`,
-            padding: '12px 10px',
+            padding: "12px 10px",
             color: palette.text,
             fontSize: 12,
             lineHeight: 1.45,
@@ -491,20 +591,20 @@ function PreviewLeaderboard({
   return (
     <div
       style={{
-        display: 'grid',
-        gridTemplateRows: 'auto minmax(0, 1fr)',
+        display: "grid",
+        gridTemplateRows: "auto minmax(0, 1fr)",
         gap: 10,
-        flex: '1 1 100%',
+        flex: "1 1 100%",
         minHeight: 0,
       }}
     >
-      <div style={{ display: 'grid', gap: 6 }}>
+      <div style={{ display: "grid", gap: 6 }}>
         <div
           style={{
             fontSize: 12,
             fontWeight: 800,
-            letterSpacing: '0.16em',
-            textTransform: 'uppercase',
+            letterSpacing: "0.16em",
+            textTransform: "uppercase",
             color: palette.accent,
           }}
         >
@@ -514,7 +614,8 @@ function PreviewLeaderboard({
           Top Redditors Right Now
         </div>
         <div style={{ color: palette.text, fontSize: 14, maxWidth: 520 }}>
-          Watch the splash cycle into live standings, then jump into the full game whenever you’re ready.
+          Watch the splash cycle into live standings, then jump into the full
+          game whenever you’re ready.
         </div>
       </div>
 
@@ -523,15 +624,22 @@ function PreviewLeaderboard({
           borderRadius: 18,
           background: palette.panelBg,
           border: `1px solid ${palette.panelBorder}`,
-          padding: '12px 12px 10px',
+          padding: "12px 12px 10px",
           minHeight: 0,
-          display: 'grid',
-          gridTemplateRows: 'auto minmax(0, 1fr)',
+          display: "grid",
+          gridTemplateRows: "auto minmax(0, 1fr)",
           gap: 10,
-          overflow: 'hidden',
+          overflow: "hidden",
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
+        >
           <div style={{ color: palette.title, fontSize: 15, fontWeight: 900 }}>
             Live standings
           </div>
@@ -546,7 +654,8 @@ function PreviewLeaderboard({
           </div>
         ) : rankingsError && !hasRows ? (
           <div style={{ color: palette.text, fontSize: 13, lineHeight: 1.5 }}>
-            Unable to load the live leaderboard right now. Open the full game to see the latest standings.
+            Unable to load the live leaderboard right now. Open the full game to
+            see the latest standings.
           </div>
         ) : (
           <div
@@ -556,16 +665,16 @@ function PreviewLeaderboard({
             onScroll={onInteract}
             style={{
               minHeight: 0,
-              overflowY: 'auto',
+              overflowY: "auto",
               paddingRight: 4,
             }}
           >
             <div
               style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
                 gap: 10,
-                alignItems: 'start',
+                alignItems: "start",
               }}
             >
               <LeaderboardBucket
@@ -575,8 +684,12 @@ function PreviewLeaderboard({
                 palette={palette}
               />
               <LeaderboardBucket
-                title={HUMAN_VS_EUCLID_LABEL}
-                subtitle="Best records against Euclid."
+                title={`${HUMAN_VS_EUCLID_LABEL} — Ranked`}
+                subtitle={
+                  rankings.hvaRules
+                    ? `${rankings.hvaRules.rules.W}×${rankings.hvaRules.rules.H} Grid Footprint, first to ${rankings.hvaRules.rules.winScore}, ${EUCLID_LABEL} on Brutal.`
+                    : `8×8 Grid Footprint, first to 150, ${EUCLID_LABEL} on Brutal.`
+                }
                 rows={rankings.hva}
                 palette={palette}
               />
@@ -588,22 +701,30 @@ function PreviewLeaderboard({
   );
 }
 
-const PreviewApp = () => {
-  const [theme, setTheme] = useState<ThemeMode>('dark');
+export const PreviewApp = () => {
+  const [theme, setTheme] = useState<ThemeMode>("dark");
   const [initState, setInitState] = useState<InitResponse | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
-  const [surfaceMode, setSurfaceMode] = useState<PreviewSurfaceMode>('intro');
+  const [surfaceMode, setSurfaceMode] = useState<PreviewSurfaceMode>("intro");
   const [demoStepIndex, setDemoStepIndex] = useState(0);
   const [demoPhase, setDemoPhase] = useState<0 | 1 | 2>(0);
-  const [displayedDemoStep, setDisplayedDemoStep] = useState<DemoStep | null>(null);
+  const [displayedDemoStep, setDisplayedDemoStep] = useState<DemoStep | null>(
+    null,
+  );
   const [demoTextVisible, setDemoTextVisible] = useState(true);
-  const [rankings, setRankings] = useState<PreviewRankings>({ hvh: [], hva: [] });
+  const [rankings, setRankings] = useState<PreviewRankings>({
+    hvh: [],
+    hva: [],
+  });
   const [rankingsLoading, setRankingsLoading] = useState(false);
   const [rankingsError, setRankingsError] = useState<string | null>(null);
-  const [leaderboardActivityVersion, setLeaderboardActivityVersion] = useState(0);
+  const [leaderboardActivityVersion, setLeaderboardActivityVersion] =
+    useState(0);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [isDocumentVisible, setIsDocumentVisible] = useState(
-    typeof document === 'undefined' ? true : document.visibilityState === 'visible',
+    typeof document === "undefined"
+      ? true
+      : document.visibilityState === "visible",
   );
   const rankingsLoadedAtRef = useRef(0);
 
@@ -620,12 +741,21 @@ const PreviewApp = () => {
     const load = async () => {
       try {
         setInitError(null);
-        const response = await fetch('/api/init');
-        const data = await response.json();
-        if (!response.ok) throw new Error(data?.message || 'Unable to load Euclid.');
+        const response = await fetch("/api/init");
+        const data = (await response.json()) as
+          | InitResponse
+          | { message?: string };
+        if (!response.ok) {
+          throw new Error(
+            "message" in data
+              ? data.message || "Unable to load Euclid."
+              : "Unable to load Euclid.",
+          );
+        }
         if (!cancelled) setInitState(data as InitResponse);
-      } catch (error: any) {
-        if (!cancelled) setInitError(error?.message || 'Unable to load Euclid.');
+      } catch (error: unknown) {
+        if (!cancelled)
+          setInitError(errorMessage(error, "Unable to load Euclid."));
       }
     };
 
@@ -637,43 +767,56 @@ const PreviewApp = () => {
   }, []);
 
   useEffect(() => {
-    const onVisibility = () => setIsDocumentVisible(document.visibilityState === 'visible');
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => document.removeEventListener('visibilitychange', onVisibility);
+    const onVisibility = () =>
+      setIsDocumentVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
 
   useEffect(() => {
-    const media = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+    const media = window.matchMedia
+      ? window.matchMedia("(prefers-reduced-motion: reduce)")
+      : null;
     const sync = () => setReduceMotion(Boolean(media?.matches));
     sync();
     if (!media) return;
-    if (typeof media.addEventListener === 'function') media.addEventListener('change', sync);
-    else if (typeof media.addListener === 'function') media.addListener(sync);
+    if (typeof media.addEventListener === "function")
+      media.addEventListener("change", sync);
+    else if (typeof media.addListener === "function") media.addListener(sync);
     return () => {
-      if (typeof media.removeEventListener === 'function') media.removeEventListener('change', sync);
-      else if (typeof media.removeListener === 'function') media.removeListener(sync);
+      if (typeof media.removeEventListener === "function")
+        media.removeEventListener("change", sync);
+      else if (typeof media.removeListener === "function")
+        media.removeListener(sync);
     };
   }, []);
 
   useEffect(() => {
-    if (!initState || initState.type === 'share') return;
+    if (!initState || initState.type === "share") return;
     let cancelled = false;
 
     const loadRankings = async (showSpinner: boolean) => {
       if (showSpinner) setRankingsLoading(true);
       try {
         setRankingsError(null);
-        const response = await fetch('/api/rankings');
-        const data = await response.json();
-        if (!response.ok) throw new Error(data?.message || 'Unable to load the leaderboard.');
+        const response = await fetch("/api/rankings");
+        const data = (await response.json()) as RankingsResponse & {
+          message?: string;
+        };
+        if (!response.ok)
+          throw new Error(data.message || "Unable to load the leaderboard.");
         if (cancelled) return;
         setRankings({
-          hvh: Array.isArray(data?.hvh) ? data.hvh as RankingsShareRow[] : [],
-          hva: Array.isArray(data?.hva) ? data.hva as RankingsShareRow[] : [],
+          hvh: Array.isArray(data.hvh) ? data.hvh : [],
+          hva: Array.isArray(data.hva) ? data.hva : [],
+          ...(data.hvaRules ? { hvaRules: data.hvaRules } : {}),
         });
         rankingsLoadedAtRef.current = Date.now();
-      } catch (error: any) {
-        if (!cancelled) setRankingsError(error?.message || 'Unable to load the leaderboard.');
+      } catch (error: unknown) {
+        if (!cancelled)
+          setRankingsError(
+            errorMessage(error, "Unable to load the leaderboard."),
+          );
       } finally {
         if (!cancelled) setRankingsLoading(false);
       }
@@ -687,29 +830,41 @@ const PreviewApp = () => {
   }, [initState]);
 
   useEffect(() => {
-    if (surfaceMode !== 'intro' || !isDocumentVisible) return;
+    if (surfaceMode !== "intro" || !isDocumentVisible) return;
     const timer = window.setTimeout(() => {
       setDemoStepIndex(0);
       setDemoPhase(0);
-      setSurfaceMode('demo');
+      setSurfaceMode("demo");
     }, DEMO_START_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [isDocumentVisible, surfaceMode]);
 
   useEffect(() => {
-    if (surfaceMode !== 'demo' || !isDocumentVisible) return;
+    if (surfaceMode !== "demo" || !isDocumentVisible) return;
     setDemoPhase(0);
-    const moveTimer = window.setTimeout(() => setDemoPhase(1), DEMO_MOVE_DELAY_MS);
-    const squareTimer = window.setTimeout(() => setDemoPhase(2), DEMO_SQUARE_DELAY_MS);
-    const isLastStep = demoStepIndex >= DEMO_STEPS.length - 1;
-    const nextTimer = window.setTimeout(() => {
-      if (isLastStep) {
-        setSurfaceMode('leaderboard');
-        setLeaderboardActivityVersion(0);
-        return;
-      }
-      setDemoStepIndex((current) => current + 1);
-    }, isLastStep ? DEMO_SQUARE_DELAY_MS + DEMO_TO_LEADERBOARD_DELAY_MS : DEMO_STEP_MS);
+    const moveTimer = window.setTimeout(
+      () => setDemoPhase(1),
+      DEMO_MOVE_DELAY_MS,
+    );
+    const squareTimer = window.setTimeout(
+      () => setDemoPhase(2),
+      DEMO_SQUARE_DELAY_MS,
+    );
+    const isLastStep = isFinalDemoStep(demoStepIndex, DEMO_STEPS.length);
+    const nextTimer = window.setTimeout(
+      () => {
+        if (isLastStep) {
+          storeCompletion(PREVIEW_ONBOARDING_KEY);
+          setSurfaceMode("leaderboard");
+          setLeaderboardActivityVersion(0);
+          return;
+        }
+        setDemoStepIndex((current) => current + 1);
+      },
+      isLastStep
+        ? DEMO_SQUARE_DELAY_MS + DEMO_TO_LEADERBOARD_DELAY_MS
+        : DEMO_STEP_MS,
+    );
 
     return () => {
       window.clearTimeout(moveTimer);
@@ -719,12 +874,13 @@ const PreviewApp = () => {
   }, [demoStepIndex, isDocumentVisible, surfaceMode]);
 
   const palette = previewPalette[theme];
-  const demoStep = surfaceMode === 'demo' ? DEMO_STEPS[demoStepIndex] : null;
+  const demoStep =
+    surfaceMode === "demo" ? (DEMO_STEPS[demoStepIndex] ?? null) : null;
   const textStep = displayedDemoStep ?? demoStep;
-  const sharedPost = initState?.type === 'share' ? initState.share : null;
+  const sharedPost = initState?.type === "share" ? initState.share : null;
 
   useEffect(() => {
-    if (surfaceMode !== 'demo') {
+    if (surfaceMode !== "demo") {
       setDisplayedDemoStep(null);
       setDemoTextVisible(true);
       return;
@@ -747,9 +903,9 @@ const PreviewApp = () => {
   }, [demoStep, displayedDemoStep, reduceMotion, surfaceMode]);
 
   useEffect(() => {
-    if (surfaceMode !== 'leaderboard' || !isDocumentVisible) return;
+    if (surfaceMode !== "leaderboard" || !isDocumentVisible) return;
     const timer = window.setTimeout(() => {
-      setSurfaceMode('intro');
+      setSurfaceMode("intro");
       setDemoStepIndex(0);
       setDemoPhase(0);
       setDisplayedDemoStep(null);
@@ -760,11 +916,11 @@ const PreviewApp = () => {
 
   useEffect(() => {
     if (
-      surfaceMode !== 'leaderboard'
-      || rankingsLoading
-      || !initState
-      || initState.type === 'share'
-      || Date.now() - rankingsLoadedAtRef.current < LEADERBOARD_REFRESH_MS
+      surfaceMode !== "leaderboard" ||
+      rankingsLoading ||
+      !initState ||
+      initState.type === "share" ||
+      Date.now() - rankingsLoadedAtRef.current < LEADERBOARD_REFRESH_MS
     ) {
       return;
     }
@@ -774,17 +930,24 @@ const PreviewApp = () => {
     const refreshRankings = async () => {
       try {
         setRankingsError(null);
-        const response = await fetch('/api/rankings');
-        const data = await response.json();
-        if (!response.ok) throw new Error(data?.message || 'Unable to load the leaderboard.');
+        const response = await fetch("/api/rankings");
+        const data = (await response.json()) as RankingsResponse & {
+          message?: string;
+        };
+        if (!response.ok)
+          throw new Error(data.message || "Unable to load the leaderboard.");
         if (cancelled) return;
         setRankings({
-          hvh: Array.isArray(data?.hvh) ? data.hvh as RankingsShareRow[] : [],
-          hva: Array.isArray(data?.hva) ? data.hva as RankingsShareRow[] : [],
+          hvh: Array.isArray(data.hvh) ? data.hvh : [],
+          hva: Array.isArray(data.hva) ? data.hva : [],
+          ...(data.hvaRules ? { hvaRules: data.hvaRules } : {}),
         });
         rankingsLoadedAtRef.current = Date.now();
-      } catch (error: any) {
-        if (!cancelled) setRankingsError(error?.message || 'Unable to load the leaderboard.');
+      } catch (error: unknown) {
+        if (!cancelled)
+          setRankingsError(
+            errorMessage(error, "Unable to load the leaderboard."),
+          );
       }
     };
 
@@ -796,24 +959,32 @@ const PreviewApp = () => {
   }, [initState, rankingsLoading, surfaceMode]);
 
   const noteLeaderboardInteraction = () => {
-    if (surfaceMode !== 'leaderboard') return;
+    if (surfaceMode !== "leaderboard") return;
     setLeaderboardActivityVersion((current) => current + 1);
   };
 
-  const openGame = (event: React.MouseEvent<HTMLButtonElement>) => {
-    try {
-      localStorage.setItem(PREVIEW_ONBOARDING_KEY, 'true');
-      sessionStorage.setItem('euclid_launch_preview_seen', 'true');
-    } catch {}
-    requestExpandedMode(event.nativeEvent, 'game');
+  const openGame = (event: MouseEvent<HTMLButtonElement>) => {
+    requestExpandedMode(event.nativeEvent, "game");
   };
 
   if (initError) {
-    return <PreviewStatus theme={theme} title="Unable to load Euclid" body={initError} />;
+    return (
+      <PreviewStatus
+        theme={theme}
+        title="Unable to load Euclid"
+        body={initError}
+      />
+    );
   }
 
   if (!initState) {
-    return <PreviewStatus theme={theme} title="Loading Euclid" body="Preparing this post…" />;
+    return (
+      <PreviewStatus
+        theme={theme}
+        title="Loading Euclid"
+        body="Preparing this post…"
+      />
+    );
   }
 
   if (sharedPost) {
@@ -825,10 +996,10 @@ const PreviewApp = () => {
       style={{
         background: palette.shellBg,
         color: palette.title,
-        display: 'flex',
-        alignItems: 'flex-start',
-        justifyContent: 'center',
-        padding: '8px 12px 6px',
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "center",
+        padding: "8px 12px 6px",
       }}
     >
       <style>{`
@@ -849,165 +1020,211 @@ const PreviewApp = () => {
       <div
         data-demo-steps={DEMO_STEPS.length}
         style={{
-          width: 'min(760px, 100%)',
-          alignSelf: 'flex-start',
-          minHeight: 'calc(100vh - 14px)',
+          width: "min(760px, 100%)",
+          alignSelf: "flex-start",
+          minHeight: "calc(100vh - 14px)",
           borderRadius: 22,
           border: `1px solid ${palette.cardBorder}`,
           background: `${
-            theme === 'dark'
-              ? 'linear-gradient(180deg, rgba(4,18,36,.76), rgba(4,18,36,.76))'
-              : 'linear-gradient(180deg, rgba(255,255,255,.78), rgba(255,255,255,.78))'
+            theme === "dark"
+              ? "linear-gradient(180deg, rgba(4,18,36,.76), rgba(4,18,36,.76))"
+              : "linear-gradient(180deg, rgba(255,255,255,.78), rgba(255,255,255,.78))"
           }, ${palette.shellBg}`,
-          boxShadow: theme === 'dark' ? '0 28px 64px rgba(2,8,23,.38)' : '0 18px 44px rgba(15,23,42,.12)',
-          padding: '18px 14px 14px',
-          display: 'grid',
-          gridTemplateRows: '1fr auto auto',
+          boxShadow:
+            theme === "dark"
+              ? "0 28px 64px rgba(2,8,23,.38)"
+              : "0 18px 44px rgba(15,23,42,.12)",
+          padding: "18px 14px 14px",
+          display: "grid",
+          gridTemplateRows: "1fr auto auto",
           gap: 10,
-          overflow: 'hidden',
-          backdropFilter: 'blur(10px)',
-          boxSizing: 'border-box',
+          overflow: "hidden",
+          backdropFilter: "blur(10px)",
+          boxSizing: "border-box",
         }}
-        >
-          {surfaceMode === 'leaderboard' ? (
-            <PreviewLeaderboard
-              palette={palette}
-              rankings={rankings}
-              rankingsLoading={rankingsLoading}
-              rankingsError={rankingsError}
-              onInteract={noteLeaderboardInteraction}
-            />
-          ) : (
+      >
+        {surfaceMode === "leaderboard" ? (
+          <PreviewLeaderboard
+            palette={palette}
+            rankings={rankings}
+            rankingsLoading={rankingsLoading}
+            rankingsError={rankingsError}
+            onInteract={noteLeaderboardInteraction}
+          />
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "stretch",
+              justifyContent: "space-between",
+              gap: 10,
+              flexWrap: "wrap",
+              minHeight: 0,
+            }}
+          >
             <div
               style={{
-                display: 'flex',
-                alignItems: 'stretch',
-                justifyContent: 'space-between',
-                gap: 10,
-                flexWrap: 'wrap',
-                minHeight: 0,
+                display: "grid",
+                gridTemplateRows: "auto 1fr",
+                alignSelf: "stretch",
+                gap: 14,
+                flex: "1 1 280px",
+                minWidth: 0,
               }}
             >
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateRows: 'auto 1fr',
-                  alignSelf: 'stretch',
-                  gap: 14,
-                  flex: '1 1 280px',
-                  minWidth: 0,
-                }}
-              >
-                <div style={{ display: 'grid', gap: 6 }}>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 800,
-                      letterSpacing: '0.16em',
-                      textTransform: 'uppercase',
-                      color: palette.accent,
-                    }}
-                  >
-                    Reddit Strategy Game
-                  </div>
-                  <div style={{ fontSize: 34, fontWeight: 900, lineHeight: 1 }}>
-                    Euclid
-                  </div>
-                  <div style={{ color: palette.text, fontSize: 14, maxWidth: 420 }}>
-                    Place dots. Complete squares. Rotated shapes count. Beat {EUCLID_LABEL} or
-                    outplay another redditor.
-                  </div>
-                </div>
-
+              <div style={{ display: "grid", gap: 6 }}>
                 <div
                   style={{
-                    borderRadius: 16,
-                    background: palette.panelBg,
-                    border: `1px solid ${palette.panelBorder}`,
-                    width: 'calc(100% + 10px)',
-                    marginRight: -10,
-                    padding: '10px 12px',
-                    minHeight: 152,
-                    color: palette.text,
-                    fontSize: 13,
-                    lineHeight: 1.5,
-                    overflow: 'hidden',
-                    display: 'grid',
-                    alignContent: 'center',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    letterSpacing: "0.16em",
+                    textTransform: "uppercase",
+                    color: palette.accent,
                   }}
                 >
-                  <div style={{ color: palette.accent, fontSize: 12, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                    <span style={{ display: 'inline-block', transform: 'translateY(-10px)' }}>
-                      {textStep ? 'Quick Demo' : 'First Time Here?'}
-                    </span>
-                  </div>
-                  {textStep ? (
-                    <div
-                      style={{
-                        display: 'grid',
-                        gap: 6,
-                        opacity: demoTextVisible ? 1 : 0,
-                        transition: reduceMotion ? 'none' : `opacity ${DEMO_TEXT_FADE_MS}ms ease`,
-                      }}
-                    >
-                      <div style={{ fontSize: 15, fontWeight: 800, color: palette.title }}>
-                        {textStep.title}
-                      </div>
-                      <div>{textStep.body}</div>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'grid', gap: 6 }}>
-                      <div style={{ fontSize: 15, fontWeight: 800, color: palette.title }}>
-                        8×8 Demo
-                      </div>
-                      <div>
-                        Pause here for a few seconds and Euclid will replay a short 8×8 game sequence to explain the rules.
-                      </div>
-                    </div>
-                  )}
+                  Reddit Strategy Game
+                </div>
+                <div style={{ fontSize: 34, fontWeight: 900, lineHeight: 1 }}>
+                  Euclid
+                </div>
+                <div
+                  style={{ color: palette.text, fontSize: 14, maxWidth: 420 }}
+                >
+                  Place dots. Complete squares. Rotated shapes count. Beat{" "}
+                  {EUCLID_LABEL} or outplay another redditor.
                 </div>
               </div>
 
-              <PreviewBoard demoStep={demoStep} demoPhase={demoPhase} palette={palette} />
+              <div
+                style={{
+                  borderRadius: 16,
+                  background: palette.panelBg,
+                  border: `1px solid ${palette.panelBorder}`,
+                  width: "calc(100% + 10px)",
+                  marginRight: -10,
+                  padding: "10px 12px",
+                  minHeight: 152,
+                  color: palette.text,
+                  fontSize: 13,
+                  lineHeight: 1.5,
+                  overflow: "hidden",
+                  display: "grid",
+                  alignContent: "center",
+                }}
+              >
+                <div
+                  style={{
+                    color: palette.accent,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  <span
+                    style={{
+                      display: "inline-block",
+                      transform: "translateY(-10px)",
+                    }}
+                  >
+                    {textStep ? "Quick Demo" : "First Time Here?"}
+                  </span>
+                </div>
+                {textStep ? (
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 6,
+                      opacity: demoTextVisible ? 1 : 0,
+                      transition: reduceMotion
+                        ? "none"
+                        : `opacity ${DEMO_TEXT_FADE_MS}ms ease`,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 15,
+                        fontWeight: 800,
+                        color: palette.title,
+                      }}
+                    >
+                      {textStep.title}
+                    </div>
+                    <div>{textStep.body}</div>
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <div
+                      style={{
+                        fontSize: 15,
+                        fontWeight: 800,
+                        color: palette.title,
+                      }}
+                    >
+                      8×8 Demo
+                    </div>
+                    <div>
+                      Pause here for a few seconds and Euclid will replay a
+                      short 8×8 game sequence to explain the rules.
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          )}
+
+            <PreviewBoard
+              demoStep={demoStep}
+              demoPhase={demoPhase}
+              palette={palette}
+            />
+          </div>
+        )}
         <div
           style={{
             borderRadius: 16,
             background: palette.panelBg,
             border: `1px solid ${palette.panelBorder}`,
-            padding: '10px 12px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
+            padding: "10px 12px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
             gap: 10,
-            flexWrap: 'wrap',
+            flexWrap: "wrap",
           }}
         >
-          <div style={{ color: palette.accent, fontSize: 13, fontWeight: 700, flex: '1 1 320px', minWidth: 0 }}>
-            Redditor vs Euclid, Redditor vs Redditor, Watch other redditor's live games, Leaderboard, and much more live in the full game!
+          <div
+            style={{
+              color: palette.accent,
+              fontSize: 13,
+              fontWeight: 700,
+              flex: "1 1 320px",
+              minWidth: 0,
+            }}
+          >
+            Redditor vs Euclid, Redditor vs Redditor, Watch other redditor's
+            live games, Leaderboard, and much more live in the full game!
           </div>
           <div
             style={{
               flex: `0 0 ${PREVIEW_BOARD_LANE_WIDTH}px`,
-              maxWidth: '100%',
-              display: 'flex',
-              justifyContent: 'center',
-              transform: 'translateX(10px)',
+              maxWidth: "100%",
+              display: "flex",
+              justifyContent: "center",
+              transform: "translateX(10px)",
             }}
           >
             <button
               onClick={openGame}
               style={{
-                border: 'none',
-                cursor: 'pointer',
+                border: "none",
+                cursor: "pointer",
                 borderRadius: 999,
-                background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
-                color: '#f8fafc',
-                padding: '11px 20px',
+                background: "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)",
+                color: "#f8fafc",
+                padding: "11px 20px",
                 fontSize: 15,
                 fontWeight: 800,
-                boxShadow: '0 10px 24px rgba(22,163,74,.32)',
+                boxShadow: "0 10px 24px rgba(22,163,74,.32)",
               }}
             >
               Start Playing!
@@ -1017,15 +1234,15 @@ const PreviewApp = () => {
 
         <div
           style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
             gap: 6,
           }}
         >
           {[
-            'Take turns placing one dot on an empty space.',
-            'A move scores when it completes a square in your color.',
-            'Straight or rotated squares both count toward your total.',
+            "Take turns placing one dot on an empty space.",
+            "A move scores when it completes a square in your color.",
+            "Straight or rotated squares both count toward your total.",
           ].map((line) => (
             <div
               key={line}
@@ -1033,7 +1250,7 @@ const PreviewApp = () => {
                 borderRadius: 16,
                 background: palette.panelBg,
                 border: `1px solid ${palette.panelBorder}`,
-                padding: '8px 10px',
+                padding: "8px 10px",
                 color: palette.text,
                 fontSize: 13,
                 lineHeight: 1.45,
@@ -1048,7 +1265,7 @@ const PreviewApp = () => {
   );
 };
 
-createRoot(document.getElementById('root')!).render(
+createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <PreviewApp />
   </StrictMode>,
