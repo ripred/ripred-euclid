@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type {
   H2HLeaveRequest,
   H2HMoveRequest,
+  H2HRematchRequest,
   ShareChatItem,
 } from "../shared/types/api";
 import {
@@ -13,6 +14,7 @@ import {
   createInitialH2HBoard,
   endH2HByDeparture,
   H2HDomainError,
+  isH2HRematchEligibleState,
   type H2HCanonicalStateSnapshot,
   type H2HMoveAcceptedResponse,
 } from "./h2h";
@@ -34,6 +36,8 @@ export const H2H_STORE_KEYS = Object.freeze({
   activeGames: "euclid:active_games",
   pendingSettlements: "euclid:h2h:settlement:pending",
   game: (gameId: string) => `euclid:game:${gameId}`,
+  result: (gameId: string, terminalRevision: number) =>
+    `euclid:h2h:result:${gameId}:${terminalRevision}`,
   userGame: (userId: string) => `euclid:user:${userId}:game`,
   chatLast: (userId: string) => `euclid:chat:last:${userId}`,
 });
@@ -57,7 +61,9 @@ export type H2HStoreErrorCode =
   | "not_mapped"
   | "game_not_found"
   | "mapping_conflict"
+  | "result_conflict"
   | "game_live"
+  | "rematch_unavailable"
   | "chat_rate_limited"
   | "dynamic_conflict";
 
@@ -104,6 +110,11 @@ export type H2HMappingRead = {
   isPlayer1: boolean | null;
 };
 
+export type H2HViewerState = {
+  state: H2HCanonicalStateSnapshot;
+  canRematch: boolean;
+};
+
 export type H2HMoveCommit = {
   response: H2HMoveAcceptedResponse;
   settlementEvent: H2HSettlementEvent | null;
@@ -114,6 +125,7 @@ export type H2HLeaveCommit = {
   state: H2HCanonicalStateSnapshot | null;
   causedForfeitTransition: boolean;
   settlementEvent: H2HSettlementEvent | null;
+  canceledPristineRematch?: boolean;
 };
 
 export type H2HSettlementEndReason = "game_over" | "tie" | "player_left";
@@ -195,6 +207,75 @@ function parseTimestamp(raw: string | undefined): number | null {
   if (raw === undefined || raw.trim() === "") return null;
   const value = Number(raw);
   return Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function stableSerialize(value: unknown): string {
+  const normalize = (item: unknown): unknown => {
+    if (Array.isArray(item)) return item.map(normalize);
+    if (!item || typeof item !== "object") return item;
+    return Object.fromEntries(
+      Object.keys(item)
+        .sort()
+        .map((key) => [key, normalize((item as Record<string, unknown>)[key])]),
+    );
+  };
+  const serialized = JSON.stringify(normalize(value));
+  if (serialized === undefined) {
+    throw new Error("Canonical value cannot be serialized.");
+  }
+  return serialized;
+}
+
+function canonicalTerminalBoard(
+  gameId: string,
+  terminalRevision: number,
+  source: unknown,
+): H2HCanonicalStateSnapshot["board"] {
+  try {
+    const parsed = typeof source === "string" ? parseJson(source) : source;
+    const state = createH2HCanonicalState(gameId, parsed);
+    if (!state.ended || state.revision !== terminalRevision) {
+      throw new Error("Archive does not match its terminal revision.");
+    }
+    return state.board;
+  } catch {
+    throw new H2HStoreError(
+      "result_conflict",
+      "A different completed result already occupies this round revision.",
+    );
+  }
+}
+
+function archiveTerminalBoard(
+  writes: Map<string, RedisCasWrite>,
+  snapshot: RedisCasSnapshot,
+  gameId: string,
+  terminalRevision: number,
+  board: H2HCanonicalStateSnapshot["board"],
+): void {
+  const resultKey = H2H_STORE_KEYS.result(gameId, terminalRevision);
+  const canonicalBoard = canonicalTerminalBoard(
+    gameId,
+    terminalRevision,
+    board,
+  );
+  const serialized = JSON.stringify(canonicalBoard);
+  const existing = snapshot.get(resultKey);
+  if (existing === undefined) {
+    setWrite(writes, resultKey, serialized);
+    return;
+  }
+  const existingBoard = canonicalTerminalBoard(
+    gameId,
+    terminalRevision,
+    existing,
+  );
+  if (stableSerialize(existingBoard) !== stableSerialize(canonicalBoard)) {
+    throw new H2HStoreError(
+      "result_conflict",
+      "A different completed result already occupies this round revision.",
+    );
+  }
 }
 
 function monotonicTimestamp(
@@ -613,10 +694,101 @@ export class H2HStore {
     };
   }
 
+  async isQueued(userId: string): Promise<boolean> {
+    requireIdentifier(userId, "userId");
+    const queue = uniqueStrings(
+      parseStringList(
+        (await this.redis.get(H2H_STORE_KEYS.queue)) ?? undefined,
+      ),
+    );
+    return queue.includes(userId);
+  }
+
   async getState(gameId: string): Promise<H2HCanonicalStateSnapshot | null> {
     requireIdentifier(gameId, "gameId");
     const raw = await this.redis.get(H2H_STORE_KEYS.game(gameId));
     return stateFromRaw(gameId, raw ?? undefined);
+  }
+
+  /**
+   * Reports whether this viewer and the other participant are still attached
+   * to a normally completed round. Rematch itself rechecks the same mappings
+   * transactionally, so this is presentation state rather than authorization.
+   */
+  async canRematch(
+    userId: string,
+    state: H2HCanonicalStateSnapshot,
+  ): Promise<boolean> {
+    requireIdentifier(userId, "userId");
+    requireIdentifier(state.gameId, "gameId");
+    if (!isH2HRematchEligibleState(state)) {
+      return false;
+    }
+
+    const playerIds = state.board.m_players.map((player) => player.userId);
+    if (!playerIds.includes(userId)) return false;
+    const mappings = await Promise.all(
+      playerIds.map((playerId) =>
+        this.redis.get(H2H_STORE_KEYS.userGame(playerId)),
+      ),
+    );
+    return mappings.every((gameId) => gameId === state.gameId);
+  }
+
+  /**
+   * Reads a board and its viewer-specific rematch presentation from a stable
+   * game record. A false result is safe for clients to use to stop polling.
+   */
+  async getStateForViewer(
+    gameId: string,
+    userId?: string,
+  ): Promise<H2HViewerState | null> {
+    requireIdentifier(gameId, "gameId");
+    if (userId !== undefined) requireIdentifier(userId, "userId");
+    const gameKey = H2H_STORE_KEYS.game(gameId);
+
+    for (let attempt = 0; attempt < this.maxDynamicAttempts; attempt++) {
+      const before = await this.redis.get(gameKey);
+      if (!before) return null;
+      const state = stateFromRaw(gameId, before);
+      if (!state) return null;
+      const canRematch = userId ? await this.canRematch(userId, state) : false;
+      const after = await this.redis.get(gameKey);
+      if (after === before) return { state, canRematch };
+    }
+
+    throw new H2HStoreError(
+      "dynamic_conflict",
+      "The game changed too frequently to read a stable viewer state.",
+    );
+  }
+
+  /** Reads one immutable completed round, including after a same-ID rematch. */
+  async getTerminalState(
+    gameId: string,
+    terminalRevision: number,
+  ): Promise<H2HCanonicalStateSnapshot | null> {
+    requireIdentifier(gameId, "gameId");
+    requireRevision(terminalRevision);
+    const resultKey = H2H_STORE_KEYS.result(gameId, terminalRevision);
+    const readArchive = async (): Promise<H2HCanonicalStateSnapshot | null> => {
+      const archived = await this.redis.get(resultKey);
+      if (!archived) return null;
+      const state = createH2HCanonicalState(gameId, parseJson(archived));
+      return state.ended && state.revision === terminalRevision ? state : null;
+    };
+    const archived = await readArchive();
+    if (archived) return archived;
+
+    // Legacy completed games predate round archives. They remain shareable
+    // while the requested terminal revision is still the current game record.
+    const current = await this.getState(gameId);
+    if (current?.ended && current.revision === terminalRevision) return current;
+
+    // A rematch can atomically create the archive and replace the current game
+    // between the two reads above. Re-read the archive before reporting that
+    // the requested completed round does not exist.
+    return readArchive();
   }
 
   async cancelQueue(userId: string): Promise<{ removed: boolean }> {
@@ -658,6 +830,10 @@ export class H2HStore {
     requireIdentifier(request.gameId, "gameId");
     const gameKey = H2H_STORE_KEYS.game(request.gameId);
     const mappingKey = H2H_STORE_KEYS.userGame(userId);
+    const resultKey = H2H_STORE_KEYS.result(
+      request.gameId,
+      request.expectedRevision + 1,
+    );
     const now = this.now();
 
     return redisMultiCas(
@@ -665,6 +841,7 @@ export class H2HStore {
       [
         gameKey,
         mappingKey,
+        resultKey,
         H2H_STORE_KEYS.activeGames,
         H2H_STORE_KEYS.pendingSettlements,
       ],
@@ -691,6 +868,13 @@ export class H2HStore {
           : null;
 
         if (settlementEvent) {
+          archiveTerminalBoard(
+            writes,
+            snapshot,
+            request.gameId,
+            request.expectedRevision + 1,
+            response.board,
+          );
           const removed = removeActiveGame(active, request.gameId);
           if (removed.removed) {
             setWrite(
@@ -724,16 +908,37 @@ export class H2HStore {
     requireIdentifier(userId, "userId");
     requireIdentifier(request.gameId, "gameId");
     requireRevision(request.expectedRevision);
+    const intent = request.intent ?? "leave";
+    if (intent !== "leave" && intent !== "close_result") {
+      throw new H2HDomainError("invalid_request", "Leave intent is invalid.");
+    }
 
     const mappingKey = H2H_STORE_KEYS.userGame(userId);
     const gameKey = H2H_STORE_KEYS.game(request.gameId);
+    const discoveredRaw = await this.redis.get(gameKey);
+    const participantMappingKeys = uniqueStrings([
+      mappingKey,
+      ...playerIdsFromRaw(discoveredRaw ?? undefined).map(
+        H2H_STORE_KEYS.userGame,
+      ),
+    ]);
+    const departureResultKey = H2H_STORE_KEYS.result(
+      request.gameId,
+      request.expectedRevision + 1,
+    );
+    const completedResultKey = H2H_STORE_KEYS.result(
+      request.gameId,
+      request.expectedRevision,
+    );
     const now = this.now();
 
     return redisMultiCas<H2HLeaveCommit>(
       this.redis,
       [
-        mappingKey,
+        ...participantMappingKeys,
         gameKey,
+        departureResultKey,
+        completedResultKey,
         H2H_STORE_KEYS.activeGames,
         H2H_STORE_KEYS.pendingSettlements,
       ],
@@ -769,7 +974,87 @@ export class H2HStore {
             settlementEvent: null,
           });
         }
+
+        const currentPlayerIds = state.board.m_players.map(
+          (player) => player.userId,
+        );
+        if (!currentPlayerIds.includes(userId)) {
+          // Heal an inconsistent legacy mapping without allowing it to mutate
+          // the real participants' game, even when the request is stale.
+          deleteWrite(writes, mappingKey);
+          return decision(writes, {
+            gameId: request.gameId,
+            state: null,
+            causedForfeitTransition: false,
+            settlementEvent: null,
+          });
+        }
+
         if (state.revision !== request.expectedRevision) {
+          const actualMappingKeys = currentPlayerIds.map(
+            H2H_STORE_KEYS.userGame,
+          );
+          const archivedRaw = snapshot.get(completedResultKey);
+          // A terminal Close and a one-click rematch can serialize in either
+          // order. If the rematch won but is still completely pristine, cancel
+          // it without manufacturing a rated departure for the closing player.
+          const isPristineImmediateRematch =
+            intent === "close_result" &&
+            state.revision === request.expectedRevision + 1 &&
+            !state.ended &&
+            state.board.m_history.length === 0 &&
+            (state.board.chat?.seq ?? 0) === 0 &&
+            actualMappingKeys.every((key) =>
+              participantMappingKeys.includes(key),
+            ) &&
+            archivedRaw !== undefined;
+
+          if (isPristineImmediateRematch) {
+            const archivedBoard = canonicalTerminalBoard(
+              request.gameId,
+              request.expectedRevision,
+              archivedRaw,
+            );
+            const archivedState = createH2HCanonicalState(
+              request.gameId,
+              archivedBoard,
+            );
+            const archivedPlayerIds = archivedState.board.m_players.map(
+              (player) => player.userId,
+            );
+            if (
+              isH2HRematchEligibleState(archivedState) &&
+              archivedPlayerIds.every(
+                (playerId, index) => playerId === currentPlayerIds[index],
+              )
+            ) {
+              for (const playerMappingKey of actualMappingKeys) {
+                if (snapshot.get(playerMappingKey) === request.gameId) {
+                  deleteWrite(writes, playerMappingKey);
+                }
+              }
+              deleteWrite(writes, gameKey);
+              const active = uniqueStrings(
+                parseStringList(snapshot.get(H2H_STORE_KEYS.activeGames)),
+              );
+              const removed = removeActiveGame(active, request.gameId);
+              if (removed.removed) {
+                setWrite(
+                  writes,
+                  H2H_STORE_KEYS.activeGames,
+                  serializeList(removed.next),
+                );
+              }
+              return decision(writes, {
+                gameId: request.gameId,
+                state: null,
+                causedForfeitTransition: false,
+                settlementEvent: null,
+                canceledPristineRematch: true,
+              });
+            }
+          }
+
           throw new H2HDomainError(
             "stale_revision",
             `Expected revision ${request.expectedRevision}, but the canonical revision is ${state.revision}.`,
@@ -777,17 +1062,12 @@ export class H2HStore {
           );
         }
 
-        const participant = state.board.m_players.some(
-          (player) => player.userId === userId,
-        );
-        if (!participant) {
-          deleteWrite(writes, mappingKey);
-          return decision(writes, {
-            gameId: request.gameId,
+        if (intent === "close_result" && !state.ended) {
+          throw new H2HDomainError(
+            "invalid_request",
+            "Only a completed result can be closed.",
             state,
-            causedForfeitTransition: false,
-            settlementEvent: null,
-          });
+          );
         }
 
         deleteWrite(writes, mappingKey);
@@ -819,6 +1099,13 @@ export class H2HStore {
           );
         }
         const settlementEvent = createH2HSettlementEvent(endedState);
+        archiveTerminalBoard(
+          writes,
+          snapshot,
+          request.gameId,
+          request.expectedRevision + 1,
+          endedState.board,
+        );
         const nextOutbox = appendSettlementEvent(
           snapshot.get(H2H_STORE_KEYS.pendingSettlements),
           settlementEvent,
@@ -839,10 +1126,12 @@ export class H2HStore {
 
   async rematch(
     userId: string,
-    gameId: string,
+    request: H2HRematchRequest,
   ): Promise<H2HCanonicalStateSnapshot> {
     requireIdentifier(userId, "userId");
-    requireIdentifier(gameId, "gameId");
+    requireIdentifier(request.gameId, "gameId");
+    const gameId = request.gameId;
+    requireRevision(request.expectedRevision);
 
     for (let attempt = 0; attempt < this.maxDynamicAttempts; attempt++) {
       const gameKey = H2H_STORE_KEYS.game(gameId);
@@ -854,11 +1143,12 @@ export class H2HStore {
       if (discoveredPlayers.length !== 2) {
         createH2HCanonicalState(gameId, parseJson(discoveredRaw));
       }
+      const resultKey = H2H_STORE_KEYS.result(gameId, request.expectedRevision);
       const mappingKeys = discoveredPlayers.map(H2H_STORE_KEYS.userGame);
       const now = this.now();
       const result = await redisMultiCas(
         this.redis,
-        [gameKey, H2H_STORE_KEYS.activeGames, ...mappingKeys],
+        [gameKey, resultKey, H2H_STORE_KEYS.activeGames, ...mappingKeys],
         (
           snapshot,
         ): RedisMultiCasDecision<
@@ -885,10 +1175,23 @@ export class H2HStore {
           if (!state) {
             throw new H2HStoreError("game_not_found", "Game not found.");
           }
+          if (state.revision !== request.expectedRevision) {
+            throw new H2HDomainError(
+              "stale_revision",
+              `Expected revision ${request.expectedRevision}, but the canonical revision is ${state.revision}.`,
+              state,
+            );
+          }
           if (!state.ended) {
             throw new H2HStoreError(
               "game_live",
               "A live game cannot be rematched.",
+            );
+          }
+          if (!isH2HRematchEligibleState(state)) {
+            throw new H2HStoreError(
+              "rematch_unavailable",
+              "A rematch is available only after a normally completed game.",
             );
           }
           if (!actualPlayers.includes(userId)) {
@@ -899,7 +1202,13 @@ export class H2HStore {
           }
           for (const playerId of actualPlayers) {
             const mapped = snapshot.get(H2H_STORE_KEYS.userGame(playerId));
-            if (mapped && mapped !== gameId) {
+            if (mapped === undefined) {
+              throw new H2HStoreError(
+                "not_mapped",
+                "The other redditor has left this match.",
+              );
+            }
+            if (mapped !== gameId) {
               throw new H2HStoreError(
                 "mapping_conflict",
                 "A rematch participant is already in another game.",
@@ -914,10 +1223,14 @@ export class H2HStore {
             now,
           );
           const writes = new Map<string, RedisCasWrite>();
+          archiveTerminalBoard(
+            writes,
+            snapshot,
+            gameId,
+            request.expectedRevision,
+            state.board,
+          );
           setWrite(writes, gameKey, JSON.stringify(rematchState.board));
-          for (const playerId of actualPlayers) {
-            setWrite(writes, H2H_STORE_KEYS.userGame(playerId), gameId);
-          }
           const active = uniqueStrings(
             parseStringList(snapshot.get(H2H_STORE_KEYS.activeGames)),
           );

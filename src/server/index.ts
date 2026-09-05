@@ -3,9 +3,14 @@ import { randomUUID } from "node:crypto";
 import type {
   CanonicalBoardSnapshot,
   H2HLeaveRequest,
+  H2HMappingResponse,
   H2HMoveRejectionReason,
   H2HMoveRequest,
+  H2HRematchRequest,
+  H2HShareRequest,
+  H2HStateResponse,
   InitResponse,
+  RatingRecord,
   RankingsSharePayload,
   ResultSharePayload,
   SerializableBoard,
@@ -15,6 +20,7 @@ import type {
   SoloAbandonRequest,
   SoloMoveRequest,
   SoloShareRequest,
+  UserStatsResponse,
 } from "../shared/types/api";
 import { type AiDifficulty } from "../shared/game/rules";
 import {
@@ -27,6 +33,7 @@ import {
 import type { UiResponse } from "@devvit/web/shared";
 import { createPost } from "./core/post";
 import { H2HDomainError } from "./h2h";
+import { resolveH2HPresence } from "./h2h-presence";
 import { H2HStore, H2HStoreError, type H2HSettlementEvent } from "./h2h-store";
 import { H2HSettlementService } from "./h2h-settlement";
 import { RedisCasConflictExhaustedError } from "./redis-cas";
@@ -278,7 +285,9 @@ function h2hErrorStatus(error: unknown): number {
       case "game_not_found":
         return 404;
       case "mapping_conflict":
+      case "result_conflict":
       case "game_live":
+      case "rematch_unavailable":
         return 409;
       case "chat_rate_limited":
         return 429;
@@ -389,14 +398,7 @@ function sendSoloError(
 }
 
 // Human-vs-human Elo records; Ranked solo ratings are owned by SoloStore.
-type EloRecord = {
-  rating: number;
-  games: number;
-  wins: number;
-  losses: number;
-  draws: number;
-};
-const DEFAULT_ELO: EloRecord = {
+const DEFAULT_ELO: RatingRecord = {
   rating: 1_200,
   games: 0,
   wins: 0,
@@ -404,12 +406,12 @@ const DEFAULT_ELO: EloRecord = {
   draws: 0,
 };
 
-function parseEloRecord(raw: string | null | undefined): EloRecord | null {
+function parseEloRecord(raw: string | null | undefined): RatingRecord | null {
   if (!raw) return null;
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return null;
-    const record = parsed as Partial<EloRecord>;
+    const record = parsed as Partial<RatingRecord>;
     return typeof record.rating === "number" &&
       typeof record.games === "number" &&
       typeof record.wins === "number" &&
@@ -431,7 +433,7 @@ function parseEloRecord(raw: string | null | undefined): EloRecord | null {
 async function getPlayers(): Promise<string[]> {
   return parseStringArray(await redis.get(PLAYERS_KEY()));
 }
-async function getElo(uid: string): Promise<EloRecord> {
+async function getElo(uid: string): Promise<RatingRecord> {
   const current = parseEloRecord(await redis.get(ELOKEY(uid)));
   if (current) return current;
 
@@ -748,12 +750,14 @@ router.post("/api/h2h/queue", async (_req, res) => {
       return res.json({ ok: true, state: "queued" });
     }
 
-    const state = await enrichH2HProfiles(result.state);
+    const viewer = await h2hStore.getStateForViewer(result.gameId, uid);
+    const state = await enrichH2HProfiles(viewer?.state ?? result.state);
     return res.json({
       ...state,
       ok: true,
       state: result.status,
       isPlayer1: result.isPlayer1,
+      canRematch: viewer?.canRematch ?? false,
     });
   } catch (error: unknown) {
     return sendH2HError(res, "queue", error);
@@ -785,48 +789,106 @@ router.get("/api/h2h/mapping", async (_req, res) => {
         .status(400)
         .json({ status: "error", message: "userId missing" });
 
-    let mapping = await h2hStore.getMapping(uid);
-    if (!mapping) {
-      return res.json({ ok: true, gameId: null });
-    }
+    let presence = await resolveH2HPresence(h2hStore, uid);
 
-    try {
-      await refreshCurrentUserProfile(uid);
-    } catch (error: unknown) {
-      slog("[PROFILE] unable to refresh mapped player", {
-        uid,
-        error: errorMessage(error),
-      });
+    if (presence.state === "active") {
+      try {
+        await refreshCurrentUserProfile(uid);
+      } catch (error: unknown) {
+        slog("[PROFILE] unable to refresh mapped player", {
+          uid,
+          error: errorMessage(error),
+        });
+      }
     }
 
     // Cleanup may race a move or remap, so never return the discovery snapshot.
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const discoveredGameId = mapping.gameId;
+    for (
+      let attempt = 0;
+      attempt < 2 && presence.state === "active";
+      attempt++
+    ) {
+      const discoveredGameId = presence.mapping.gameId;
       await h2hStore.cleanupStaleGame(discoveredGameId);
-      const current = await h2hStore.getMapping(uid);
-      if (!current) {
-        return res.json({ ok: true, gameId: null });
+      presence = await resolveH2HPresence(h2hStore, uid);
+      if (presence.state !== "active") break;
+
+      const mapping = presence.mapping;
+      if (!mapping.state || mapping.isPlayer1 === null) {
+        await h2hStore.deleteMappingIfEqual(uid, mapping.gameId);
+        presence = await resolveH2HPresence(h2hStore, uid);
       }
-      mapping = current;
-      if (current.gameId === discoveredGameId) break;
+      if (
+        presence.state !== "active" ||
+        presence.mapping.gameId === discoveredGameId
+      ) {
+        break;
+      }
     }
 
+    if (presence.state !== "active") {
+      const response: H2HMappingResponse = {
+        ok: true,
+        state: presence.state,
+        gameId: null,
+      };
+      return res.json(response);
+    }
+
+    const mapping = presence.mapping;
     if (!mapping.state || mapping.isPlayer1 === null) {
       await h2hStore.deleteMappingIfEqual(uid, mapping.gameId);
-      return res.json({ ok: true, gameId: null });
+      presence = await resolveH2HPresence(h2hStore, uid);
+      if (presence.state !== "active") {
+        const response: H2HMappingResponse = {
+          ok: true,
+          state: presence.state,
+          gameId: null,
+        };
+        return res.json(response);
+      }
     }
 
-    const state = await enrichH2HProfiles(mapping.state);
+    const currentMapping = presence.mapping;
+    if (!currentMapping.state || currentMapping.isPlayer1 === null) {
+      throw new H2HStoreError(
+        "dynamic_conflict",
+        "The caller's game mapping changed too frequently to read safely.",
+      );
+    }
+
+    const viewer = await h2hStore.getStateForViewer(currentMapping.gameId, uid);
+    if (!viewer) {
+      await h2hStore.deleteMappingIfEqual(uid, currentMapping.gameId);
+      const nextPresence = await resolveH2HPresence(h2hStore, uid);
+      if (nextPresence.state !== "active") {
+        const response: H2HMappingResponse = {
+          ok: true,
+          state: nextPresence.state,
+          gameId: null,
+        };
+        return res.json(response);
+      }
+      throw new H2HStoreError(
+        "dynamic_conflict",
+        "The caller's game mapping changed too frequently to read safely.",
+      );
+    }
+
+    const state = await enrichH2HProfiles(viewer.state);
     slog("[H2H] mapping", {
       uid,
-      gameId: mapping.gameId,
-      isPlayer1: mapping.isPlayer1,
+      gameId: currentMapping.gameId,
+      isPlayer1: currentMapping.isPlayer1,
     });
-    return res.json({
+    const response: H2HMappingResponse = {
       ...state,
       ok: true,
-      isPlayer1: mapping.isPlayer1,
-    });
+      state: "active",
+      isPlayer1: currentMapping.isPlayer1,
+      canRematch: viewer.canRematch,
+    };
+    return res.json(response);
   } catch (error: unknown) {
     return sendH2HError(res, "mapping", error);
   }
@@ -841,12 +903,17 @@ router.get("/api/h2h/state", async (req, res) => {
         .json({ status: "error", message: "gameId required" });
 
     await h2hStore.cleanupStaleGame(gid);
-    const state = await h2hStore.getState(gid);
-    if (!state) {
+    const viewer = await h2hStore.getStateForViewer(gid, context.userId);
+    if (!viewer) {
       return res.status(404).json({ ok: false, message: "Game not found." });
     }
 
-    return res.json({ ...(await enrichH2HProfiles(state)), ok: true });
+    const response: H2HStateResponse = {
+      ...(await enrichH2HProfiles(viewer.state)),
+      ok: true,
+      canRematch: viewer.canRematch,
+    };
+    return res.json(response);
   } catch (error: unknown) {
     return sendH2HError(res, "state", error);
   }
@@ -887,14 +954,14 @@ router.post("/api/h2h/rematch", async (req, res) => {
         .status(401)
         .json({ status: "error", message: "userId missing" });
 
-    const { gameId } = (req.body || {}) as { gameId: string };
-    if (!gameId)
+    const request = (req.body ?? {}) as H2HRematchRequest;
+    if (!request.gameId)
       return res
         .status(400)
         .json({ status: "error", message: "gameId required" });
 
-    const state = await enrichH2HProfiles(await h2hStore.rematch(uid, gameId));
-    slog("[H2H] rematch", { gameId, by: uid });
+    const state = await enrichH2HProfiles(await h2hStore.rematch(uid, request));
+    slog("[H2H] rematch", { gameId: request.gameId, by: uid });
     return res.json({ ...state, ok: true });
   } catch (error: unknown) {
     return sendH2HError(res, "rematch", error);
@@ -924,7 +991,14 @@ router.post("/api/h2h/leave", async (req, res) => {
       forfeit: commit.causedForfeitTransition,
     });
     if (!commit.state) {
-      return res.json({ ok: true, left: false, gameId: null });
+      return res.json({
+        ok: true,
+        left: commit.gameId !== null,
+        gameId: null,
+        ...(commit.canceledPristineRematch
+          ? { canceledPristineRematch: true }
+          : {}),
+      });
     }
     return res.json({
       ...(await enrichH2HProfiles(commit.state)),
@@ -966,14 +1040,15 @@ router.get("/api/user/stats", async (_req, res) => {
       getElo(uid),
       soloStore.getRankedRating(uid),
     ]);
-    const hva: EloRecord = {
+    const hva: RatingRecord = {
       rating: soloRating.rating,
       games: soloRating.games,
       wins: soloRating.wins,
       losses: soloRating.losses,
       draws: soloRating.draws,
     };
-    res.json({ hvh, hva });
+    const response: UserStatsResponse = { hvh, hva };
+    res.json(response);
   } catch (error: unknown) {
     res.status(500).json({ status: "error", message: errorMessage(error) });
   }
@@ -1166,19 +1241,49 @@ router.post("/api/share/rankings", async (req, res) => {
   }
 });
 
-router.post("/api/share/h2h-result", async (_req, res) => {
+router.post("/api/share/h2h-result", async (req, res) => {
   try {
     const uid = context.userId;
     if (!uid)
       return res.status(401).json({ ok: false, message: "userId missing" });
 
-    const mapping = await h2hStore.getMapping(uid);
-    if (!mapping?.state)
+    const request = (req.body ?? {}) as Partial<H2HShareRequest>;
+    if (typeof request.gameId !== "string" || request.gameId.trim() === "") {
+      return res.status(400).json({ ok: false, message: "gameId missing" });
+    }
+    const terminalRevision = request.terminalRevision;
+    if (
+      typeof terminalRevision !== "number" ||
+      !Number.isSafeInteger(terminalRevision) ||
+      terminalRevision < 0
+    ) {
+      return res
+        .status(400)
+        .json({ ok: false, message: "terminalRevision is invalid" });
+    }
+
+    // Each terminal revision is immutable even when the same game ID is reused
+    // for a rematch. Load that exact round, then authorize against its players.
+    const storedState = await h2hStore.getTerminalState(
+      request.gameId,
+      terminalRevision,
+    );
+    if (!storedState)
       return res
         .status(400)
         .json({ ok: false, message: "No finished game found to share." });
 
-    const state = await enrichH2HProfiles(mapping.state);
+    const participantIds = storedState.board.m_players.map(
+      (player) => player.userId,
+    );
+    if (!participantIds.includes(uid)) {
+      return res.status(403).json({
+        ok: false,
+        message: "Only a participant can share this result.",
+      });
+    }
+
+    const state = await enrichH2HProfiles(storedState);
     if (!state.ended)
       return res
         .status(409)

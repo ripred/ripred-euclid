@@ -996,7 +996,20 @@ export function appendH2HChat(
   return { item: { ...item }, state: nextState };
 }
 
-/** Resets an ended game while preserving its participants and presentation. */
+/** True only for terminal outcomes that can legitimately start a rematch. */
+export function isH2HRematchEligibleState(
+  state: Pick<H2HCanonicalStateSnapshot, "ended" | "endedReason">,
+): boolean {
+  return (
+    state.ended &&
+    (state.endedReason === "game_over" || state.endedReason === "tie")
+  );
+}
+
+/**
+ * Resets a normally completed game while preserving its participants and
+ * presentation.
+ */
 export function createH2HRematch(
   source: unknown,
   userId: string,
@@ -1009,6 +1022,12 @@ export function createH2HRematch(
   requireParticipant(state.board, userId);
   if (!state.ended) {
     return reject("invalid_request", "Only an ended game can be rematched.");
+  }
+  if (!isH2HRematchEligibleState(state)) {
+    return reject(
+      "invalid_request",
+      "Only a normally completed game can be rematched.",
+    );
   }
 
   const timestamps = mutationTimestamps(state.board, now);

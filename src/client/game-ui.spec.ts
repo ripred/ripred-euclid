@@ -5,8 +5,13 @@ import {
   getH2HExitAction,
   getH2HResultPresentation,
   isLocalVictory,
+  isH2HChatAvailable,
+  isH2HRematchAvailable,
+  isH2HRematchRecovery,
   shouldRunVictoryEffects,
   shouldAdoptH2HState,
+  shouldPollH2HState,
+  shouldProcessH2HPollSnapshot,
 } from "./game-ui";
 
 describe("isLocalVictory", () => {
@@ -44,6 +49,172 @@ describe("getH2HExitAction", () => {
       label: "Leave Game",
       notifyServer: true,
     });
+  });
+});
+
+describe("H2H participant controls", () => {
+  it("offers chat only on a live participant board", () => {
+    expect(
+      isH2HChatAvailable({
+        hasGame: true,
+        hasBoard: true,
+        spectating: false,
+        endReason: "",
+      }),
+    ).toBe(true);
+    expect(
+      isH2HChatAvailable({
+        hasGame: true,
+        hasBoard: true,
+        spectating: true,
+        endReason: "",
+      }),
+    ).toBe(false);
+    expect(
+      isH2HChatAvailable({
+        hasGame: true,
+        hasBoard: true,
+        spectating: false,
+        endReason: "game_over",
+      }),
+    ).toBe(false);
+    expect(
+      isH2HChatAvailable({
+        hasGame: false,
+        hasBoard: true,
+        spectating: false,
+        endReason: "",
+      }),
+    ).toBe(false);
+  });
+
+  it("offers rematch only after a normal participant completion", () => {
+    expect(isH2HRematchAvailable("game_over", false)).toBe(true);
+    expect(isH2HRematchAvailable("tie", false)).toBe(true);
+    expect(isH2HRematchAvailable("player_left", false)).toBe(false);
+    expect(isH2HRematchAvailable("opponent_left", false)).toBe(false);
+    expect(isH2HRematchAvailable("gone", false)).toBe(false);
+    expect(isH2HRematchAvailable("game_over", true)).toBe(false);
+    expect(isH2HRematchAvailable("game_over", false, false)).toBe(false);
+    expect(isH2HRematchAvailable("tie", false, null)).toBe(true);
+  });
+
+  it("polls live views and only rematch-capable completed views", () => {
+    expect(
+      shouldPollH2HState({ ended: false, endReason: null, spectating: false }),
+    ).toBe(true);
+    expect(
+      shouldPollH2HState({ ended: false, endReason: null, spectating: true }),
+    ).toBe(true);
+    expect(
+      shouldPollH2HState({
+        ended: true,
+        endReason: "game_over",
+        spectating: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldPollH2HState({
+        ended: true,
+        endReason: "tie",
+        spectating: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldPollH2HState({
+        ended: true,
+        endReason: "player_left",
+        spectating: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldPollH2HState({
+        ended: true,
+        endReason: "game_over",
+        spectating: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldPollH2HState({
+        ended: true,
+        endReason: "game_over",
+        spectating: false,
+        canRematch: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("processes same-revision terminal availability changes from polling", () => {
+    const current = {
+      activeGameId: "game-a",
+      currentRevision: 12,
+      currentCanRematch: true,
+      hasBaseline: true,
+    };
+    expect(
+      shouldProcessH2HPollSnapshot({
+        ...current,
+        incoming: {
+          gameId: "game-a",
+          revision: 12,
+          ended: true,
+          canRematch: false,
+        },
+      }),
+    ).toBe(true);
+    expect(
+      shouldProcessH2HPollSnapshot({
+        ...current,
+        incoming: {
+          gameId: "game-a",
+          revision: 12,
+          ended: true,
+          canRematch: true,
+        },
+      }),
+    ).toBe(false);
+    expect(
+      shouldProcessH2HPollSnapshot({
+        ...current,
+        incoming: {
+          gameId: "game-b",
+          revision: 13,
+          ended: false,
+          canRematch: false,
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("recognizes a newer live same-game state as rematch recovery", () => {
+    expect(
+      isH2HRematchRecovery("game-a", 12, {
+        gameId: "game-a",
+        revision: 13,
+        ended: false,
+      }),
+    ).toBe(true);
+    expect(
+      isH2HRematchRecovery("game-a", 12, {
+        gameId: "game-b",
+        revision: 13,
+        ended: false,
+      }),
+    ).toBe(false);
+    expect(
+      isH2HRematchRecovery("game-a", 12, {
+        gameId: "game-a",
+        revision: 12,
+        ended: false,
+      }),
+    ).toBe(false);
+    expect(
+      isH2HRematchRecovery("game-a", 12, {
+        gameId: "game-a",
+        revision: 13,
+        ended: true,
+      }),
+    ).toBe(false);
   });
 });
 

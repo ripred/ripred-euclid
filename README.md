@@ -6,7 +6,7 @@ Euclid is a turn-based Reddit strategy game about claiming grid points and compl
 
 ![Euclid game](Euclid-Game2.png)
 
-The current app version is `0.1.92` and the project is pinned to Devvit `0.14.2`.
+The current app version is `0.1.95` and the project is pinned to Devvit `0.14.2`.
 
 ## Game rules
 
@@ -21,11 +21,11 @@ The first player to reach the target wins. If the board fills first, the higher 
 
 ## Game modes
 
-| Mode                 | Rules                                                                                   | Rating          | Persistence and assistance                                                                                 |
-| -------------------- | --------------------------------------------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------- |
-| Ranked vs Euclid     | 8×8, Grid Footprint, first to 150, human first, Brutal                                  | Ranked solo Elo | One active game per user; reload resumes it; assistance is disabled                                        |
-| Practice vs Euclid   | Even dimensions from 4 through 16, either scoring mode, supported target and difficulty | Unrated         | Server-authoritative custom game; hints and local auto-move tools are allowed                              |
-| Redditor vs Redditor | 8×8, Grid Footprint, first to 150                                                       | Multiplayer Elo | Matchmaking, reload resume, leave/forfeit, and read-only spectating; chat/rematch UI blockers remain below |
+| Mode                 | Rules                                                                                   | Rating          | Persistence and assistance                                                                     |
+| -------------------- | --------------------------------------------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------- |
+| Ranked vs Euclid     | 8×8, Grid Footprint, first to 150, human first, Brutal                                  | Ranked solo Elo | One active game per user; reload resumes it; assistance is disabled                            |
+| Practice vs Euclid   | Even dimensions from 4 through 16, either scoring mode, supported target and difficulty | Unrated         | Server-authoritative custom game; hints and local auto-move tools are allowed                  |
+| Redditor vs Redditor | 8×8, Grid Footprint, first to 150                                                       | Multiplayer Elo | Matchmaking, reload resume, leave/forfeit, rematch, participant chat, and read-only spectating |
 
 Canceling Ranked before the first human move is unrated. Abandoning after play begins records one loss. Ending Practice never changes Ranked Elo.
 
@@ -40,16 +40,22 @@ The browser is a presentation and intent layer, not a source of official results
 - H2H clients submit a game ID, coordinate, and expected revision. The server verifies the participant, turn, revision, cell, score, completed squares, outcome, and persisted board.
 - Solo clients submit start rules or a coordinate intent with an expected revision and command ID. The server owns the session, private RNG seed, AI selection, complete move history, result, metrics, and Ranked settlement.
 - Repeated solo commands are idempotent. Reusing a command ID for different intent is rejected.
-- Redis compare-and-set transactions serialize competing mutations. H2H terminal results enter a durable outbox and settle rating and metrics exactly once.
+- Redis compare-and-set transactions serialize competing mutations. H2H terminal results are archived immutably by game ID and terminal revision in the same transaction that ends the round; they enter a durable outbox and settle rating and metrics exactly once.
 - Solo result shares are prepared from canonical completed human victories and finalized through an idempotent receipt. Explicit submission failures are retryable, while unconfirmed in-flight receipts remain pending to avoid duplicate posts. Client-claimed result uploads are rejected.
 - Practice data never enters the versioned Ranked-solo namespace. Unverifiable legacy HVA ratings remain untouched but are excluded from current rankings.
 
 Pure rules are shared between client and server to keep behavior DRY. Server validation and persistence remain the trust boundary.
 
+Home records, resume and queue status, and live scoring effects are projections of server-owned state. Score feedback comes only from an accepted canonical move or a newly observed canonical move. Loading or resuming establishes a quiet baseline and does not replay or invent prior scoring events.
+
 ## Application surfaces
 
 - The default inline post entrypoint is a self-running preview: intro, rules demo, then live leaderboards. Preview onboarding is complete only after the full demo finishes.
 - **Start Playing!** opens the full game entrypoint.
+- The expanded entrypoint opens on a responsive navy-and-vector-grid dashboard. **Play Euclid** is the primary action, **Play a Redditor** is secondary, separate solo and multiplayer ratings are shown, and saved solo games, active Redditor matches, and matchmaking state have explicit continue or cancel controls. Live games, Leaderboard, Options, and Rules remain quieter navigation.
+- Canonical scoring moves show `+N` and the completed-square count beside the move and scorecard, animate only the newly completed squares, and briefly show each new square's enclosing footprint in Grid Footprint mode. Players can hide accumulated square lines without hiding the active scoring event; True Area does not show a footprint overlay.
+- Live Redditor matches give participants a visible, touch-sized **Chat** control while retaining the `\` keyboard shortcut. The focus-contained composer has explicit Send and Cancel actions, and its chronological live log wraps long messages without trapping the board controls below the viewport. Spectators can read the existing shared log but cannot compose messages.
+- After a normally completed Redditor match, either participant can select **Rematch** while both players remain attached. The request is bound to the terminal revision, simultaneous requests converge on one canonical new round, and a player who already left is never silently restored. The server derives ongoing rematch availability from both participant mappings; if either player closes, the remaining client hides the action and stops terminal polling without changing the finished board. If terminal Close and an untouched rematch race, Close cancels that rematch without recording a forfeit. Finished-round sharing is bound to the immutable terminal revision, so a rematch cannot replace the result being shared.
 - Shared leaderboard and victory posts render dedicated previews and board replays. Older solo replay payloads retain their player-one-first fallback.
 - A moderator subreddit menu item creates a fresh Euclid post.
 - Spectators receive neutral result copy and a local-only **Stop Watching** action; they cannot mutate or leave on behalf of participants.
@@ -65,7 +71,12 @@ src/shared/
 
 src/client/
   preview.tsx          Inline preview, demo, leaderboards, and shared posts
-  App.tsx              Full game and moderator-facing UI
+  App.tsx              Full-game orchestration, canonical state adoption, and board UI
+  home-lifecycle.ts    Queue recovery and stale-request transition policy
+  home-screen.tsx      Responsive home dashboard and transition/status surfaces
+  home-ui.ts           Pure record, resume, and matchmaking presentation
+  h2h-controls.tsx     Accessible participant chat and rematch controls
+  score-feedback.ts    Canonical score-event normalization and display geometry
   game-ui.ts           Result, spectator, and responsive-layout decisions
   solo-ui.ts           Solo intents, reconciliation, assistance, and exit policy
   share-replay*.ts(x)  Backward-compatible canonical replay rendering
@@ -73,7 +84,8 @@ src/client/
 src/server/
   index.ts             Devvit/Express routes, profiles, rankings, shares, metrics
   h2h.ts               Canonical multiplayer domain rules and validation
-  h2h-store.ts         Atomic matchmaking, games, chat, leave, and rematch storage
+  h2h-store.ts         Atomic matchmaking, games, chat, leave, rematch, and terminal-round archives
+  h2h-presence.ts      Stable idle, queued, and active multiplayer presence resolution
   h2h-settlement.ts    Durable exactly-once H2H Elo and metric settlement
   solo.ts              Canonical solo domain, replay validation, and redaction
   solo-store.ts        Atomic sessions, idempotency, Ranked Elo, metrics, shares
@@ -108,11 +120,11 @@ npm run dev:vite  # browser-only Vite surface on port 7474
 npm run build     # production client and server bundles in dist/
 ```
 
-Tests are colocated as `*.spec.ts` files. The suite covers scoring and AI priorities, canonical replay validation, forged state, stale revisions, command replay/conflicts, concurrent Redis mutations, settlement idempotency, spectator behavior, onboarding, victory effects, responsive layout, and legacy replay compatibility.
+Tests are colocated as `*.spec.{ts,tsx}` files. The suite covers scoring and AI priorities, canonical replay validation, forged state, stale revisions, command replay/conflicts, concurrent Redis mutations, settlement idempotency, spectator behavior, onboarding, victory effects, responsive layout, home record/resume/matchmaking presentation, H2H presence stabilization, participant-control eligibility and markup, rematch convergence and detachment, terminal-Close/rematch cancellation, immutable terminal-round archives, canonical score-feedback normalization, history-reset handling, footprint geometry, and legacy replay compatibility.
 
 `npm run check` is intentionally mutating: it applies ESLint fixes and Prettier formatting. Use the explicit non-mutating gate above when reviewing a worktree.
 
-The production dependency audit (`npm audit --omit=dev`) is clean at Devvit 0.14.2. A full audit currently reports six development-only findings propagated from four advisories in the Devvit CLI's `image-size` and `tmp` chains, and offers only an incompatible downgrade to Devvit 0.10.25. Do not run `npm audit fix --force` or add unsupported overrides; reassess them with the next stable Devvit update. `@devvit/public-api` is pinned as a development-only packaging compatibility dependency because the 0.14.2 CLI resolves its generated template from the project root; Euclid remains a Devvit Web app and application source must not import that legacy API. `package.json` also pins the reviewed install-script approvals needed by the native build tools—run `npm install-scripts ls` after dependency changes.
+At the current lockfile, `npm audit --omit=dev` reports three moderate `qs` advisories inherited through Express and body-parser, with no fix currently offered. The full audit reports 19 findings—2 low, 13 moderate, and 4 high—including the same production chain plus development-tool findings propagated through ESLint and the Devvit CLI's `image-size` and `tmp` chains; npm currently offers no fix for those paths. Do not run `npm audit fix --force` or add unsupported overrides. Reassess the direct Express dependency and the Devvit/ESLint toolchains when compatible releases become available. `@devvit/public-api` is pinned as a development-only packaging compatibility dependency because the 0.14.2 CLI resolves its generated template from the project root; Euclid remains a Devvit Web app and application source must not import that legacy API. `package.json` also pins the reviewed install-script approvals needed by the native build tools—run `npm install-scripts ls` after dependency changes.
 
 ## Devvit operation
 
@@ -147,20 +159,23 @@ npx devvit view ripred-euclid@<version>
 
 Before installing a release beyond the test subreddit:
 
-1. Resume an in-progress Ranked game after reload and verify cancel-versus-forfeit behavior.
+1. Verify dashboard idle, saved-solo, queued, and active-H2H states; resume an in-progress Ranked game after reload and verify cancel-versus-forfeit behavior.
 2. Complete Ranked win, loss, and tie paths; confirm one rating settlement and winner-only sharing.
-3. Complete custom Practice games across sizes, scoring modes, targets, and difficulty; confirm Ranked data is unchanged.
-4. Queue two accounts, reload both, test simultaneous/stale moves, chat, leave/forfeit, and rematch.
+3. Complete custom Practice games across sizes, scoring modes, targets, and difficulty; verify live score feedback and the accumulated-line toggle, and confirm Ranked data is unchanged.
+4. Queue two accounts, reload both, verify local-response and polled-opponent score feedback, and test simultaneous/stale moves, pointer/touch and keyboard chat entry, leave/forfeit, and rematch.
 5. Spectate both winner sides and confirm neutral copy, no celebration, and local-only exit.
 6. Exercise preview onboarding, explicit tutorial dismissal, same-breakpoint resizing, height-only resizing, and orientation changes.
-7. Verify leaderboard shares render their canonical frozen snapshot and result shares render their canonical replay rather than a generic fallback.
-
-### Current test-surface defects
-
-- **H2H rematch is not reachable from the client.** The server route and atomic domain transition exist, but the UI has no rematch control or request, so a normal player cannot start one.
-- **H2H chat has no pointer or touch entry control.** A participant can open it only with the `\` keyboard shortcut, which makes chat undiscoverable on desktop and unavailable from the Reddit mobile app.
+7. Verify leaderboard shares render their canonical frozen snapshot and result shares render their exact terminal-revision replay rather than a generic fallback, including when a rematch has already begun.
 
 The full real-surface checklist still requires three distinct Reddit identities, simultaneous player sessions, a fresh browser-storage context, and a physical Reddit mobile-app session. Ranked win, loss, and tie outcomes also cannot be selected deterministically from the release surface; use naturally completed games unless an isolated, non-production QA fixture is designed and approved.
+
+## Optional enhancements
+
+- **Interactive first-score onboarding:** Add a guided lesson on the real board that asks the player to place a dot, reveals a one-move scoring opportunity, lets the player complete it, and then introduces rotated and larger squares.
+- **Accessibility and mobile completion:** Make board spots semantic keyboard-operable controls with coordinate and occupancy labels, arrow navigation, and Enter or Space placement. Add non-color ownership cues and accessible dialog focus behavior; complete dynamic-viewport, safe-area, and practical large-board touch-target support; verify Assist-mode touch behavior; and suppress the remaining celebration and assistance animations when reduced motion is requested.
+- **Balance and configuration:** Define Short, Standard, and Marathon targets from desired turn counts and playtesting, measure first-player performance, alternate the opening player in rematches, and simplify the nine AI choices into clearer player-facing tiers while retaining their personality labels where useful.
+- **Chat and spectator privacy:** Decide whether chat merits retention. If retained, disclose that spectators can read it and add appropriate mute, report, and moderation controls before wider public play. Remove or reframe AI echo chat unless it gains an intentional gameplay purpose.
+- **Independent rules verification:** Add an independent reference oracle, golden fixtures, and generated-board or property comparisons that do not reuse the production decision path, supplementing the existing replay-validation and tampering coverage.
 
 ## Pending release work
 
