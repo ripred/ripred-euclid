@@ -7,18 +7,24 @@ import React, {
 } from "react";
 import type {
   H2HCanonicalState,
+  H2HCancelQueueResponse,
   H2HChatResponse,
+  H2HLeaveRequest,
   H2HLeaveResponse,
   H2HMappingResponse,
   InitResponse,
   H2HMoveResponse,
   H2HQueueResponse,
+  H2HRematchResponse,
+  H2HShareRequest,
   H2HStateResponse,
   RankingsResponse,
   RankingsShareRow,
   SerializableBoard,
   ShareChatItem,
   ShareBucket,
+  SharePoint,
+  ShareSquare,
   SharedPostPayload,
   SoloAbandonResponse,
   SoloMoveResponse,
@@ -26,14 +32,16 @@ import type {
   SoloShareResponse,
   SoloStartResponse,
   SoloStateResponse,
+  UserStatsResponse,
 } from "../shared/types/api";
-import { Board, isBoardValid, Point, Square } from "../shared/game/engine";
+import { Board, isBoardValid } from "../shared/game/engine";
 import {
   AI_DIFFICULTIES,
   AI_DIFFICULTY_LABELS,
   isAiDifficulty,
   type AiDifficulty,
   type PlayerColor,
+  type PlayerIndex,
   type SoloMode,
 } from "../shared/game/rules";
 import { recommendedWinTarget, totalSquareScore } from "../shared/scoring";
@@ -41,10 +49,17 @@ import {
   calculateBoardLayout,
   getH2HExitAction,
   getH2HResultPresentation,
+  isH2HChatAvailable,
+  isH2HRematchAvailable,
+  isH2HRematchRecovery,
   isLocalVictory,
   shouldAdoptH2HState,
+  shouldPollH2HState,
+  shouldProcessH2HPollSnapshot,
   shouldRunVictoryEffects,
+  type H2HViewEndReason,
 } from "./game-ui";
+import { H2HChatTrigger, H2HRematchButton } from "./h2h-controls";
 import {
   FULL_TUTORIAL_KEY,
   hasStoredCompletion,
@@ -72,10 +87,37 @@ import {
   isSoloHumanTurn,
   shouldAdoptSoloSnapshot,
 } from "./solo-ui";
+import {
+  HomeScreen,
+  HomeStatusScreen,
+  type HomeBusyAction,
+} from "./home-screen";
+import {
+  getH2HHomePresentation,
+  getHomeRecordPresentations,
+  getPlayEuclidSubtitle,
+  getSoloContinuationPresentation,
+  shouldLockHomeNavigation,
+} from "./home-ui";
+import {
+  isCurrentH2HRequest,
+  resolveQueueRecovery,
+  type HomeQueueOperation,
+} from "./home-lifecycle";
+import {
+  didH2HHistoryReset,
+  formatScoreFeedback,
+  normalizeSoloScoreFeedback,
+  resolvePendingH2HScoreFeedback,
+  scoreFeedbackFromH2HMove,
+  scoreFeedbackFromH2HSnapshot,
+  selectSquareLines,
+  squareSignature,
+  type ScoreFeedbackEvent,
+} from "./score-feedback";
 
 const HUMAN_VS_EUCLID_LABEL = "Redditor vs Euclid";
 const HUMAN_VS_HUMAN_LABEL = "Redditor vs Redditor";
-const WATCH_LIVE_GAMES_LABEL = "Watch Live Games";
 const WATCH_OTHER_REDDITORS_LIVE_GAMES_LABEL =
   "Watch Other Redditor's Live Games";
 const LEADERBOARD_LABEL = "Leaderboard";
@@ -113,7 +155,7 @@ const GlobalStyles = () => (
     /* --- Light theme defaults --- */
     :root{
       --bg:#f8fafc; --text:#111827; --muted:#4b5563;
-      --card-bg:#ffffff; --card-border:#e5e7eb;
+      --card-bg:#ffffff; --card-border:#e5e7eb; --error-text:#b91c1c;
 
       --empty-fill:#f3f4f6; --empty-stroke:#9ca3af;
 
@@ -129,15 +171,13 @@ const GlobalStyles = () => (
       --last-red-glow:rgba(239,68,68,.35);
       --last-blue-glow:rgba(59,130,246,.35);
 
-      --glint-light:rgba(255,255,255,.50);
-      --glint-mid:rgba(255,255,255,.20);
     }
 
     /* --- Prefer dark: OS/browser choice --- */
     @media (prefers-color-scheme: dark) {
       :root{
         --bg:#0b1220; --text:#f3f4f6; --muted:#9ca3af;
-        --card-bg:#111827; --card-border:#374151;
+        --card-bg:#111827; --card-border:#374151; --error-text:#fca5a5;
 
         --empty-fill:#1f2937; --empty-stroke:#d1d5db;
 
@@ -153,8 +193,6 @@ const GlobalStyles = () => (
         --last-red-glow:rgba(239,68,68,.50);
         --last-blue-glow:rgba(59,130,246,.50);
 
-        --glint-light:rgba(255,255,255,.36);
-        --glint-mid:rgba(255,255,255,.16);
       }
     }
 
@@ -163,7 +201,7 @@ const GlobalStyles = () => (
     html[data-theme="dark"], body[data-theme="dark"],
     html[data-color-scheme="dark"], body[data-color-scheme="dark"]{
       --bg:#0b1220; --text:#f3f4f6; --muted:#9ca3af;
-      --card-bg:#111827; --card-border:#374151;
+      --card-bg:#111827; --card-border:#374151; --error-text:#fca5a5;
 
       --empty-fill:#1f2937; --empty-stroke:#d1d5db;
 
@@ -179,14 +217,12 @@ const GlobalStyles = () => (
       --last-red-glow:rgba(239,68,68,.50);
       --last-blue-glow:rgba(59,130,246,.50);
 
-      --glint-light:rgba(255,255,255,.36);
-      --glint-mid:rgba(255,255,255,.16);
     }
     html.light, body.light,
     html[data-theme="light"], body[data-theme="light"],
     html[data-color-scheme="light"], body[data-color-scheme="light"]{
       --bg:#f8fafc; --text:#111827; --muted:#4b5563;
-      --card-bg:#ffffff; --card-border:#e5e7eb;
+      --card-bg:#ffffff; --card-border:#e5e7eb; --error-text:#b91c1c;
 
       --empty-fill:#f3f4f6; --empty-stroke:#9ca3af;
 
@@ -202,8 +238,6 @@ const GlobalStyles = () => (
       --last-red-glow:rgba(239,68,68,.35);
       --last-blue-glow:rgba(59,130,246,.35);
 
-      --glint-light:rgba(255,255,255,.50);
-      --glint-mid:rgba(255,255,255,.20);
     }
 
     html, body, #root { height: 100%; background: var(--bg); }
@@ -250,13 +284,6 @@ const GlobalStyles = () => (
     .anim__zoomIn{animation-name:zoomIn_kf}
     @keyframes lastPulse{0%{transform:scale(1)}50%{transform:scale(1.06)}100%{transform:scale(1)}}
     .last__pulse{animation:lastPulse 900ms ease-out 2}
-    @keyframes glintSlide{0%{transform:translateX(-140%)}100%{transform:translateX(140%)}}
-    .glint-wrap{position:relative;display:inline-block;padding:2px 6px;border-radius:8px;overflow:hidden}
-    .glint-bar{position:absolute;inset:0;background:linear-gradient(90deg,transparent,var(--glint-mid),var(--glint-light),var(--glint-mid),transparent);transform:translateX(-140%);animation:glintSlide 2.2s ease;pointer-events:none;filter:blur(1px)}
-    @keyframes dotPlace{0%{transform:scale(0.5);opacity:0.5}100%{transform:scale(1);opacity:1}}
-    .dot-anim{animation:dotPlace 0.3s ease-out}
-    @keyframes lineDraw{0%{stroke-dashoffset:100%}100%{stroke-dashoffset:0%}}
-    .line-anim{stroke-dasharray:100%;animation:lineDraw 0.5s linear forwards}
   `}</style>
 );
 
@@ -295,12 +322,9 @@ const Confetti: React.FC<{ show: boolean }> = ({ show }) => {
       vr: (Math.random() - 0.5) * 0.2,
       color: colors[Math.floor(Math.random() * colors.length)] ?? "#ef4444",
     }));
-    let running = true;
-    const startedAt = performance.now();
-    const duration = 1800;
-    let previousFrameAt = startedAt;
+    let animationFrameId: number | undefined;
+    let previousFrameAt = performance.now();
     const tick = (t: number) => {
-      if (!running) return;
       const dt = Math.min(32, t - previousFrameAt);
       previousFrameAt = t;
       ctx.clearRect(0, 0, w, h);
@@ -315,12 +339,21 @@ const Confetti: React.FC<{ show: boolean }> = ({ show }) => {
         ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
         ctx.restore();
       }
-      if (t - startedAt < duration) requestAnimationFrame(tick);
-      else running = false;
+
+      // A rotated square always fits within this radius. Since every piece
+      // moves downward, it cannot re-enter after its top clears the viewport.
+      const allPiecesHaveExited = parts.every(
+        (p) => p.y - p.size / Math.SQRT2 > h,
+      );
+      if (!allPiecesHaveExited) {
+        animationFrameId = requestAnimationFrame(tick);
+      }
     };
-    requestAnimationFrame(tick);
+    animationFrameId = requestAnimationFrame(tick);
     return () => {
-      running = false;
+      if (animationFrameId !== undefined) {
+        cancelAnimationFrame(animationFrameId);
+      }
       window.removeEventListener("resize", onResize);
     };
   }, [show]);
@@ -333,7 +366,7 @@ const Confetti: React.FC<{ show: boolean }> = ({ show }) => {
   );
 };
 
-/* ===== ScoreCard (RESTORED) ===== */
+/* ===== Score card ===== */
 const ScoreCard: React.FC<{
   label: string;
   score: number;
@@ -341,16 +374,25 @@ const ScoreCard: React.FC<{
   glow?: "red" | "blue" | null;
   avatar?: string | undefined;
   compact?: boolean;
-}> = ({ label, score, align, glow = null, avatar, compact = false }) => {
+  feedback?: ScoreFeedbackEvent | null;
+}> = ({
+  label,
+  score,
+  align,
+  glow = null,
+  avatar,
+  compact = false,
+  feedback = null,
+}) => {
   const width = compact
     ? "clamp(160px, 44vw, 210px)"
     : "clamp(200px, 42vw, 230px)";
   return (
     <div
-      className={`flex flex-col ${align === "right" ? "items-end" : "items-start"}`}
+      className={`euclid-score-card-wrap flex flex-col ${align === "right" ? "items-end" : "items-start"}`}
     >
       <div
-        className={`flex items-center justify-between px-3 py-1 rounded-md shadow-sm ${glow === "red" ? "glow-red" : ""} ${glow === "blue" ? "glow-blue" : ""}`}
+        className={`euclid-score-card flex items-center justify-between px-3 py-1 rounded-md shadow-sm ${glow === "red" ? "glow-red" : ""} ${glow === "blue" ? "glow-blue" : ""}`}
         style={{
           width,
           background: "var(--card-bg)",
@@ -394,6 +436,25 @@ const ScoreCard: React.FC<{
         </div>
         <span className="font-semibold" style={{ color: "var(--text)" }}>
           {score}
+        </span>
+        {feedback && (
+          <span
+            key={feedback.id}
+            className={`euclid-score-card__delta euclid-score-card__delta--${feedback.player === 0 ? "red" : "blue"}`}
+            aria-hidden="true"
+          >
+            {formatScoreFeedback(feedback)}
+          </span>
+        )}
+        <span
+          className="euclid-sr-only"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {feedback
+            ? `Move ${feedback.moveCount}: ${label} scored ${feedback.pointsScored} points by completing ${feedback.completedSquares.length} ${feedback.completedSquares.length === 1 ? "square" : "squares"}.`
+            : ""}
         </span>
       </div>
     </div>
@@ -439,6 +500,72 @@ function reportRequestFailure(action: string, error: unknown): void {
   console.warn(`[Euclid] ${action} failed:`, error);
 }
 
+function trapDialogTab(event: React.KeyboardEvent<HTMLElement>): void {
+  if (event.key !== "Tab") return;
+  const focusable = Array.from(
+    event.currentTarget.querySelectorAll<HTMLElement>(
+      "input:not(:disabled), button:not(:disabled), [href], [tabindex]:not([tabindex='-1'])",
+    ),
+  );
+  if (focusable.length === 0) {
+    event.preventDefault();
+    event.currentTarget.focus();
+    return;
+  }
+
+  const activeIndex = focusable.indexOf(document.activeElement as HTMLElement);
+  const leavingStart = event.shiftKey && activeIndex <= 0;
+  const leavingEnd = !event.shiftKey && activeIndex === focusable.length - 1;
+  if (activeIndex === -1 || leavingStart || leavingEnd) {
+    event.preventDefault();
+    const target = event.shiftKey
+      ? focusable[focusable.length - 1]
+      : focusable[0];
+    target?.focus();
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isH2HMappingResponse(value: unknown): value is H2HMappingResponse {
+  if (!isRecord(value) || value.ok !== true) return false;
+  if (value.state === "idle" || value.state === "queued") {
+    return value.gameId === null;
+  }
+  if (
+    value.state !== "active" ||
+    typeof value.gameId !== "string" ||
+    typeof value.isPlayer1 !== "boolean" ||
+    typeof value.canRematch !== "boolean" ||
+    !isRecord(value.board)
+  ) {
+    return false;
+  }
+  return (
+    Array.isArray(value.board.m_board) &&
+    Array.isArray(value.board.m_players) &&
+    value.board.m_players.length === 2 &&
+    Array.isArray(value.board.m_history) &&
+    typeof value.revision === "number" &&
+    typeof value.ended === "boolean"
+  );
+}
+
+async function requestH2HMapping(): Promise<H2HMappingResponse> {
+  const response = await fetch("/api/h2h/mapping");
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok || !isH2HMappingResponse(payload)) {
+    const message =
+      isRecord(payload) && typeof payload.message === "string"
+        ? payload.message
+        : "Unable to load multiplayer status.";
+    throw new Error(message);
+  }
+  return payload;
+}
+
 function createClientCommandId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
 }
@@ -462,6 +589,11 @@ type Mode =
   | "admin"
   | "options"
   | null;
+
+type H2HFeedbackMode = "derive" | "force-derive" | "baseline";
+type H2HMutation = "move" | "chat" | "leave" | "rematch";
+type H2HClientState = H2HCanonicalState & { canRematch?: boolean };
+type HomeDataSource = "presence" | "solo" | "stats";
 
 interface ViewportSize {
   width: number;
@@ -487,6 +619,48 @@ export const App = () => {
   const [initError, setInitError] = useState("");
   const [mode, setMode] = useState<Mode>(null);
   const [board, setBoard] = useState<Board | null>(null);
+  const [scoreFeedbackQueue, setScoreFeedbackQueue] = useState<
+    ScoreFeedbackEvent[]
+  >([]);
+  const [h2hScoreFeedbackSettling, setH2HScoreFeedbackSettling] =
+    useState(false);
+  const scoreFeedbackSeenRef = useRef(new Set<string>());
+  const h2hFeedbackStateRef = useRef<H2HCanonicalState | null>(null);
+  const h2hDeferredFeedbackStateRef = useRef<H2HCanonicalState | null>(null);
+  const activeScoreFeedback = scoreFeedbackQueue[0] ?? null;
+
+  const enqueueScoreFeedback = useCallback(
+    (events: readonly ScoreFeedbackEvent[]) => {
+      const unseen = events.filter((event) => {
+        if (scoreFeedbackSeenRef.current.has(event.id)) return false;
+        scoreFeedbackSeenRef.current.add(event.id);
+        return true;
+      });
+      if (unseen.length > 0) {
+        setScoreFeedbackQueue((current) => [...current, ...unseen]);
+      }
+    },
+    [],
+  );
+
+  const clearScoreFeedback = useCallback(() => {
+    scoreFeedbackSeenRef.current = new Set<string>();
+    h2hFeedbackStateRef.current = null;
+    h2hDeferredFeedbackStateRef.current = null;
+    setH2HScoreFeedbackSettling(false);
+    setScoreFeedbackQueue([]);
+  }, []);
+
+  useEffect(() => {
+    if (!activeScoreFeedback) return;
+    const activeId = activeScoreFeedback.id;
+    const timer = window.setTimeout(() => {
+      setScoreFeedbackQueue((current) =>
+        current[0]?.id === activeId ? current.slice(1) : current,
+      );
+    }, 2200);
+    return () => window.clearTimeout(timer);
+  }, [activeScoreFeedback]);
 
   // Difficulty default -> Beginner
   const [selectedDifficulty, setSelectedDifficulty] =
@@ -530,11 +704,80 @@ export const App = () => {
   const [status, setStatus] = useState<string>("");
   const [winner, setWinner] = useState<PlayerColor | null>(null);
   const [finalSide, setFinalSide] = useState<PlayerColor | null>(null);
-  const [finalReason, setFinalReason] = useState<string>("");
+  const [finalReason, setFinalReason] = useState<H2HViewEndReason>("");
   const [viewport, setViewport] = useState<ViewportSize>(DEFAULT_VIEWPORT);
   const [notice, setNotice] = useState<string>("");
+  const [homeStats, setHomeStats] = useState<UserStatsResponse | null>(null);
+  const [homeH2H, setHomeH2H] = useState<H2HMappingResponse>({
+    ok: true,
+    state: "idle",
+    gameId: null,
+  });
+  const [homeSolo, setHomeSolo] = useState<SoloSessionSnapshot | null>(null);
+  const [homePresenceLoading, setHomePresenceLoading] = useState(true);
+  const [
+    homePresenceReconciliationPending,
+    setHomePresenceReconciliationPending,
+  ] = useState(false);
+  const [homeSoloLoading, setHomeSoloLoading] = useState(true);
+  const [homeRecordsLoading, setHomeRecordsLoading] = useState(true);
+  // The version retriggers the home probes even when batched state updates
+  // collapse a failed transition back into the already-active home mode.
+  const [homeRefreshVersion, setHomeRefreshVersion] = useState(0);
+  const primeHomeRefresh = useCallback(() => {
+    setHomePresenceLoading(true);
+    setHomeSoloLoading(true);
+    setHomeRecordsLoading(true);
+  }, []);
+  const beginHomeRefresh = useCallback(() => {
+    primeHomeRefresh();
+    setHomeRefreshVersion((version) => version + 1);
+  }, [primeHomeRefresh]);
+  const [homePresenceReady, setHomePresenceReady] = useState(false);
+  const [homeActionError, setHomeActionError] = useState("");
+  const [homeDataErrors, setHomeDataErrors] = useState<
+    Partial<Record<HomeDataSource, string>>
+  >({});
+  const homeError = [homeActionError, ...Object.values(homeDataErrors)]
+    .filter(
+      (message, index, messages) =>
+        Boolean(message) && messages.indexOf(message) === index,
+    )
+    .join(" ");
+  const updateHomeDataError = useCallback(
+    (source: HomeDataSource, message: string) => {
+      setHomeDataErrors((current) => {
+        const next = { ...current };
+        if (message) next[source] = message;
+        else delete next[source];
+        return next;
+      });
+    },
+    [],
+  );
+  const adoptHomeH2HPresence = useCallback(
+    (presence: H2HMappingResponse) => {
+      setHomeH2H(presence);
+      setHomePresenceReady(true);
+      setHomePresenceLoading(false);
+      setHomePresenceReconciliationPending(false);
+      updateHomeDataError("presence", "");
+    },
+    [updateHomeDataError],
+  );
+  const [homeStatus, setHomeStatus] = useState("");
+  const returnHome = useCallback(() => {
+    setHomeActionError("");
+    setHomeStatus("");
+    beginHomeRefresh();
+    setMode(null);
+  }, [beginHomeRefresh]);
+  const [homeBusyAction, setHomeBusyAction] = useState<HomeBusyAction | null>(
+    null,
+  );
+  const homeBusyActionRef = useRef<HomeBusyAction | null>(null);
   const [showRules, setShowRules] = useState(false);
-  const [glintOn, setGlintOn] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
   const [soloSnapshot, setSoloSnapshot] = useState<SoloSessionSnapshot | null>(
     null,
   );
@@ -556,6 +799,7 @@ export const App = () => {
     commandId: string;
   } | null>(null);
   const [shareBusy, setShareBusy] = useState<string | null>(null);
+  const shareBusyRef = useRef<string | null>(null);
   const [sharedWins, setSharedWins] = useState({
     ai: false,
     multiplayer: false,
@@ -570,6 +814,9 @@ export const App = () => {
   // Chat (global overlay + data)
   const [chatOpen, setChatOpen] = useState(false);
   const [chatText, setChatText] = useState("");
+  const [chatError, setChatError] = useState("");
+  const chatTriggerRef = useRef<HTMLButtonElement>(null);
+  const chatReturnFocusRef = useRef<HTMLElement | null>(null);
   const [localChat, setLocalChat] = useState<ShareChatItem[]>([]);
   const localSeqRef = useRef(0);
 
@@ -583,17 +830,78 @@ export const App = () => {
   const pollRef = useRef<number | null>(null);
   const pollActiveRef = useRef<"none" | "mapping" | "state">("none");
   const gameRevisionRef = useRef(0);
-  const h2hMovePendingRef = useRef(false);
+  const [h2hMutation, setH2HMutation] = useState<H2HMutation | null>(null);
+  const h2hMutationRef = useRef<H2HMutation | null>(null);
   const h2hRefreshPendingRef = useRef(false);
   const h2hMappingPendingRef = useRef(false);
-  const h2hLeavePendingRef = useRef(false);
+  const h2hQueuePendingRef = useRef(false);
   const h2hSessionRef = useRef(0);
+  const h2hRoundEpochRef = useRef(0);
+  const [h2hCanRematch, setH2HCanRematch] = useState(true);
+  const h2hCanRematchRef = useRef(true);
   useEffect(() => {
     isPlayer1Ref.current = isPlayer1;
   }, [isPlayer1]);
   useEffect(() => {
     spectatingRef.current = spectating;
   }, [spectating]);
+
+  const chatBlockedByOverlay = showRules || showTutorial || notice !== "";
+  const h2hChatAvailable =
+    mode === "multiplayer" &&
+    !chatBlockedByOverlay &&
+    isH2HChatAvailable({
+      hasGame: gameIdRef.current !== null,
+      hasBoard: isBoardValid(board),
+      spectating,
+      endReason: finalReason,
+    });
+  const soloChatAvailable =
+    mode === "ai" && !chatBlockedByOverlay && isBoardValid(board) && !winner;
+
+  const closeChat = useCallback((restoreFocus = true) => {
+    setChatOpen(false);
+    setChatText("");
+    setChatError("");
+    const returnTarget = chatReturnFocusRef.current;
+    chatReturnFocusRef.current = null;
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => {
+        if (
+          returnTarget?.isConnected &&
+          !returnTarget.matches(":disabled") &&
+          !returnTarget.closest("[inert], [aria-hidden='true']")
+        ) {
+          returnTarget.focus();
+          if (document.activeElement === returnTarget) return;
+        }
+        chatTriggerRef.current?.focus();
+      });
+    }
+  }, []);
+
+  const openChat = useCallback((): boolean => {
+    if (
+      (!h2hChatAvailable && !soloChatAvailable) ||
+      h2hMutationRef.current !== null
+    ) {
+      return false;
+    }
+    setChatText("");
+    setChatError("");
+    chatReturnFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    setChatOpen(true);
+    return true;
+  }, [h2hChatAvailable, soloChatAvailable]);
+
+  useEffect(() => {
+    if (!chatOpen) return;
+    if (!h2hChatAvailable && !soloChatAvailable) closeChat(false);
+  }, [chatOpen, closeChat, h2hChatAvailable, soloChatAvailable]);
+
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
       clearInterval(pollRef.current);
@@ -603,10 +911,11 @@ export const App = () => {
   useEffect(
     () => () => {
       h2hSessionRef.current++;
-      h2hMovePendingRef.current = false;
+      h2hMutationRef.current = null;
       h2hRefreshPendingRef.current = false;
       h2hMappingPendingRef.current = false;
-      h2hLeavePendingRef.current = false;
+      h2hQueuePendingRef.current = false;
+      homeBusyActionRef.current = null;
       stopPolling();
       pollActiveRef.current = "none";
       soloSessionRef.current++;
@@ -658,7 +967,6 @@ export const App = () => {
   }, [audioContext, soundOn]);
 
   // Tutorial/onboarding
-  const [showTutorial, setShowTutorial] = useState(false);
   const [tutorialCompletedThisSession, setTutorialCompletedThisSession] =
     useState(false);
   useEffect(() => {
@@ -732,14 +1040,6 @@ export const App = () => {
       active = false;
     };
   }, []);
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      setGlintOn(true);
-      window.setTimeout(() => setGlintOn(false), 2200);
-    }, 15000);
-    return () => window.clearInterval(id);
-  }, []);
-
   // Scale the recommended target from the 8×8 first-to-150 baseline.
   useEffect(() => {
     const W = boardW - (boardW % 2);
@@ -751,7 +1051,13 @@ export const App = () => {
     setWinScore(rec); // auto-adjust; user can override afterward
   }, [boardW, boardH, scoringMode]);
 
-  const clearSoloState = useCallback((nextMode: Mode = null) => {
+  const returnFromSolo = useCallback(() => {
+    // Every solo exit changes the authoritative saved-game/record summary.
+    // Refresh those home cards as part of the transition instead of relying
+    // on each caller to remember a positional flag.
+    setHomeActionError("");
+    setHomeStatus("");
+    beginHomeRefresh();
     soloSessionRef.current++;
     soloMovePendingRef.current = false;
     soloAbandonPendingRef.current = false;
@@ -760,6 +1066,7 @@ export const App = () => {
     soloRevisionRef.current = 0;
     soloShareCommandRef.current = null;
     setSoloSnapshot(null);
+    setHomeSolo(null);
     setSoloPending(null);
     setBoard(null);
     setWinner(null);
@@ -767,8 +1074,9 @@ export const App = () => {
     setStatus("");
     setNotice("");
     setSharedWins((current) => ({ ...current, ai: false }));
-    setMode(nextMode);
-  }, []);
+    clearScoreFeedback();
+    setMode(null);
+  }, [beginHomeRefresh, clearScoreFeedback]);
 
   const adoptSoloSnapshot = useCallback(
     (snapshot: SoloSessionSnapshot): boolean => {
@@ -804,6 +1112,8 @@ export const App = () => {
 
   const startSoloGame = useCallback(async (): Promise<boolean> => {
     const session = ++soloSessionRef.current;
+    let startedSnapshot: SoloSessionSnapshot | null = null;
+    clearScoreFeedback();
     const startCommand = getOrCreateSoloStartCommand(
       soloStartCommandRef.current,
       soloStartIntentKey,
@@ -865,23 +1175,32 @@ export const App = () => {
         );
       }
 
+      startedSnapshot = payload.snapshot;
       soloGameIdRef.current = payload.snapshot.gameId;
       soloRevisionRef.current = 0;
+      clearScoreFeedback();
       if (!adoptSoloSnapshot(payload.snapshot)) {
         throw new Error("Unable to adopt the started solo game.");
       }
       if (soloStartCommandRef.current?.commandId === commandId) {
         soloStartCommandRef.current = null;
       }
+      enqueueScoreFeedback(
+        normalizeSoloScoreFeedback(
+          payload.snapshot.gameId,
+          payload.events,
+          payload.snapshot.board.scoring,
+        ),
+      );
       if (payload.events.some((event) => event.type === "move")) playBeep();
       return true;
     } catch (error) {
       if (soloSessionRef.current !== session) return false;
       reportRequestFailure("starting the solo game", error);
       const message = errorMessage(error, "Unable to start the solo game.");
-      clearSoloState();
-      setNotice(message);
-      setStatus(message);
+      returnFromSolo();
+      setHomeSolo(startedSnapshot ?? homeSolo);
+      setHomeActionError(message);
       return false;
     } finally {
       if (soloSessionRef.current === session) setSoloPending(null);
@@ -890,7 +1209,10 @@ export const App = () => {
     adoptSoloSnapshot,
     boardH,
     boardW,
-    clearSoloState,
+    returnFromSolo,
+    clearScoreFeedback,
+    enqueueScoreFeedback,
+    homeSolo,
     playBeep,
     scoringMode,
     selectedDifficulty,
@@ -940,9 +1262,10 @@ export const App = () => {
           return false;
         }
 
-        if (payload && "snapshot" in payload) {
-          adoptSoloSnapshot(payload.snapshot);
-        }
+        const adoptedSnapshot =
+          payload && "snapshot" in payload
+            ? adoptSoloSnapshot(payload.snapshot)
+            : false;
         if (
           !response.ok ||
           !payload ||
@@ -957,6 +1280,15 @@ export const App = () => {
           return false;
         }
 
+        if (adoptedSnapshot) {
+          enqueueScoreFeedback(
+            normalizeSoloScoreFeedback(
+              payload.snapshot.gameId,
+              payload.events,
+              payload.snapshot.board.scoring,
+            ),
+          );
+        }
         if (payload.events.some((event) => event.type === "move")) playBeep();
         const presentation = getSoloResultPresentation(payload.snapshot);
         if (
@@ -987,12 +1319,15 @@ export const App = () => {
         }
       }
     },
-    [adoptSoloSnapshot, playBeep, playFanfare],
+    [adoptSoloSnapshot, enqueueScoreFeedback, playBeep, playFanfare],
   );
 
   /* === H2H polling helpers === */
   const adoptH2HState = useCallback(
-    (state: H2HCanonicalState) => {
+    (
+      state: H2HClientState,
+      feedbackMode: H2HFeedbackMode = "derive",
+    ): boolean => {
       const revision = state.revision;
       if (
         !shouldAdoptH2HState(
@@ -1002,12 +1337,60 @@ export const App = () => {
           revision,
         )
       ) {
-        return;
+        return false;
       }
+
+      const canRematch =
+        state.ended && typeof state.canRematch === "boolean"
+          ? state.canRematch
+          : true;
+      h2hCanRematchRef.current = canRematch;
+      setH2HCanRematch(canRematch);
+
+      const previousFeedbackState = h2hFeedbackStateRef.current;
+      const holdFeedbackBaseline =
+        feedbackMode === "derive" && h2hMutationRef.current === "move";
+      const historyReset =
+        !!previousFeedbackState &&
+        previousFeedbackState.gameId === state.gameId &&
+        didH2HHistoryReset(previousFeedbackState, state);
+      if (
+        !previousFeedbackState ||
+        previousFeedbackState.gameId !== state.gameId ||
+        historyReset
+      ) {
+        if (historyReset) {
+          h2hRoundEpochRef.current++;
+          setWinner(null);
+          setFinalSide(null);
+          setFinalReason("");
+          setNotice("");
+          setSharedWins((current) => ({ ...current, multiplayer: false }));
+          closeChat(false);
+        }
+        clearScoreFeedback();
+        h2hFeedbackStateRef.current = state;
+      } else if (holdFeedbackBaseline) {
+        // A poll can overtake a pending move response. Keep its newest
+        // canonical snapshot so feedback for a following move is not lost.
+        h2hDeferredFeedbackStateRef.current = state;
+        setH2HScoreFeedbackSettling(true);
+      } else {
+        h2hDeferredFeedbackStateRef.current = null;
+        h2hFeedbackStateRef.current = state;
+        if (feedbackMode === "derive" || feedbackMode === "force-derive") {
+          const feedback = scoreFeedbackFromH2HSnapshot(
+            previousFeedbackState,
+            state,
+          );
+          if (feedback) enqueueScoreFeedback([feedback]);
+        }
+      }
+
       gameRevisionRef.current = revision;
       setBoard(Board.fromJSON(state.board));
 
-      if (!state.ended) return;
+      if (!state.ended) return true;
 
       const endReason = state.endedReason || "game_over";
       let side: PlayerColor | null =
@@ -1042,10 +1425,50 @@ export const App = () => {
             : "The other redditor left — You Win!",
         );
       }
-      stopPolling();
-      pollActiveRef.current = "none";
+      // Only a normal participant completion can transition into a rematch.
+      // Spectators and departure results have no further canonical round to
+      // observe, so polling them would waste requests indefinitely.
+      if (
+        !shouldPollH2HState({
+          ended: state.ended,
+          endReason,
+          spectating: spectatingRef.current,
+          canRematch,
+        })
+      ) {
+        stopPolling();
+        pollActiveRef.current = "none";
+      }
+      return true;
     },
-    [stopPolling],
+    [clearScoreFeedback, closeChat, enqueueScoreFeedback, stopPolling],
+  );
+
+  const flushDeferredH2HScoreFeedback = useCallback(
+    (
+      gameId: string,
+      session: number,
+      submittedRoundEpoch: number,
+      acceptedFeedback: ScoreFeedbackEvent | null,
+    ) => {
+      if (h2hSessionRef.current !== session || gameIdRef.current !== gameId) {
+        return;
+      }
+
+      const deferredState = h2hDeferredFeedbackStateRef.current;
+      h2hDeferredFeedbackStateRef.current = null;
+      const resolution = resolvePendingH2HScoreFeedback({
+        acceptedFeedback,
+        submittedRoundEpoch,
+        currentRoundEpoch: h2hRoundEpochRef.current,
+        baseline: h2hFeedbackStateRef.current,
+        deferred: deferredState?.gameId === gameId ? deferredState : null,
+      });
+      h2hFeedbackStateRef.current = resolution.baseline;
+      setH2HScoreFeedbackSettling(false);
+      enqueueScoreFeedback(resolution.events);
+    },
+    [enqueueScoreFeedback],
   );
 
   const refreshStateOnce = useCallback(async () => {
@@ -1077,6 +1500,17 @@ export const App = () => {
             ? j.message
             : "Unable to refresh the multiplayer game.",
         );
+      }
+      if (
+        !shouldProcessH2HPollSnapshot({
+          activeGameId: gameIdRef.current,
+          currentRevision: gameRevisionRef.current,
+          currentCanRematch: h2hCanRematchRef.current,
+          hasBaseline: h2hFeedbackStateRef.current?.gameId === gid,
+          incoming: j,
+        })
+      ) {
+        return;
       }
       adoptH2HState(j);
     } catch (error) {
@@ -1111,10 +1545,17 @@ export const App = () => {
       }
 
       h2hSessionRef.current++;
-      h2hMovePendingRef.current = false;
+      h2hMutationRef.current = null;
+      setH2HMutation(null);
       h2hRefreshPendingRef.current = false;
       h2hMappingPendingRef.current = false;
-      h2hLeavePendingRef.current = false;
+      h2hQueuePendingRef.current = false;
+      homeBusyActionRef.current = null;
+      setHomeBusyAction(null);
+      // Rules belongs to Home; automatic pairing must not carry the overlay
+      // into the match or let it reappear on the next return.
+      setShowRules(false);
+      adoptHomeH2HPresence({ ...mapping, state: "active" });
       setGameId(mapping.gameId);
       gameIdRef.current = mapping.gameId;
       gameRevisionRef.current = incomingRevision;
@@ -1126,17 +1567,28 @@ export const App = () => {
       setSpectating(false);
       setMode("multiplayer");
       setStatus("");
+      setHomeStatus("");
       setNotice("");
+      closeChat(false);
       setWinner(null);
       setFinalSide(null);
       setFinalReason("");
       stopPolling();
       pollActiveRef.current = "none";
-      adoptH2HState(mapping);
-      if (!mapping.ended) pollGame();
+      adoptH2HState(mapping, "baseline");
+      if (
+        shouldPollH2HState({
+          ended: mapping.ended,
+          endReason: mapping.endedReason,
+          spectating: false,
+          canRematch: mapping.canRematch,
+        })
+      ) {
+        pollGame();
+      }
       return true;
     },
-    [adoptH2HState, pollGame, stopPolling],
+    [adoptH2HState, adoptHomeH2HPresence, closeChat, pollGame, stopPolling],
   );
 
   const pollMapping = useCallback(() => {
@@ -1147,85 +1599,149 @@ export const App = () => {
       if (h2hMappingPendingRef.current) return;
       void (async () => {
         const session = h2hSessionRef.current;
+        const request = { session };
         h2hMappingPendingRef.current = true;
         try {
-          const r = await fetch("/api/h2h/mapping");
-          if (h2hSessionRef.current !== session) return;
-          const j = (await r.json().catch(() => null)) as
-            | (H2HMappingResponse & { message?: string })
-            | null;
-          if (h2hSessionRef.current !== session) return;
-          if (!r.ok || !j) {
-            throw new Error(
-              j && "message" in j && j.message
-                ? j.message
-                : "Unable to check the multiplayer queue.",
-            );
-          }
-          if (j.gameId) {
+          const j = await requestH2HMapping();
+          if (!isCurrentH2HRequest(request, h2hSessionRef.current)) return;
+          adoptHomeH2HPresence(j);
+          setHomeActionError("");
+          if (j.state === "active") {
             if (!enterH2HGame(j)) {
               throw new Error("The multiplayer mapping has no board state.");
             }
+          } else if (j.state === "queued") {
+            setHomeStatus("Searching for another redditor…");
+          } else {
+            setHomeStatus("");
+            stopPolling();
+            pollActiveRef.current = "none";
           }
         } catch (error) {
+          if (!isCurrentH2HRequest(request, h2hSessionRef.current)) return;
           reportRequestFailure("checking the multiplayer queue", error);
+          setHomeActionError(
+            errorMessage(error, "Unable to refresh the multiplayer queue."),
+          );
         } finally {
-          if (h2hSessionRef.current === session) {
+          if (isCurrentH2HRequest(request, h2hSessionRef.current)) {
             h2hMappingPendingRef.current = false;
           }
         }
       })();
     }, 1000);
-  }, [enterH2HGame, stopPolling]);
+  }, [adoptHomeH2HPresence, enterH2HGame, stopPolling]);
 
   useEffect(() => {
     if (!initState || initState.type !== "init" || mode !== null) return;
 
     let active = true;
     const session = h2hSessionRef.current;
-    void (async () => {
-      try {
-        const response = await fetch("/api/h2h/mapping");
-        if (!response.ok || !active || h2hSessionRef.current !== session)
-          return;
-        const mapping = (await response
-          .json()
-          .catch(() => null)) as H2HMappingResponse | null;
-        if (active && h2hSessionRef.current === session && mapping) {
-          if (mapping.gameId && enterH2HGame(mapping)) return;
-        }
+    primeHomeRefresh();
+    setHomePresenceReady(false);
+    setHomeDataErrors({});
 
-        const soloResponse = await fetch("/api/solo/active");
-        if (
-          soloResponse.status === 404 ||
-          !active ||
-          h2hSessionRef.current !== session
-        ) {
-          return;
-        }
-        const solo = (await soloResponse
-          .json()
-          .catch(() => null)) as SoloStateResponse | null;
-        if (
-          soloResponse.ok &&
-          active &&
-          h2hSessionRef.current === session &&
-          solo?.snapshot
-        ) {
-          soloSessionRef.current++;
-          soloGameIdRef.current = solo.snapshot.gameId;
-          soloRevisionRef.current = 0;
-          adoptSoloSnapshot(solo.snapshot);
-        }
-      } catch (error) {
-        reportRequestFailure("checking for a resumable game", error);
+    const loadActiveSolo = async (): Promise<SoloSessionSnapshot | null> => {
+      const response = await fetch("/api/solo/active");
+      if (response.status === 404) return null;
+      const payload = (await response.json().catch(() => null)) as
+        | (SoloStateResponse & { message?: string })
+        | null;
+      if (!response.ok || !payload?.snapshot) {
+        throw new Error(payload?.message ?? "Unable to load your Ranked game.");
       }
-    })();
+      return payload.snapshot;
+    };
+
+    const loadStats = async (): Promise<UserStatsResponse> => {
+      const response = await fetch("/api/user/stats");
+      const payload = (await response.json().catch(() => null)) as
+        | (UserStatsResponse & { message?: string })
+        | null;
+      if (!response.ok || !payload) {
+        throw new Error(payload?.message ?? "Unable to load player records.");
+      }
+      return payload;
+    };
+
+    void requestH2HMapping()
+      .then((mapping) => {
+        if (!active || h2hSessionRef.current !== session) return;
+        adoptHomeH2HPresence(mapping);
+        if (mapping.state === "queued") {
+          setHomeStatus("Searching for another redditor…");
+          pollMapping();
+        } else {
+          setHomeStatus("");
+        }
+      })
+      .catch((error) => {
+        if (!active || h2hSessionRef.current !== session) return;
+        reportRequestFailure("loading multiplayer presence", error);
+        setHomePresenceReady(false);
+        updateHomeDataError(
+          "presence",
+          "Multiplayer status could not be refreshed.",
+        );
+      })
+      .finally(() => {
+        if (active && h2hSessionRef.current === session) {
+          setHomePresenceLoading(false);
+        }
+      });
+
+    void loadActiveSolo()
+      .then(
+        (snapshot) => {
+          if (!active) return;
+          setHomeSolo(snapshot);
+          updateHomeDataError("solo", "");
+        },
+        (error: unknown) => {
+          if (!active) return;
+          reportRequestFailure("loading the active Ranked game", error);
+          updateHomeDataError(
+            "solo",
+            "Your Ranked game could not be refreshed.",
+          );
+        },
+      )
+      .finally(() => {
+        if (active) setHomeSoloLoading(false);
+      });
+
+    void loadStats()
+      .then(
+        (stats) => {
+          if (!active) return;
+          setHomeStats(stats);
+          updateHomeDataError("stats", "");
+        },
+        (error: unknown) => {
+          if (!active) return;
+          reportRequestFailure("loading player records", error);
+          updateHomeDataError(
+            "stats",
+            "Player records could not be refreshed.",
+          );
+        },
+      )
+      .finally(() => {
+        if (active) setHomeRecordsLoading(false);
+      });
 
     return () => {
       active = false;
     };
-  }, [adoptSoloSnapshot, enterH2HGame, initState, mode]);
+  }, [
+    adoptHomeH2HPresence,
+    homeRefreshVersion,
+    initState,
+    mode,
+    pollMapping,
+    primeHomeRefresh,
+    updateHomeDataError,
+  ]);
 
   // Recover a multiplayer route that has lost its board snapshot by resuming
   // mapping polls; spectators instead rely on the selected game's own state.
@@ -1238,19 +1754,23 @@ export const App = () => {
   /* ===== Spectate list ===== */
   const [games, setGames] = useState<LiveGameSummary[]>([]);
   const [loadingGames, setLoadingGames] = useState(true);
+  const gamesRequestRef = useRef(0);
   const loadGames = useCallback(async () => {
+    const request = ++gamesRequestRef.current;
     setLoadingGames(true);
     try {
       const r = await fetch("/api/games/list");
       const j = (await r.json()) as { games?: LiveGameSummary[] };
+      if (gamesRequestRef.current !== request) return;
       setGames(
         (j.games ?? []).slice().sort((a, b) => b.lastSaved - a.lastSaved),
       );
     } catch (error) {
+      if (gamesRequestRef.current !== request) return;
       reportRequestFailure("loading live games", error);
       setGames([]);
     } finally {
-      setLoadingGames(false);
+      if (gamesRequestRef.current === request) setLoadingGames(false);
     }
   }, []);
 
@@ -1260,16 +1780,20 @@ export const App = () => {
     hva: RankingsShareRow[];
     hvaRules?: RankingsResponse["hvaRules"];
   }>({ hvh: [], hva: [] });
+  const rankingsRequestRef = useRef(0);
   const loadRankings = useCallback(async () => {
+    const request = ++rankingsRequestRef.current;
     try {
       const r = await fetch("/api/rankings");
       const j = (await r.json()) as RankingsResponse;
+      if (rankingsRequestRef.current !== request) return;
       setRankings({
         hvh: j.hvh ?? [],
         hva: j.hva ?? [],
         ...(j.hvaRules ? { hvaRules: j.hvaRules } : {}),
       });
     } catch (error) {
+      if (rankingsRequestRef.current !== request) return;
       reportRequestFailure("loading rankings", error);
       setRankings({ hvh: [], hva: [] });
     }
@@ -1277,28 +1801,49 @@ export const App = () => {
 
   /* ===== Admin metrics ===== */
   const [admin, setAdmin] = useState<AdminMetrics | null>(null);
+  const adminRequestRef = useRef(0);
   const loadAdmin = useCallback(async () => {
+    const request = ++adminRequestRef.current;
     try {
       const r = await fetch("/api/admin/metrics");
       const j = (await r.json()) as AdminMetrics;
+      if (adminRequestRef.current !== request) return;
       setAdmin(j);
     } catch (error) {
+      if (adminRequestRef.current !== request) return;
       reportRequestFailure("loading admin metrics", error);
       setAdmin(null);
     }
   }, []);
 
-  const clearMultiplayerState = (nextMode: Mode = null) => {
+  const clearMultiplayerState = ({
+    nextMode = null,
+    refreshHome = false,
+  }: { nextMode?: Mode; refreshHome?: boolean } = {}) => {
+    if (refreshHome) {
+      setHomeActionError("");
+      setHomeStatus("");
+      beginHomeRefresh();
+    }
     h2hSessionRef.current++;
     stopPolling();
     pollActiveRef.current = "none";
     setGameId(null);
     gameIdRef.current = null;
     gameRevisionRef.current = 0;
-    h2hMovePendingRef.current = false;
+    h2hCanRematchRef.current = true;
+    setH2HCanRematch(true);
+    h2hMutationRef.current = null;
+    setH2HMutation(null);
     h2hRefreshPendingRef.current = false;
     h2hMappingPendingRef.current = false;
-    h2hLeavePendingRef.current = false;
+    h2hQueuePendingRef.current = false;
+    homeBusyActionRef.current = null;
+    setHomeBusyAction(null);
+    setHomeH2H({ ok: true, state: "idle", gameId: null });
+    setHomePresenceReady(true);
+    setHomePresenceReconciliationPending(false);
+    setHomeStatus("");
     setIsPlayer1(false);
     isPlayer1Ref.current = false;
     spectatingRef.current = false;
@@ -1307,48 +1852,442 @@ export const App = () => {
     setMode(nextMode);
     setStatus("");
     setNotice("");
+    closeChat(false);
     setWinner(null);
     setFinalSide(null);
     setFinalReason("");
     setSharedWins((current) => ({ ...current, multiplayer: false }));
+    clearScoreFeedback();
+  };
+
+  const applyQueueRecovery = (
+    operation: HomeQueueOperation,
+    mapping: H2HMappingResponse,
+  ): boolean => {
+    const decision = resolveQueueRecovery(operation, mapping.state);
+    if (decision.clearActionError) setHomeActionError("");
+    adoptHomeH2HPresence(mapping);
+
+    if (decision.action === "enter") {
+      const entered = enterH2HGame(mapping);
+      return decision.operationCompleted && entered;
+    }
+    if (decision.action === "poll") {
+      setHomeStatus(decision.status);
+      pollMapping();
+      return decision.operationCompleted;
+    }
+    if (decision.operationCompleted) {
+      clearMultiplayerState();
+      setHomeActionError("");
+    }
+    setHomeStatus(decision.status);
+    return decision.operationCompleted;
   };
 
   const cancelMultiplayerQueue = async (): Promise<boolean> => {
+    if (homeBusyActionRef.current || h2hQueuePendingRef.current) return false;
     const session = ++h2hSessionRef.current;
-    h2hMovePendingRef.current = false;
+    h2hQueuePendingRef.current = true;
+    homeBusyActionRef.current = "h2h";
+    setHomeBusyAction("h2h");
+    h2hMutationRef.current = null;
+    setH2HMutation(null);
     h2hRefreshPendingRef.current = false;
     h2hMappingPendingRef.current = false;
-    h2hLeavePendingRef.current = false;
     stopPolling();
     pollActiveRef.current = "none";
     try {
       const response = await fetch("/api/h2h/cancelQueue", { method: "POST" });
-      const payload = (await response.json().catch(() => null)) as {
-        message?: string;
-      } | null;
+      const payload = (await response.json().catch(() => null)) as
+        | (H2HCancelQueueResponse & { message?: string })
+        | null;
       if (h2hSessionRef.current !== session) return false;
-      if (!response.ok) {
+      if (!response.ok || !payload) {
         throw new Error(
           payload?.message ?? "Unable to cancel the multiplayer queue.",
         );
       }
+
+      // A cancellation can race a pairing. Confirm the authoritative presence
+      // before treating the user as idle or allowing another game to start.
+      const mapping = await requestH2HMapping();
+      if (h2hSessionRef.current !== session) return false;
+      return applyQueueRecovery("cancel", mapping);
     } catch (error) {
       if (h2hSessionRef.current !== session) return false;
       reportRequestFailure("canceling the multiplayer queue", error);
-      setStatus(errorMessage(error, "Unable to cancel the multiplayer queue."));
+      const message = errorMessage(
+        error,
+        "Unable to cancel the multiplayer queue.",
+      );
+      setHomeActionError(message);
+      setHomeStatus("");
+      try {
+        const mapping = await requestH2HMapping();
+        if (h2hSessionRef.current !== session) return false;
+        return applyQueueRecovery("cancel", mapping);
+      } catch (refreshError) {
+        reportRequestFailure(
+          "refreshing multiplayer status after cancellation",
+          refreshError,
+        );
+        if (h2hSessionRef.current === session) pollMapping();
+      }
       return false;
+    } finally {
+      if (h2hSessionRef.current === session) {
+        h2hQueuePendingRef.current = false;
+        homeBusyActionRef.current = null;
+        setHomeBusyAction(null);
+      }
     }
-    clearMultiplayerState();
-    return true;
   };
 
-  const leaveMultiplayer = async (): Promise<boolean> => {
+  const startMultiplayerQueue = async (): Promise<boolean> => {
+    if (homeBusyActionRef.current || h2hQueuePendingRef.current) return false;
+
+    const session = ++h2hSessionRef.current;
+    homeBusyActionRef.current = "h2h";
+    h2hQueuePendingRef.current = true;
+    setHomeBusyAction("h2h");
+    setHomePresenceLoading(false);
+    setHomeActionError("");
+    setHomeStatus("Joining the matchmaking queue…");
+    stopPolling();
+    pollActiveRef.current = "none";
+    h2hMutationRef.current = null;
+    setH2HMutation(null);
+    h2hRefreshPendingRef.current = false;
+    h2hMappingPendingRef.current = false;
+    setGameId(null);
+    gameIdRef.current = null;
+    gameRevisionRef.current = 0;
+    setBoard(null);
+    isPlayer1Ref.current = false;
+    setIsPlayer1(false);
+    spectatingRef.current = false;
+    setSpectating(false);
+    setWinner(null);
+    setFinalSide(null);
+    setFinalReason("");
+    setNotice("");
+
+    try {
+      const response = await fetch("/api/h2h/queue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | (H2HQueueResponse & { message?: string })
+        | null;
+      if (h2hSessionRef.current !== session) return false;
+      if (!response.ok || !payload) {
+        throw new Error(
+          payload?.message ?? "Unable to join the multiplayer queue.",
+        );
+      }
+      if (enterH2HGame(payload)) return true;
+      if (payload.state !== "queued") {
+        throw new Error("The match response has no board state.");
+      }
+
+      adoptHomeH2HPresence({
+        ok: true,
+        state: "queued",
+        gameId: null,
+      });
+      setHomeStatus("Searching for another redditor…");
+      pollMapping();
+      return true;
+    } catch (error) {
+      if (h2hSessionRef.current !== session) return false;
+      reportRequestFailure("joining the multiplayer queue", error);
+      const message = errorMessage(error, "Unable to join matchmaking.");
+      setHomeActionError(message);
+      setHomeStatus("");
+      try {
+        const mapping = await requestH2HMapping();
+        if (h2hSessionRef.current !== session) return false;
+        return applyQueueRecovery("join", mapping);
+      } catch (refreshError) {
+        if (h2hSessionRef.current !== session) return false;
+        reportRequestFailure(
+          "refreshing multiplayer status after queue failure",
+          refreshError,
+        );
+        // The queue request may have committed even though neither response
+        // arrived. Treat presence as unknown and keep reconciling instead of
+        // exposing the previous idle cache as permission to start another game.
+        setHomePresenceReady(false);
+        setHomePresenceLoading(true);
+        setHomePresenceReconciliationPending(true);
+        updateHomeDataError(
+          "presence",
+          "Matchmaking status is still being confirmed.",
+        );
+        setHomeStatus("Confirming matchmaking status…");
+        pollMapping();
+      }
+      return false;
+    } finally {
+      if (h2hSessionRef.current === session) {
+        h2hQueuePendingRef.current = false;
+        homeBusyActionRef.current = null;
+        setHomeBusyAction(null);
+      }
+    }
+  };
+
+  const stopHomePresenceMonitoring = useCallback(() => {
+    // Invalidate in-flight mapping reads before another route can be entered
+    // by a late pairing response. Release its guard here because the stale
+    // request's session check intentionally prevents its own cleanup.
+    h2hSessionRef.current++;
+    h2hMappingPendingRef.current = false;
+    setShowRules(false);
+    stopPolling();
+    pollActiveRef.current = "none";
+  }, [stopPolling]);
+
+  const confirmSoloCanStart = async (): Promise<boolean> => {
+    if (homePresenceReady) return homeH2H.state !== "queued";
+
+    const session = h2hSessionRef.current;
+    try {
+      const mapping = await requestH2HMapping();
+      if (h2hSessionRef.current !== session) return false;
+      adoptHomeH2HPresence(mapping);
+      if (mapping.state === "queued") {
+        setHomeStatus("Searching for another redditor…");
+        pollMapping();
+        return false;
+      }
+      return true;
+    } catch (error) {
+      if (h2hSessionRef.current !== session) return false;
+      reportRequestFailure("confirming multiplayer presence", error);
+      setHomeStatus("");
+      updateHomeDataError(
+        "presence",
+        "Multiplayer status must be refreshed before opening a solo game.",
+      );
+      return false;
+    }
+  };
+
+  const startSoloFromHome = async (): Promise<boolean> => {
+    if (homeBusyActionRef.current || homeH2H.state === "queued") return false;
+
+    homeBusyActionRef.current = "solo";
+    setHomeBusyAction("solo");
+    setHomeActionError("");
+    setHomeStatus("");
+    try {
+      if (!(await confirmSoloCanStart())) return false;
+      stopHomePresenceMonitoring();
+      return await startSoloGame();
+    } finally {
+      if (homeBusyActionRef.current === "solo") {
+        homeBusyActionRef.current = null;
+        setHomeBusyAction(null);
+      }
+    }
+  };
+
+  const continueSoloFromHome = async (): Promise<boolean> => {
+    const cached = homeSolo;
+    if (!cached || homeBusyActionRef.current || homeH2H.state === "queued") {
+      return false;
+    }
+
+    const session = ++soloSessionRef.current;
+    homeBusyActionRef.current = "solo-continuation";
+    setHomeBusyAction("solo-continuation");
+    setHomeActionError("");
+    setHomeStatus("Refreshing your Ranked game…");
+    try {
+      if (!(await confirmSoloCanStart())) return false;
+      stopHomePresenceMonitoring();
+      const response = await fetch(
+        `/api/solo/state?gameId=${encodeURIComponent(cached.gameId)}`,
+      );
+      if (response.status === 404 || response.status === 410) {
+        if (soloSessionRef.current !== session) return false;
+        setHomeSolo(null);
+        setHomeStatus("That Ranked game is no longer available.");
+        return false;
+      }
+      const payload = (await response.json().catch(() => null)) as
+        | (SoloStateResponse & { message?: string })
+        | null;
+      if (soloSessionRef.current !== session) return false;
+      if (!response.ok || !payload?.snapshot) {
+        throw new Error(payload?.message ?? "Unable to refresh the game.");
+      }
+
+      soloGameIdRef.current = payload.snapshot.gameId;
+      soloRevisionRef.current = 0;
+      if (!adoptSoloSnapshot(payload.snapshot)) {
+        throw new Error("Unable to open the refreshed Ranked game.");
+      }
+      setHomeStatus("");
+      return true;
+    } catch (error) {
+      if (soloSessionRef.current !== session) return false;
+      reportRequestFailure("continuing the Ranked game", error);
+      setHomeStatus("");
+      setHomeActionError(
+        errorMessage(error, "Unable to continue the Ranked game."),
+      );
+      return false;
+    } finally {
+      if (soloSessionRef.current === session) {
+        homeBusyActionRef.current = null;
+        setHomeBusyAction(null);
+      }
+    }
+  };
+
+  const continueH2HFromHome = async (): Promise<boolean> => {
+    if (homeH2H.state !== "active" || homeBusyActionRef.current) return false;
+
+    const session = ++h2hSessionRef.current;
+    homeBusyActionRef.current = "h2h-continuation";
+    setHomeBusyAction("h2h-continuation");
+    setHomeActionError("");
+    setHomeStatus("Refreshing your Redditor match…");
+    stopPolling();
+    pollActiveRef.current = "none";
+    try {
+      const mapping = await requestH2HMapping();
+      if (h2hSessionRef.current !== session) return false;
+      adoptHomeH2HPresence(mapping);
+      if (mapping.state === "active") {
+        return enterH2HGame(mapping);
+      }
+      if (mapping.state === "queued") {
+        setHomeStatus("Searching for another redditor…");
+        pollMapping();
+      } else {
+        setHomeStatus("That Redditor match is no longer available.");
+      }
+      return false;
+    } catch (error) {
+      if (h2hSessionRef.current !== session) return false;
+      reportRequestFailure("continuing the Redditor match", error);
+      setHomeStatus("");
+      setHomeActionError(
+        errorMessage(error, "Unable to continue the Redditor match."),
+      );
+      return false;
+    } finally {
+      if (h2hSessionRef.current === session) {
+        homeBusyActionRef.current = null;
+        setHomeBusyAction(null);
+      }
+    }
+  };
+
+  const requestH2HRematch = useCallback(async (): Promise<boolean> => {
     const gameId = gameIdRef.current;
-    if (!gameId || h2hLeavePendingRef.current) return false;
+    if (
+      !gameId ||
+      spectatingRef.current ||
+      h2hMutationRef.current !== null ||
+      shareBusyRef.current === "multiplayer"
+    ) {
+      return false;
+    }
+
+    const expectedRevision = gameRevisionRef.current;
+    const session = h2hSessionRef.current;
+    const request = { session, gameId };
+    h2hMutationRef.current = "rematch";
+    setH2HMutation("rematch");
+    setNotice("");
+
+    try {
+      const response = await fetch("/api/h2h/rematch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId, expectedRevision }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | H2HRematchResponse
+        | (H2HCanonicalState & { ok: false; message?: string })
+        | { ok?: false; message?: string }
+        | null;
+      if (
+        !isCurrentH2HRequest(request, h2hSessionRef.current, gameIdRef.current)
+      ) {
+        return false;
+      }
+
+      if (payload && "board" in payload) {
+        const recovered = isH2HRematchRecovery(
+          gameId,
+          expectedRevision,
+          payload,
+        );
+        const adopted = adoptH2HState(payload, "baseline");
+        if (adopted && (response.ok || recovered)) {
+          pollGame();
+          return true;
+        }
+      }
+
+      throw new Error(
+        payload && "message" in payload && payload.message
+          ? payload.message
+          : "The rematch could not be started.",
+      );
+    } catch (error) {
+      if (
+        !isCurrentH2HRequest(request, h2hSessionRef.current, gameIdRef.current)
+      ) {
+        return false;
+      }
+
+      // A lost response or simultaneous click can still have committed the
+      // rematch. Reconcile once before presenting a failure to the player.
+      await refreshStateOnce();
+      const current = h2hFeedbackStateRef.current;
+      if (current && isH2HRematchRecovery(gameId, expectedRevision, current)) {
+        pollGame();
+        return true;
+      }
+
+      reportRequestFailure("starting a multiplayer rematch", error);
+      setNotice(errorMessage(error, "The rematch could not be started."));
+      return false;
+    } finally {
+      if (
+        isCurrentH2HRequest(request, h2hSessionRef.current, gameIdRef.current)
+      ) {
+        h2hMutationRef.current = null;
+        setH2HMutation(null);
+      }
+    }
+  }, [adoptH2HState, pollGame, refreshStateOnce]);
+
+  const leaveMultiplayer = async (
+    intent: H2HLeaveRequest["intent"] = "leave",
+  ): Promise<boolean> => {
+    const gameId = gameIdRef.current;
+    if (
+      !gameId ||
+      h2hMutationRef.current !== null ||
+      shareBusyRef.current === "multiplayer"
+    ) {
+      return false;
+    }
     const expectedRevision = gameRevisionRef.current;
     const session = ++h2hSessionRef.current;
-    h2hLeavePendingRef.current = true;
-    h2hMovePendingRef.current = false;
+    const request = { session, gameId };
+    h2hMutationRef.current = "leave";
+    setH2HMutation("leave");
     h2hRefreshPendingRef.current = false;
     h2hMappingPendingRef.current = false;
     stopPolling();
@@ -1357,21 +2296,21 @@ export const App = () => {
       const response = await fetch("/api/h2h/leave", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          gameId,
-          expectedRevision,
-        }),
+        body: JSON.stringify({ gameId, expectedRevision, intent }),
       });
       const payload = (await response.json().catch(() => null)) as
         | H2HLeaveResponse
+        | (H2HClientState & { ok: false; message?: string })
         | { message?: string }
         | null;
-      if (h2hSessionRef.current !== session || gameIdRef.current !== gameId) {
+      if (
+        !isCurrentH2HRequest(request, h2hSessionRef.current, gameIdRef.current)
+      ) {
         return false;
       }
       if (!response.ok) {
         const hasCanonicalSnapshot = !!payload && "board" in payload;
-        if (hasCanonicalSnapshot) adoptH2HState(payload);
+        if (hasCanonicalSnapshot) adoptH2HState(payload, "baseline");
         throw new Error(
           payload && "message" in payload && payload.message
             ? payload.message
@@ -1379,37 +2318,44 @@ export const App = () => {
         );
       }
     } catch (error) {
+      if (
+        !isCurrentH2HRequest(request, h2hSessionRef.current, gameIdRef.current)
+      ) {
+        return false;
+      }
       reportRequestFailure("leaving the multiplayer game", error);
       setNotice(errorMessage(error, "Unable to leave the multiplayer game."));
-      if (h2hSessionRef.current === session && gameIdRef.current === gameId) {
-        void refreshStateOnce();
-        pollGame();
-      }
+      void refreshStateOnce();
+      pollGame();
       return false;
     } finally {
-      if (h2hSessionRef.current === session && gameIdRef.current === gameId) {
-        h2hLeavePendingRef.current = false;
+      if (
+        isCurrentH2HRequest(request, h2hSessionRef.current, gameIdRef.current)
+      ) {
+        h2hMutationRef.current = null;
+        setH2HMutation(null);
       }
     }
-    clearMultiplayerState();
+    clearMultiplayerState({ refreshHome: true });
     return true;
   };
 
   const stopWatching = () => {
-    clearMultiplayerState("spectate");
+    clearMultiplayerState({ nextMode: "spectate" });
     void loadGames();
   };
 
   const exitSoloGame = async (): Promise<boolean> => {
+    if (shareBusyRef.current === "ai") return false;
     const snapshot = soloSnapshotRef.current;
     if (!snapshot) {
-      clearSoloState();
+      returnFromSolo();
       return true;
     }
 
     const exitAction = getSoloExitAction(snapshot);
     if (!exitAction.notifyServer) {
-      clearSoloState();
+      returnFromSolo();
       return true;
     }
     if (
@@ -1465,7 +2411,7 @@ export const App = () => {
             : "Unable to end the solo game.",
         );
       }
-      clearSoloState();
+      returnFromSolo();
       return true;
     } catch (error) {
       if (
@@ -1491,14 +2437,17 @@ export const App = () => {
     busyKey,
     endpoint,
     payload,
+    isCurrent = () => true,
   }: {
     busyKey: string;
     endpoint: string;
     payload?: Record<string, unknown>;
+    isCurrent?: () => boolean;
   }): Promise<ShareResponse | null> => {
-    if (shareBusy) return null;
+    if (shareBusyRef.current) return null;
 
     setNotice("");
+    shareBusyRef.current = busyKey;
     setShareBusy(busyKey);
     try {
       const r = await fetch(endpoint, {
@@ -1508,16 +2457,16 @@ export const App = () => {
       });
       const j = (await r.json().catch(() => ({}))) as ShareResponse;
       if (!r.ok || !j.ok) throw new Error(j.message || "Share failed.");
-      if (busyKey === "multiplayer") {
-        setSharedWins((current) => ({ ...current, [busyKey]: true }));
-      }
-      setNotice(j.message || "Shared to Reddit.");
+      if (isCurrent()) setNotice(j.message || "Shared to Reddit.");
       return j;
     } catch (e) {
-      setNotice(errorMessage(e, "Share failed."));
+      if (isCurrent()) setNotice(errorMessage(e, "Share failed."));
       return null;
     } finally {
-      setShareBusy(null);
+      if (shareBusyRef.current === busyKey) {
+        shareBusyRef.current = null;
+        setShareBusy(null);
+      }
     }
   };
 
@@ -1528,15 +2477,36 @@ export const App = () => {
       payload: { bucket },
     });
 
-  const shareMultiplayerWin = async () =>
-    shareGeneratedPost({
+  const shareMultiplayerWin = async () => {
+    const gameId = gameIdRef.current;
+    if (!gameId || h2hMutationRef.current !== null) return;
+    const terminalRevision = gameRevisionRef.current;
+    const roundEpoch = h2hRoundEpochRef.current;
+    const request = { session: h2hSessionRef.current, gameId };
+    const isCurrent = () =>
+      isCurrentH2HRequest(request, h2hSessionRef.current, gameIdRef.current) &&
+      h2hRoundEpochRef.current === roundEpoch &&
+      gameRevisionRef.current === terminalRevision;
+    const payload: H2HShareRequest = { gameId, terminalRevision };
+    const response = await shareGeneratedPost({
       busyKey: "multiplayer",
       endpoint: "/api/share/h2h-result",
+      payload,
+      isCurrent,
     });
+    if (!response || !isCurrent()) return;
+    setSharedWins((current) => ({ ...current, multiplayer: true }));
+  };
 
   const shareAiWin = async () => {
     const snapshot = soloSnapshotRef.current;
-    if (!snapshot?.canShare) return;
+    if (
+      !snapshot?.canShare ||
+      soloMovePendingRef.current ||
+      soloAbandonPendingRef.current
+    ) {
+      return;
+    }
     if (soloShareCommandRef.current?.gameId !== snapshot.gameId) {
       soloShareCommandRef.current = {
         gameId: snapshot.gameId,
@@ -1565,11 +2535,16 @@ export const App = () => {
   const submitH2HMove = useCallback(
     async (x: number, y: number): Promise<boolean> => {
       const gameId = gameIdRef.current;
-      if (!gameId || h2hMovePendingRef.current || spectatingRef.current)
+      if (!gameId || h2hMutationRef.current !== null || spectatingRef.current)
         return false;
       const session = h2hSessionRef.current;
+      const request = { session, gameId };
+      const roundEpoch = h2hRoundEpochRef.current;
+      let acceptedFeedback: ScoreFeedbackEvent | null = null;
 
-      h2hMovePendingRef.current = true;
+      h2hMutationRef.current = "move";
+      setH2HMutation("move");
+      setH2HScoreFeedbackSettling(true);
       setNotice("");
       try {
         const response = await fetch("/api/h2h/save", {
@@ -1587,11 +2562,25 @@ export const App = () => {
           | { message?: string }
           | null;
 
-        if (h2hSessionRef.current !== session || gameIdRef.current !== gameId)
+        if (
+          !isCurrentH2HRequest(
+            request,
+            h2hSessionRef.current,
+            gameIdRef.current,
+          )
+        )
           return false;
 
         const hasCanonicalSnapshot = !!payload && "board" in payload;
-        if (hasCanonicalSnapshot) adoptH2HState(payload);
+        if (hasCanonicalSnapshot) {
+          acceptedFeedback = payload.accepted
+            ? scoreFeedbackFromH2HMove(payload)
+            : null;
+          adoptH2HState(
+            payload,
+            payload.accepted ? "baseline" : "force-derive",
+          );
+        }
         if (
           !response.ok ||
           !payload ||
@@ -1621,17 +2610,41 @@ export const App = () => {
         }
         return true;
       } catch (error) {
+        if (
+          !isCurrentH2HRequest(
+            request,
+            h2hSessionRef.current,
+            gameIdRef.current,
+          )
+        ) {
+          return false;
+        }
         reportRequestFailure("saving the multiplayer move", error);
         setNotice("The move could not be saved. The board will be refreshed.");
         void refreshStateOnce();
         return false;
       } finally {
-        if (h2hSessionRef.current === session && gameIdRef.current === gameId) {
-          h2hMovePendingRef.current = false;
+        if (
+          isCurrentH2HRequest(request, h2hSessionRef.current, gameIdRef.current)
+        ) {
+          h2hMutationRef.current = null;
+          setH2HMutation(null);
+          flushDeferredH2HScoreFeedback(
+            gameId,
+            session,
+            roundEpoch,
+            acceptedFeedback,
+          );
         }
       }
     },
-    [adoptH2HState, playBeep, playFanfare, refreshStateOnce],
+    [
+      adoptH2HState,
+      flushDeferredH2HScoreFeedback,
+      playBeep,
+      playFanfare,
+      refreshStateOnce,
+    ],
   );
 
   /* ===== Secret keys + chat hotkey ===== */
@@ -1700,11 +2713,13 @@ export const App = () => {
   ]);
 
   const sendChat = async () => {
+    if (h2hMutationRef.current !== null) return;
     const text = chatText.replace(/\r?\n/g, " ").trim();
     if (!text) {
-      setChatOpen(false);
+      closeChat();
       return;
     }
+    setChatError("");
     if (mode === "ai") {
       const you: ShareChatItem = {
         id: ++localSeqRef.current,
@@ -1719,16 +2734,18 @@ export const App = () => {
         text,
       };
       setLocalChat((prev) => [...prev.slice(-10), you, bot]);
-      setChatText("");
-      setChatOpen(false);
+      closeChat();
     } else if (mode === "multiplayer") {
       const gid = gameIdRef.current;
-      if (!gid || spectatingRef.current) {
-        setChatOpen(false);
+      if (!gid || spectatingRef.current || h2hMutationRef.current !== null) {
+        closeChat();
         if (spectatingRef.current) setNotice("Spectating is read only.");
         return;
       }
       const session = h2hSessionRef.current;
+      const request = { session, gameId: gid };
+      h2hMutationRef.current = "chat";
+      setH2HMutation("chat");
       try {
         const response = await fetch("/api/h2h/chat", {
           method: "POST",
@@ -1739,7 +2756,13 @@ export const App = () => {
           | H2HChatResponse
           | { message?: string }
           | null;
-        if (h2hSessionRef.current !== session || gameIdRef.current !== gid) {
+        if (
+          !isCurrentH2HRequest(
+            request,
+            h2hSessionRef.current,
+            gameIdRef.current,
+          )
+        ) {
           return;
         }
         if (!response.ok || !payload || !("board" in payload)) {
@@ -1751,14 +2774,29 @@ export const App = () => {
         }
         adoptH2HState(payload);
       } catch (error) {
+        if (
+          !isCurrentH2HRequest(
+            request,
+            h2hSessionRef.current,
+            gameIdRef.current,
+          )
+        ) {
+          return;
+        }
         reportRequestFailure("sending chat", error);
-        setNotice(errorMessage(error, "The message could not be sent."));
+        setChatError(errorMessage(error, "The message could not be sent."));
         return;
+      } finally {
+        if (
+          isCurrentH2HRequest(request, h2hSessionRef.current, gameIdRef.current)
+        ) {
+          h2hMutationRef.current = null;
+          setH2HMutation(null);
+        }
       }
-      setChatText("");
-      setChatOpen(false);
+      closeChat();
     } else {
-      setChatOpen(false);
+      closeChat();
     }
   };
 
@@ -1772,10 +2810,7 @@ export const App = () => {
       if (chatOpen) return;
 
       if (k === "\\") {
-        if (mode === "ai" || (mode === "multiplayer" && board && !spectating)) {
-          setChatOpen(true);
-          setChatText("");
-        }
+        if (openChat()) e.preventDefault();
         return;
       }
 
@@ -1794,6 +2829,20 @@ export const App = () => {
               void brutalPlayForHuman();
               setCheatsUnlocked(true);
             } else {
+              if (shareBusyRef.current) return;
+              // The hidden route obeys the same lock as visible Home actions;
+              // otherwise it could strand an in-flight queue or resume guard.
+              if (
+                mode === null &&
+                shouldLockHomeNavigation(
+                  homeBusyActionRef.current !== null,
+                  homeH2H.state,
+                  homePresenceReconciliationPending,
+                )
+              ) {
+                return;
+              }
+              stopHomePresenceMonitoring();
               setMode("admin");
               void loadAdmin();
             }
@@ -1805,7 +2854,18 @@ export const App = () => {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mode, board, chatOpen, brutalPlayForHuman, loadAdmin, spectating]);
+  }, [
+    mode,
+    board,
+    chatOpen,
+    brutalPlayForHuman,
+    homeH2H.state,
+    homePresenceReconciliationPending,
+    loadAdmin,
+    openChat,
+    spectating,
+    stopHomePresenceMonitoring,
+  ]);
 
   /* ===== Rules Overlay ===== */
   const RulesOverlay = showRules ? (
@@ -1943,73 +3003,106 @@ export const App = () => {
   ) : null;
 
   /* ===== Chat Input Overlay ===== */
-  const ChatOverlay = !chatOpen ? null : (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        display: "flex",
-        alignItems: "flex-end",
-        justifyContent: "center",
-        padding: "0 12px 18px",
-        zIndex: 70,
-        background: "rgba(0,0,0,.18)",
-      }}
-      onClick={() => {
-        setChatOpen(false);
-      }}
-    >
+  const ChatOverlay =
+    !chatOpen || chatBlockedByOverlay ? null : (
       <div
-        onClick={(e) => e.stopPropagation()}
+        className="euclid-chat-backdrop"
         style={{
+          position: "fixed",
+          inset: 0,
           display: "flex",
-          gap: 8,
-          width: "min(720px, 96vw)",
-          background: "var(--card-bg)",
-          border: `1px solid var(--card-border)`,
-          borderRadius: 10,
-          padding: 8,
+          alignItems: "flex-end",
+          justifyContent: "center",
+          zIndex: 100,
+          background: "rgba(0,0,0,.18)",
+        }}
+        onClick={() => {
+          if (h2hMutation !== "chat") closeChat();
         }}
       >
-        <input
-          autoFocus
-          value={chatText}
-          onChange={(e) => setChatText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              void sendChat();
-            } else if (e.key === "Escape") {
-              e.preventDefault();
-              setChatOpen(false);
+        <div
+          id="euclid-game-chat-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="euclid-game-chat-title"
+          aria-describedby={chatError ? "euclid-game-chat-error" : undefined}
+          tabIndex={-1}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              if (h2hMutation !== "chat") {
+                event.preventDefault();
+                closeChat();
+              }
+              return;
             }
+            trapDialogTab(event);
           }}
-          placeholder={
-            mode === "ai"
-              ? `Say something to ${EUCLID_LABEL} (echo)…`
-              : "Say something to the other redditor…"
-          }
-          maxLength={140}
           style={{
-            flex: 1,
-            background: "transparent",
-            color: "var(--text)",
-            border: "none",
-            outline: "none",
-            height: "48px",
-            lineHeight: "1.5",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            width: "min(720px, 96vw)",
+            background: "var(--card-bg)",
+            border: `1px solid var(--card-border)`,
+            borderRadius: 10,
+            padding: 8,
           }}
-        />
-        <button
-          className="rounded cursor-pointer"
-          style={{ background: "#2563eb", color: "#fff", padding: "6px 12px" }}
-          onClick={sendChat}
         >
-          Send
-        </button>
+          <h2 id="euclid-game-chat-title" className="euclid-sr-only">
+            Game chat
+          </h2>
+          <div className="euclid-chat-composer">
+            <input
+              autoFocus
+              aria-label="Message"
+              value={chatText}
+              readOnly={h2hMutation === "chat"}
+              aria-busy={h2hMutation === "chat" || undefined}
+              onChange={(e) => setChatText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void sendChat();
+                }
+              }}
+              placeholder={
+                mode === "ai"
+                  ? `Say something to ${EUCLID_LABEL} (echo)…`
+                  : "Say something to the other redditor…"
+              }
+              maxLength={140}
+            />
+            <button
+              type="button"
+              className="euclid-chat-composer__cancel rounded cursor-pointer"
+              disabled={h2hMutation === "chat"}
+              onClick={() => closeChat()}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className={`euclid-chat-composer__send rounded ${h2hMutation === "chat" ? "" : "cursor-pointer"}`}
+              disabled={h2hMutation === "chat"}
+              aria-busy={h2hMutation === "chat" || undefined}
+              onClick={() => void sendChat()}
+            >
+              {h2hMutation === "chat" ? "Sending…" : "Send"}
+            </button>
+          </div>
+          {chatError && (
+            <div
+              id="euclid-game-chat-error"
+              role="alert"
+              className="euclid-chat-composer__error"
+            >
+              {chatError}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
 
   const sharedPost = initState?.type === "share" ? initState.share : null;
 
@@ -2020,228 +3113,75 @@ export const App = () => {
 
   if (!initState && !initError) {
     content = (
-      <div
-        className="flex flex-col justify-center items-center gap-3"
-        style={{ background: "var(--bg)", height: "100vh", overflow: "hidden" }}
-      >
-        <h1
-          className="text-2xl font-bold text-center"
-          style={{ color: "var(--text)" }}
-        >
-          Euclid
-        </h1>
-        <div style={{ color: "var(--muted)" }}>Loading…</div>
-      </div>
+      <HomeStatusScreen
+        heading="Preparing your board"
+        detail="Loading your games, records, and Euclid settings…"
+        busy
+      />
     );
   } else if (sharedPost) {
     content = <SharedPostView share={sharedPost} />;
   } else if (initError) {
     content = (
-      <div
-        className="flex flex-col justify-center items-center gap-4"
-        style={{
-          background: "var(--bg)",
-          height: "100vh",
-          overflow: "hidden",
-          padding: "0 18px",
-        }}
-      >
-        <h1
-          className="text-2xl font-bold text-center"
-          style={{ color: "var(--text)" }}
-        >
-          Euclid
-        </h1>
-        <div style={{ color: "var(--muted)", textAlign: "center" }}>
-          {initError}
-        </div>
-      </div>
+      <HomeStatusScreen
+        heading="Euclid could not start"
+        detail={initError}
+        error
+      />
     );
   } else if (mode === null) {
-    /* ===== Intro / Home ===== */
-    const styleName = AI_DIFFICULTY_LABELS[selectedDifficulty];
-
+    const navigationLocked = shouldLockHomeNavigation(
+      homeBusyActionRef.current !== null,
+      homeH2H.state,
+      homePresenceReconciliationPending,
+    );
     content = (
-      <div
-        className="flex flex-col items-center gap-5"
-        style={{
-          background: "var(--bg)",
-          height: "100vh",
-          overflow: "hidden",
-          paddingTop: 16,
-        }}
-      >
+      <>
         {RulesOverlay}
-        <h1
-          className="text-2xl font-bold text-center"
-          style={{ color: "var(--text)" }}
-        >
-          Euclid
-        </h1>
-
-        {/* Brief settings summary */}
-        <div className="glint-wrap text-sm" style={{ color: "var(--muted)" }}>
-          {soloMode === "ranked" ? (
-            <>
-              Ranked • 8×8 • Grid Footprint • First to 150 • Brutal • Assist:
-              Off
-            </>
-          ) : (
-            <>
-              Practice • {boardW}×{boardH} • {boardScoringLabel(scoringMode)} •
-              First to {winScore} • {styleName} • Assist:{" "}
-              {assistOn ? "On" : "Off"}
-            </>
-          )}
-        </div>
-
-        {/* Primary Buttons */}
-        <div
-          className="flex gap-3 flex-wrap items-center justify-center"
-          style={{ paddingTop: 4 }}
-        >
-          <button
-            className="rounded cursor-pointer"
-            style={{
-              background: "#2563eb",
-              color: "#fff",
-              padding: "8px 16px",
-            }}
-            onClick={() => void startSoloGame()}
-          >
-            {soloMode === "ranked"
-              ? `Ranked vs ${EUCLID_LABEL}`
-              : `Practice vs ${EUCLID_LABEL}`}
-          </button>
-
-          <button
-            className="rounded cursor-pointer"
-            style={{
-              background: "#ef4444",
-              color: "#fff",
-              padding: "8px 16px",
-            }}
-            onClick={async () => {
-              const session = ++h2hSessionRef.current;
-              h2hMovePendingRef.current = false;
-              h2hRefreshPendingRef.current = false;
-              h2hMappingPendingRef.current = false;
-              h2hLeavePendingRef.current = false;
-              stopPolling();
-              pollActiveRef.current = "none";
-              setGameId(null);
-              gameIdRef.current = null;
-              gameRevisionRef.current = 0;
-              setBoard(null);
-              isPlayer1Ref.current = false;
-              setIsPlayer1(false);
-              spectatingRef.current = false;
-              setSpectating(false);
-              setWinner(null);
-              setFinalSide(null);
-              setFinalReason("");
-              setNotice("");
-              setStatus("Queuing…");
-              setMode("multiplayer");
-              try {
-                const r = await fetch("/api/h2h/queue", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({}),
-                });
-                const j = (await r.json().catch(() => null)) as
-                  | (H2HQueueResponse & { message?: string })
-                  | null;
-                if (h2hSessionRef.current !== session) return;
-                if (!r.ok) {
-                  throw new Error(
-                    j && "message" in j && j.message
-                      ? j.message
-                      : "Unable to join the multiplayer queue.",
-                  );
-                }
-                if (!j) throw new Error("The queue returned no state.");
-                if (enterH2HGame(j)) {
-                  return;
-                }
-                if (j.state === "queued") {
-                  setStatus("Waiting for another redditor…");
-                  pollMapping();
-                } else {
-                  throw new Error("The match response has no board state.");
-                }
-              } catch (error) {
-                if (h2hSessionRef.current !== session) return;
-                setStatus(
-                  `Queue failed: ${errorMessage(error, "Unknown error")}`,
-                );
-              }
-            }}
-          >
-            {HUMAN_VS_HUMAN_LABEL}
-          </button>
-
-          <button
-            className="rounded cursor-pointer"
-            style={{
-              background: "#7c3aed",
-              color: "#fff",
-              padding: "8px 16px",
-            }}
-            onClick={async () => {
-              await loadGames();
-              setMode("spectate");
-            }}
-          >
-            {WATCH_LIVE_GAMES_LABEL}
-          </button>
-
-          <button
-            className="rounded cursor-pointer"
-            style={{
-              background: "#16a34a",
-              color: "#fff",
-              padding: "8px 16px",
-            }}
-            onClick={async () => {
-              await loadRankings();
-              setMode("rankings");
-            }}
-          >
-            {LEADERBOARD_LABEL}
-          </button>
-
-          <button
-            className="rounded cursor-pointer"
-            style={{
-              background: "#6b7280",
-              color: "#fff",
-              padding: "8px 16px",
-            }}
-            onClick={() => setMode("options")}
-          >
-            Options
-          </button>
-
-          <button
-            className="rounded cursor-pointer"
-            style={{
-              background: "#f59e0b",
-              color: "#111827",
-              padding: "8px 16px",
-            }}
-            onClick={() => setShowRules(true)}
-          >
-            Rules
-          </button>
-        </div>
-
-        {status && (
-          <div className="text-sm" style={{ color: "var(--muted)" }}>
-            {status}
-          </div>
-        )}
-      </div>
+        <HomeScreen
+          username={initState?.username ?? ""}
+          playEuclidSubtitle={getPlayEuclidSubtitle(soloMode)}
+          records={getHomeRecordPresentations(homeStats)}
+          soloContinuation={
+            homeSolo ? getSoloContinuationPresentation(homeSolo) : null
+          }
+          h2h={getH2HHomePresentation(homeH2H)}
+          loading={{
+            presence: homePresenceLoading,
+            solo: homeSoloLoading,
+            records: homeRecordsLoading,
+          }}
+          presenceReconciliationPending={homePresenceReconciliationPending}
+          busyAction={homeBusyAction}
+          status={homeStatus}
+          error={homeError}
+          onPlayEuclid={() => void startSoloFromHome()}
+          onPlayRedditor={() => void startMultiplayerQueue()}
+          onContinueSolo={() => void continueSoloFromHome()}
+          onContinueH2H={() => void continueH2HFromHome()}
+          onCancelSearch={() => void cancelMultiplayerQueue()}
+          onWatchGames={() => {
+            if (navigationLocked) return;
+            stopHomePresenceMonitoring();
+            setMode("spectate");
+            void loadGames();
+          }}
+          onLeaderboard={() => {
+            if (navigationLocked) return;
+            stopHomePresenceMonitoring();
+            setMode("rankings");
+            void loadRankings();
+          }}
+          onOptions={() => {
+            if (navigationLocked) return;
+            stopHomePresenceMonitoring();
+            setMode("options");
+          }}
+          onRules={() => {
+            if (!navigationLocked) setShowRules(true);
+          }}
+        />
+      </>
     );
   } else if (mode === "options") {
     /* ===== Options Page (mobile scrollable) ===== */
@@ -2533,7 +3473,7 @@ export const App = () => {
               color: "#fff",
               padding: "8px 16px",
             }}
-            onClick={() => setMode(null)}
+            onClick={returnHome}
           >
             Done
           </button>
@@ -2542,6 +3482,7 @@ export const App = () => {
     );
   } else if (mode === "rankings") {
     /* ===== Rankings ===== */
+    const rankingsSharePending = shareBusy?.startsWith("rankings:") ?? false;
     const numCell = {
       color: "var(--text)",
       textAlign: "right" as const,
@@ -2746,12 +3687,12 @@ export const App = () => {
         >
           <button
             className="rounded cursor-pointer"
-            disabled={shareBusy === `rankings:${bucket}`}
+            disabled={rankingsSharePending}
             style={{
               background: "#16a34a",
               color: "#fff",
               padding: "6px 12px",
-              opacity: shareBusy === `rankings:${bucket}` ? 0.7 : 1,
+              opacity: rankingsSharePending ? 0.7 : 1,
             }}
             onClick={() => shareRankings(bucket)}
           >
@@ -2811,11 +3752,11 @@ export const App = () => {
               color: "#fff",
               padding: "6px 12px",
             }}
-            onClick={() => {
-              setMode(null);
-            }}
+            onClick={returnHome}
+            disabled={rankingsSharePending}
+            aria-busy={rankingsSharePending || undefined}
           >
-            Back
+            {rankingsSharePending ? "Sharing…" : "Back"}
           </button>
         </div>
       </div>
@@ -2877,11 +3818,12 @@ export const App = () => {
                         padding: "4px 10px",
                       }}
                       onClick={() => {
+                        clearScoreFeedback();
                         h2hSessionRef.current++;
-                        h2hMovePendingRef.current = false;
+                        h2hMutationRef.current = null;
+                        setH2HMutation(null);
                         h2hRefreshPendingRef.current = false;
                         h2hMappingPendingRef.current = false;
-                        h2hLeavePendingRef.current = false;
                         stopPolling();
                         pollActiveRef.current = "none";
                         setGameId(g.gameId);
@@ -2922,9 +3864,7 @@ export const App = () => {
               color: "#fff",
               padding: "6px 12px",
             }}
-            onClick={() => {
-              setMode(null);
-            }}
+            onClick={returnHome}
           >
             Back
           </button>
@@ -3395,9 +4335,7 @@ export const App = () => {
               color: "#fff",
               padding: "6px 12px",
             }}
-            onClick={() => {
-              setMode(null);
-            }}
+            onClick={returnHome}
           >
             ok
           </button>
@@ -3405,78 +4343,70 @@ export const App = () => {
       </div>
     );
   } else if (mode === "multiplayer" && !isBoardValid(board)) {
-    /* ===== Multiplayer (waiting / paired) ===== */
-    const waitingOnQueueRequest = status === "Queuing…";
+    const multiplayerTransitionPending =
+      !spectating &&
+      (h2hMutation !== null ||
+        homeBusyAction !== null ||
+        shareBusy === "multiplayer");
+    const multiplayerTransitionLabel =
+      shareBusy === "multiplayer"
+        ? "Sharing…"
+        : h2hMutation === "leave"
+          ? "Leaving…"
+          : homeBusyAction === "h2h"
+            ? "Canceling…"
+            : "Finishing match action…";
     content = (
-      <div
-        className="flex flex-col justify-center items-center gap-5"
-        style={{ background: "var(--bg)", height: "100vh", overflow: "hidden" }}
-      >
-        <h1
-          className="text-2xl font-bold text-center"
-          style={{ color: "var(--text)" }}
-        >
-          Euclid
-        </h1>
-        <div
-          className="glint-wrap text-sm"
-          style={{ color: "var(--muted)", position: "relative" }}
-        >
-          {glintOn && <span className="glint-bar" aria-hidden="true" />}
-          {status ||
-            (spectating ? "Loading live game…" : "Paired — loading board…")}
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            className="rounded cursor-pointer"
-            disabled={waitingOnQueueRequest}
-            style={{
-              background: "#6b7280",
-              color: "#fff",
-              padding: "6px 12px",
-              opacity: waitingOnQueueRequest ? 0.65 : 1,
-            }}
-            onClick={async () => {
-              if (spectatingRef.current) {
-                stopWatching();
-                return;
-              }
-              if (gameIdRef.current) await leaveMultiplayer();
-              else await cancelMultiplayerQueue();
-            }}
-          >
-            {spectating
-              ? "Stop Watching"
-              : gameIdRef.current
-                ? "Leave Game"
-                : "Back"}
-          </button>
-
-          {!spectating && (
-            <button
-              className="rounded cursor-pointer"
-              disabled={waitingOnQueueRequest}
-              style={{
-                background: "#2563eb",
-                color: "#fff",
-                padding: "6px 12px",
-                opacity: waitingOnQueueRequest ? 0.65 : 1,
-              }}
-              onClick={async () => {
-                const exited = gameIdRef.current
-                  ? await leaveMultiplayer()
-                  : await cancelMultiplayerQueue();
-                if (!exited) return;
-                await startSoloGame();
-              }}
-            >
-              Play {soloMode === "ranked" ? "Ranked" : "Practice"} against{" "}
-              {EUCLID_LABEL} instead…
-            </button>
-          )}
-        </div>
-      </div>
+      <HomeStatusScreen
+        heading={spectating ? "Opening live game" : "Opening your match"}
+        detail={
+          status ||
+          (spectating ? "Loading the latest board…" : "Paired — loading board…")
+        }
+        busy
+        actions={[
+          {
+            label: spectating
+              ? "Stop watching"
+              : multiplayerTransitionPending
+                ? multiplayerTransitionLabel
+                : gameIdRef.current
+                  ? "Leave game"
+                  : "Back",
+            disabled: multiplayerTransitionPending,
+            busy: multiplayerTransitionPending,
+            onClick: () => {
+              void (async () => {
+                if (spectatingRef.current) {
+                  stopWatching();
+                } else if (gameIdRef.current) {
+                  await leaveMultiplayer();
+                } else {
+                  await cancelMultiplayerQueue();
+                }
+              })();
+            },
+          },
+          ...(!spectating
+            ? [
+                {
+                  label: `Play ${soloMode === "ranked" ? "Ranked" : "Practice"} instead`,
+                  primary: true,
+                  disabled: multiplayerTransitionPending,
+                  busy: multiplayerTransitionPending,
+                  onClick: () => {
+                    void (async () => {
+                      const exited = gameIdRef.current
+                        ? await leaveMultiplayer()
+                        : await cancelMultiplayerQueue();
+                      if (exited) await startSoloGame();
+                    })();
+                  },
+                },
+              ]
+            : []),
+        ]}
+      />
     );
   } else if (mode === "multiplayer" && isBoardValid(board)) {
     /* ===== Multiplayer (live) ===== */
@@ -3522,9 +4452,18 @@ export const App = () => {
     const showWinner = !!decided;
     const showTerminalResult = showWinner || finalReason !== "";
     const localSide: PlayerColor | null = spectating ? null : isPlayer1 ? 1 : 2;
+    const h2hScoreFeedbackQueue = scoreFeedbackQueue.filter(
+      (feedback) => feedback.gameId === gameIdRef.current,
+    );
+    const h2hScoreFeedback = h2hScoreFeedbackQueue[0] ?? null;
     const resultPresentation = decided
       ? getH2HResultPresentation(decided, localSide, spectating, p1Name, p2Name)
       : null;
+    const rematchAvailable = isH2HRematchAvailable(
+      finalReason,
+      spectating,
+      h2hCanRematch,
+    );
     const youAreWinner = resultPresentation?.isLocalVictory ?? false;
     const winnerText = resultPresentation?.headline ?? "Game over";
     const exitAction =
@@ -3533,13 +4472,37 @@ export const App = () => {
         : getH2HExitAction(spectating);
     const exitMultiplayer =
       finalReason === "gone"
-        ? () => clearMultiplayerState(spectating ? "spectate" : null)
+        ? spectating
+          ? stopWatching
+          : () => clearMultiplayerState({ refreshHome: true })
         : exitAction.notifyServer
-          ? leaveMultiplayer
+          ? () => {
+              void leaveMultiplayer(
+                showTerminalResult ? "close_result" : "leave",
+              );
+            }
           : stopWatching;
+    const h2hExitPending =
+      h2hMutation !== null ||
+      h2hScoreFeedbackSettling ||
+      shareBusy === "multiplayer";
+    const h2hExitPendingLabel =
+      shareBusy === "multiplayer"
+        ? "Sharing…"
+        : h2hMutation === "leave"
+          ? "Leaving…"
+          : h2hMutation === "rematch"
+            ? "Starting rematch…"
+            : h2hMutation === "chat"
+              ? "Sending message…"
+              : "Saving move…";
 
     const overlay =
-      notice || showTerminalResult ? (
+      (notice &&
+        !showTerminalResult &&
+        !h2hScoreFeedback &&
+        !h2hScoreFeedbackSettling) ||
+      (showTerminalResult && !h2hScoreFeedback && !h2hScoreFeedbackSettling) ? (
         <div
           className="anim__animated anim__zoomIn"
           style={{
@@ -3554,6 +4517,11 @@ export const App = () => {
         >
           <Confetti show={shouldRunVictoryEffects(showWinner, youAreWinner)} />
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="euclid-h2h-result-title"
+            tabIndex={-1}
+            onKeyDown={trapDialogTab}
             style={{
               background: "var(--card-bg)",
               color: "var(--text)",
@@ -3568,6 +4536,7 @@ export const App = () => {
             {showWinner ? (
               <>
                 <div
+                  id="euclid-h2h-result-title"
                   style={{
                     fontSize: "1.2rem",
                     fontWeight: 800,
@@ -3589,6 +4558,7 @@ export const App = () => {
             ) : finalReason === "tie" ? (
               <>
                 <div
+                  id="euclid-h2h-result-title"
                   style={{
                     fontSize: "1.2rem",
                     fontWeight: 800,
@@ -3604,23 +4574,46 @@ export const App = () => {
               </>
             ) : (
               <div
+                id="euclid-h2h-result-title"
                 style={{ fontSize: "1.1rem", fontWeight: 800, marginBottom: 8 }}
               >
                 {notice || "Game over."}
               </div>
             )}
+            {rematchAvailable && (
+              <H2HRematchButton
+                disabled={h2hExitPending}
+                pending={h2hMutation === "rematch"}
+                onClick={() => void requestH2HRematch()}
+              />
+            )}
             <button
+              autoFocus
+              type="button"
               className="rounded cursor-pointer"
               style={{
                 background: "#ef4444",
                 color: "#fff",
                 padding: "6px 12px",
+                cursor: h2hExitPending ? "wait" : "pointer",
+                opacity: h2hExitPending ? 0.65 : 1,
               }}
-              onClick={
-                showTerminalResult ? exitMultiplayer : () => setNotice("")
-              }
+              onClick={() => {
+                if (h2hExitPending) return;
+                if (showTerminalResult) {
+                  exitMultiplayer();
+                } else {
+                  setNotice("");
+                }
+              }}
+              aria-disabled={h2hExitPending || undefined}
+              aria-busy={h2hExitPending || undefined}
             >
-              {showTerminalResult ? "Close" : "OK"}
+              {showTerminalResult
+                ? h2hExitPending && h2hMutation !== "rematch"
+                  ? h2hExitPendingLabel
+                  : "Close"
+                : "OK"}
             </button>
             {mode === "multiplayer" &&
               showWinner &&
@@ -3629,16 +4622,20 @@ export const App = () => {
               !sharedWins.multiplayer && (
                 <button
                   className="rounded cursor-pointer ml-2"
-                  disabled={shareBusy === "multiplayer"}
+                  disabled={h2hExitPending}
                   style={{
                     background: "#16a34a",
                     color: "#fff",
                     padding: "6px 12px",
-                    opacity: shareBusy === "multiplayer" ? 0.7 : 1,
+                    opacity: h2hExitPending ? 0.7 : 1,
                   }}
                   onClick={shareMultiplayerWin}
                 >
-                  {shareBusy === "multiplayer" ? "Sharing…" : "Share Win"}
+                  {shareBusy === "multiplayer"
+                    ? "Sharing…"
+                    : h2hExitPending
+                      ? "Please wait…"
+                      : "Share Win"}
                 </button>
               )}
           </div>
@@ -3669,6 +4666,8 @@ export const App = () => {
         board={board}
         onCellClick={onCellClick}
         onLeave={exitMultiplayer}
+        exitPending={h2hExitPending}
+        exitPendingLabel={h2hExitPendingLabel}
         p1Name={p1Name}
         p2Name={p2Name}
         midText={midText}
@@ -3698,8 +4697,13 @@ export const App = () => {
         p1Avatar={avatars[p1Id]}
         p2Avatar={avatars[p2Id]}
         chatItems={chatItems}
+        chatReadOnly={spectating}
+        chatCanCompose={h2hChatAvailable}
+        chatHasVisibleTrigger={h2hChatAvailable}
         assistOn={assistOn}
         myColor={localSide}
+        scoreFeedback={h2hScoreFeedback}
+        futureScoreFeedback={h2hScoreFeedbackQueue.slice(1)}
       />
     );
   } else if (mode === "ai" && (!isBoardValid(board) || !soloSnapshot)) {
@@ -3720,12 +4724,23 @@ export const App = () => {
     /* ===== Canonical Ranked / Practice solo ===== */
     const presentation = getSoloResultPresentation(soloSnapshot);
     const assistance = getSoloAssistancePolicy(soloSnapshot.mode);
+    const soloExitPending = soloPending !== null || shareBusy === "ai";
+    const soloExitPendingLabel =
+      shareBusy === "ai"
+        ? "Sharing…"
+        : soloPending === "abandoning"
+          ? "Ending game…"
+          : "Saving move…";
     const exitAction = getSoloExitAction(soloSnapshot);
     const difficultyName = AI_DIFFICULTY_LABELS[soloSnapshot.rules.difficulty];
     const euclidName = `${EUCLID_LABEL} (${difficultyName})`;
     const humanIsPlayerOne = soloSnapshot.rules.humanPlayer === 0;
     const p1Name = humanIsPlayerOne ? "You" : euclidName;
     const p2Name = humanIsPlayerOne ? euclidName : "You";
+    const soloScoreFeedbackQueue = scoreFeedbackQueue.filter(
+      (feedback) => feedback.gameId === soloSnapshot.gameId,
+    );
+    const soloScoreFeedback = soloScoreFeedbackQueue[0] ?? null;
     const onCellClick = (x: number, y: number) => {
       const cell = board.m_board[y * board.W + x];
       if (
@@ -3742,84 +4757,94 @@ export const App = () => {
       soloPending === "moving"
         ? `${EUCLID_LABEL} is thinking…`
         : presentation.headline;
-    const overlay = presentation.terminal ? (
-      <div
-        className="anim__animated anim__zoomIn"
-        style={{
-          position: "fixed",
-          inset: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 50,
-          background: "rgba(0,0,0,.55)",
-        }}
-      >
-        <Confetti
-          show={shouldRunVictoryEffects(
-            presentation.terminal,
-            presentation.isLocalVictory,
-          )}
-        />
+    const overlay =
+      presentation.terminal && !soloScoreFeedback ? (
         <div
+          className="anim__animated anim__zoomIn"
           style={{
-            background: "var(--card-bg)",
-            color: "var(--text)",
-            border: `1px solid var(--card-border)`,
-            borderRadius: 12,
-            padding: "16px 22px",
-            textAlign: "center",
+            position: "fixed",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 50,
+            background: "rgba(0,0,0,.55)",
           }}
         >
-          <div style={{ fontSize: "1.2rem", fontWeight: 800, marginBottom: 8 }}>
-            {presentation.headline}
-          </div>
-          <div style={{ color: "var(--muted)", marginBottom: 10 }}>
-            {soloSnapshot.mode === "ranked" ? "Ranked" : "Practice"} • {board.W}
-            ×{board.H} • {boardScoringLabel(board.scoring)} • First to{" "}
-            {board.winScore}
-          </div>
-          {soloSnapshot.rating && (
-            <div style={{ color: "var(--muted)", marginBottom: 10 }}>
-              Rating: {soloSnapshot.rating.before} → {soloSnapshot.rating.after}
-            </div>
-          )}
-          {notice && (
-            <div style={{ color: "var(--muted)", marginBottom: 12 }}>
-              {notice}
-            </div>
-          )}
-          <button
-            className="rounded cursor-pointer"
-            style={{
-              background: "#ef4444",
-              color: "#fff",
-              padding: "6px 12px",
-            }}
-            onClick={() => void exitSoloGame()}
-          >
-            Close
-          </button>
-          {soloSnapshot.canShare &&
-            presentation.isLocalVictory &&
-            !sharedWins.ai && (
-              <button
-                className="rounded cursor-pointer ml-2"
-                disabled={shareBusy === "ai"}
-                style={{
-                  background: "#16a34a",
-                  color: "#fff",
-                  padding: "6px 12px",
-                  opacity: shareBusy === "ai" ? 0.7 : 1,
-                }}
-                onClick={() => void shareAiWin()}
-              >
-                {shareBusy === "ai" ? "Sharing…" : "Share Win"}
-              </button>
+          <Confetti
+            show={shouldRunVictoryEffects(
+              presentation.terminal,
+              presentation.isLocalVictory,
             )}
+          />
+          <div
+            style={{
+              background: "var(--card-bg)",
+              color: "var(--text)",
+              border: `1px solid var(--card-border)`,
+              borderRadius: 12,
+              padding: "16px 22px",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{ fontSize: "1.2rem", fontWeight: 800, marginBottom: 8 }}
+            >
+              {presentation.headline}
+            </div>
+            <div style={{ color: "var(--muted)", marginBottom: 10 }}>
+              {soloSnapshot.mode === "ranked" ? "Ranked" : "Practice"} •{" "}
+              {board.W}×{board.H} • {boardScoringLabel(board.scoring)} • First
+              to {board.winScore}
+            </div>
+            {soloSnapshot.rating && (
+              <div style={{ color: "var(--muted)", marginBottom: 10 }}>
+                Rating: {soloSnapshot.rating.before} →{" "}
+                {soloSnapshot.rating.after}
+              </div>
+            )}
+            {notice && (
+              <div style={{ color: "var(--muted)", marginBottom: 12 }}>
+                {notice}
+              </div>
+            )}
+            <button
+              className="rounded cursor-pointer"
+              style={{
+                background: "#ef4444",
+                color: "#fff",
+                padding: "6px 12px",
+              }}
+              onClick={() => void exitSoloGame()}
+              disabled={soloExitPending}
+              aria-busy={soloExitPending || undefined}
+            >
+              {soloExitPending ? soloExitPendingLabel : "Close"}
+            </button>
+            {soloSnapshot.canShare &&
+              presentation.isLocalVictory &&
+              !sharedWins.ai && (
+                <button
+                  className="rounded cursor-pointer ml-2"
+                  disabled={soloExitPending}
+                  style={{
+                    background: "#16a34a",
+                    color: "#fff",
+                    padding: "6px 12px",
+                    opacity: soloExitPending ? 0.7 : 1,
+                  }}
+                  onClick={() => void shareAiWin()}
+                >
+                  {shareBusy === "ai"
+                    ? "Sharing…"
+                    : soloExitPending
+                      ? "Please wait…"
+                      : "Share Win"}
+                </button>
+              )}
+          </div>
         </div>
-      </div>
-    ) : null;
+      ) : null;
 
     content = (
       <div
@@ -3835,6 +4860,8 @@ export const App = () => {
           board={board}
           onCellClick={onCellClick}
           onLeave={() => void exitSoloGame()}
+          exitPending={soloExitPending}
+          exitPendingLabel={soloExitPendingLabel}
           p1Name={p1Name}
           p2Name={p2Name}
           midText={midText}
@@ -3846,8 +4873,11 @@ export const App = () => {
           }
           overlay={overlay}
           chatItems={localChat.slice(-8)}
+          chatCanCompose={soloChatAvailable}
           assistOn={assistance.allowAssistHighlights && assistOn}
           myColor={presentation.humanSide}
+          scoreFeedback={soloScoreFeedback}
+          futureScoreFeedback={soloScoreFeedbackQueue.slice(1)}
         />
       </div>
     );
@@ -3865,6 +4895,15 @@ export const App = () => {
     );
   }
 
+  const showH2HChatTrigger = !chatOpen && h2hChatAvailable;
+  const globalControlsBlocked =
+    chatOpen ||
+    showRules ||
+    showTutorial ||
+    notice !== "" ||
+    winner !== null ||
+    finalReason !== "";
+
   /* ===== Unconditional globals + content + chat overlay ===== */
   return (
     <>
@@ -3873,19 +4912,26 @@ export const App = () => {
       {content}
       {!sharedPost && !!initState && !initError && ChatOverlay}
       {!sharedPost && !!initState && !initError && TutorialModal}
-      {!sharedPost && !!initState && !initError && (
-        <div
-          style={{
-            position: "fixed",
-            top: 8,
-            left: 8,
-            zIndex: 90,
-            cursor: "pointer",
+      {!sharedPost && !!initState && !initError && showH2HChatTrigger && (
+        <H2HChatTrigger
+          ref={chatTriggerRef}
+          disabled={h2hMutation !== null}
+          onClick={() => {
+            openChat();
           }}
+        />
+      )}
+      {!sharedPost && !!initState && !initError && !globalControlsBlocked && (
+        <button
+          type="button"
+          className="euclid-sound-toggle"
+          aria-label={soundOn ? "Mute game sounds" : "Turn on game sounds"}
+          aria-pressed={soundOn}
+          title={soundOn ? "Mute game sounds" : "Turn on game sounds"}
           onClick={() => setSoundOn(!soundOn)}
         >
-          <span style={{ fontSize: 20 }}>{soundOn ? "🔊" : "🔇"}</span>
-        </div>
+          <span aria-hidden="true">{soundOn ? "🔊" : "🔇"}</span>
+        </button>
       )}
     </>
   );
@@ -3905,6 +4951,8 @@ const GameScreen: React.FC<{
   board: Board;
   onCellClick: (x: number, y: number) => void;
   onLeave: () => void;
+  exitPending?: boolean;
+  exitPendingLabel?: string;
   p1Name: string;
   p2Name: string;
   midText: string;
@@ -3914,14 +4962,21 @@ const GameScreen: React.FC<{
   p1Avatar?: string | undefined;
   p2Avatar?: string | undefined;
   chatItems: Array<Pick<ShareChatItem, "id" | "sender" | "text">>;
+  chatReadOnly?: boolean;
+  chatCanCompose?: boolean;
+  chatHasVisibleTrigger?: boolean;
   assistOn: boolean;
   myColor: PlayerColor | null;
+  scoreFeedback: ScoreFeedbackEvent | null;
+  futureScoreFeedback: readonly ScoreFeedbackEvent[];
 }> = ({
   exitLabel,
   viewport,
   board,
   onCellClick,
   onLeave,
+  exitPending = false,
+  exitPendingLabel = "Finishing action…",
   p1Name,
   p2Name,
   midText,
@@ -3931,8 +4986,13 @@ const GameScreen: React.FC<{
   p1Avatar,
   p2Avatar,
   chatItems,
+  chatReadOnly = false,
+  chatCanCompose = false,
+  chatHasVisibleTrigger = false,
   assistOn,
   myColor,
+  scoreFeedback,
+  futureScoreFeedback,
 }) => {
   const layout = useMemo(
     () =>
@@ -3948,8 +5008,11 @@ const GameScreen: React.FC<{
     stackScores,
   } = layout;
 
-  const lines: React.ReactElement[] = [];
-  const orderByAngle = (points: [Point, Point, Point, Point]) => {
+  const [showHistoricalSquares, setShowHistoricalSquares] = useState(true);
+
+  const orderByAngle = (
+    points: readonly [SharePoint, SharePoint, SharePoint, SharePoint],
+  ) => {
     const centerX =
       points.reduce((sum, point) => sum + point.x, 0) / points.length;
     const centerY =
@@ -3962,7 +5025,18 @@ const GameScreen: React.FC<{
           Math.atan2(right.y - centerY, right.x - centerX),
       );
   };
-  const addLinesFading = (squares: Square[], rgbVar: string) => {
+
+  const squarePolygonPoints = (square: ShareSquare): string =>
+    orderByAngle([square.p1, square.p2, square.p3, square.p4])
+      .map((point) => `${(point.x + 0.5) * cell},${(point.y + 0.5) * cell}`)
+      .join(" ");
+
+  const historicalEdges = (
+    squares: readonly ShareSquare[],
+    player: PlayerIndex,
+    rgbVar: "--line-red" | "--line-blue",
+  ): React.ReactElement[] => {
+    const edges: React.ReactElement[] = [];
     const minAlpha = 0.14,
       maxAlpha = 0.9;
     for (const [squareIndex, square] of squares.entries()) {
@@ -3984,9 +5058,9 @@ const GameScreen: React.FC<{
         const start = ordered[pointIndex];
         const end = ordered[(pointIndex + 1) % ordered.length];
         if (!start || !end) continue;
-        lines.push(
+        edges.push(
           <line
-            key={`${rgbVar}-${squareIndex}-${pointIndex}`}
+            key={`history-${player}-${squareSignature(square)}-${pointIndex}`}
             x1={start.x}
             y1={start.y}
             x2={end.x}
@@ -3997,14 +5071,85 @@ const GameScreen: React.FC<{
         );
       }
     }
+    return edges;
   };
-  addLinesFading(board.m_players[0].m_squares, "--line-red");
-  addLinesFading(board.m_players[1].m_squares, "--line-blue");
+
+  const firstActiveSquares =
+    scoreFeedback?.player === 0 ? scoreFeedback.completedSquares : [];
+  const secondActiveSquares =
+    scoreFeedback?.player === 1 ? scoreFeedback.completedSquares : [];
+  const futureSquareSignatures = new Set(
+    futureScoreFeedback.flatMap((feedback) =>
+      feedback.completedSquares.map(squareSignature),
+    ),
+  );
+  const firstHistoricalSquares = board.m_players[0].m_squares.filter(
+    (square) => !futureSquareSignatures.has(squareSignature(square)),
+  );
+  const secondHistoricalSquares = board.m_players[1].m_squares.filter(
+    (square) => !futureSquareSignatures.has(squareSignature(square)),
+  );
+  const firstSquareLayers = selectSquareLines(
+    firstHistoricalSquares,
+    firstActiveSquares,
+    showHistoricalSquares,
+  );
+  const secondSquareLayers = selectSquareLines(
+    secondHistoricalSquares,
+    secondActiveSquares,
+    showHistoricalSquares,
+  );
+  const lines = [
+    ...historicalEdges(firstSquareLayers.historical, 0, "--line-red"),
+    ...historicalEdges(secondSquareLayers.historical, 1, "--line-blue"),
+  ];
+  const activePolygons = [
+    ...firstSquareLayers.active.map((square) => (
+      <polygon
+        key={`active-${scoreFeedback?.id ?? "none"}-0-${squareSignature(square)}`}
+        className="euclid-score-square euclid-score-square--red"
+        points={squarePolygonPoints(square)}
+        vectorEffect="non-scaling-stroke"
+      />
+    )),
+    ...secondSquareLayers.active.map((square) => (
+      <polygon
+        key={`active-${scoreFeedback?.id ?? "none"}-1-${squareSignature(square)}`}
+        className="euclid-score-square euclid-score-square--blue"
+        points={squarePolygonPoints(square)}
+        vectorEffect="non-scaling-stroke"
+      />
+    )),
+  ];
+  const footprintRects =
+    board.scoring === "bbox" && scoreFeedback
+      ? scoreFeedback.footprintBounds.map((bounds, index) => (
+          <rect
+            key={`${scoreFeedback.id}-footprint-${index}`}
+            className={`euclid-score-footprint euclid-score-footprint--${scoreFeedback.player === 0 ? "red" : "blue"}`}
+            x={bounds.x * cell + 2}
+            y={bounds.y * cell + 2}
+            width={Math.max(0, bounds.width * cell - 4)}
+            height={Math.max(0, bounds.height * cell - 4)}
+            rx={Math.max(3, Math.min(8, cell * 0.15))}
+            vectorEffect="non-scaling-stroke"
+          />
+        ))
+      : [];
 
   const leftGlow = glowSide === "red" ? "red" : null;
   const rightGlow = glowSide === "blue" ? "blue" : null;
   const leftDim = dimSide === "red" ? 0.5 : 1;
   const rightDim = dimSide === "blue" ? 0.5 : 1;
+  const scoreBadgePosition = scoreFeedback
+    ? {
+        left: Math.min(
+          bw - Math.min(30, bw / 2),
+          Math.max(Math.min(30, bw / 2), (scoreFeedback.point.x + 0.5) * cell),
+        ),
+        top: Math.max(4, (scoreFeedback.point.y + 0.5) * cell - DOT / 2),
+      }
+    : null;
 
   // ===== Assist highlight logic (hover over your placed piece) =====
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
@@ -4121,238 +5266,292 @@ const GameScreen: React.FC<{
     };
   }, [assistOn, isMobile, cell, board.W, board.m_board, myColor]);
 
-  // Chat log dismiss
-  const [showLog, setShowLog] = useState(true);
+  const chatLogRef = useRef<HTMLDivElement>(null);
+  const newestChatId = chatItems.at(-1)?.id ?? null;
+  useEffect(() => {
+    if (newestChatId === null || !chatLogRef.current) return;
+    chatLogRef.current.scrollTop = chatLogRef.current.scrollHeight;
+  }, [newestChatId]);
 
   return (
     <div
-      className="flex flex-col items-center gap-4 p-4"
-      style={{ background: "var(--bg)", height: "100vh", overflow: "hidden" }}
+      className="euclid-game-screen flex flex-col items-center gap-4 p-4"
+      style={{ background: "var(--bg)" }}
     >
       {/* overlay (winner/notice) */}
       {overlay}
-      <h1
-        className="text-2xl font-bold text-center"
-        style={{ color: "var(--text)", marginTop: -4 }}
-      >
-        Euclid
-      </h1>
-
-      {/* Scoreboard */}
-      {p1Name && p2Name ? (
-        !stackScores ? (
-          <div className="w-full flex justify-between gap-4 items-start">
-            <div
-              className="flex-1 flex justify-start"
-              style={{ opacity: leftDim }}
-            >
-              <ScoreCard
-                label={p1Name!}
-                score={board.m_players[0].m_score}
-                align="left"
-                glow={leftGlow}
-                avatar={p1Avatar}
-              />
-            </div>
-            <div
-              className="flex flex-col items-center justify-start"
-              style={{ minWidth: 220, color: "var(--text)" }}
-            >
-              <div style={{ fontWeight: 800 }}>{midText}</div>
-            </div>
-            <div
-              className="flex-1 flex justify-end"
-              style={{ opacity: rightDim }}
-            >
-              <ScoreCard
-                label={p2Name!}
-                score={board.m_players[1].m_score}
-                align="right"
-                glow={rightGlow}
-                avatar={p2Avatar}
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="w-full flex flex-col items-center gap-2">
-            <div style={{ opacity: leftDim }}>
-              <ScoreCard
-                label={p1Name!}
-                score={board.m_players[0].m_score}
-                align="left"
-                glow={leftGlow}
-                avatar={p1Avatar}
-                compact
-              />
-            </div>
-            <div style={{ color: "var(--text)", fontWeight: 800 }}>
-              {midText}
-            </div>
-            <div style={{ opacity: rightDim }}>
-              <ScoreCard
-                label={p2Name!}
-                score={board.m_players[1].m_score}
-                align="right"
-                glow={rightGlow}
-                avatar={p2Avatar}
-                compact
-              />
-            </div>
-          </div>
-        )
-      ) : null}
-
-      {/* Board */}
       <div
-        ref={boardRef}
-        className="relative"
-        style={{ width: bw, height: bh, margin: "0 auto", maxWidth: "100vw" }}
-        onMouseLeave={clearHover}
+        className="euclid-game-screen__content"
+        inert={overlay ? true : undefined}
+        aria-hidden={overlay ? true : undefined}
       >
-        {/* Overlay lines — do not intercept clicks */}
-        <svg
-          className="absolute top-0 left-0 w-full h-full z-10"
-          style={{ pointerEvents: "none" }}
-          viewBox={`0 0 ${bw} ${bh}`}
+        <h1
+          className="text-2xl font-bold text-center"
+          style={{ color: "var(--text)", marginTop: -4 }}
         >
-          {lines}
-        </svg>
+          Euclid
+        </h1>
 
-        <div
-          className="grid"
-          style={{
-            gridTemplateColumns: `repeat(${board.W}, ${cell}px)`,
-            gridAutoRows: `${cell}px`,
-            gap: 0,
-          }}
-        >
-          {Array.from({ length: board.H }, (_, y) =>
-            Array.from({ length: board.W }, (_, x) => {
-              const idx = y * board.W + x;
-              const v = board.m_board[idx] ?? 0;
-              const isLast =
-                v > 0 && board.m_last.x === x && board.m_last.y === y;
-
-              let fill = "var(--empty-fill)",
-                stroke = "var(--empty-stroke)",
-                extraClass = "";
-              let inlineShadow: string | undefined = undefined;
-
-              if (v === 1) {
-                fill = "var(--dot-red-fill)";
-                stroke = "var(--dot-red-stroke)";
-                if (isLast) {
-                  inlineShadow =
-                    "0 0 0 5px var(--last-red-ring), 0 0 18px var(--last-red-glow)";
-                  extraClass = "last__pulse";
-                }
-              } else if (v === 2) {
-                fill = "var(--dot-blue-fill)";
-                stroke = "var(--dot-blue-stroke)";
-                if (isLast) {
-                  inlineShadow =
-                    "0 0 0 5px var(--last-blue-ring), 0 0 18px var(--last-blue-glow)";
-                  extraClass = "last__pulse";
-                }
-              } else if (v === 0) {
-                // Assist overlays for empty spots
-                if (assistOn && hoverIdx !== null) {
-                  if (oneMoveTargets.has(idx)) {
-                    extraClass +=
-                      myColor === 1 ? " hint-red-bright" : " hint-blue-bright";
-                  } else if (twoMoveTargets.has(idx)) {
-                    extraClass +=
-                      myColor === 1 ? " hint-red-dim" : " hint-blue-dim";
-                  } else {
-                    extraClass += " assist__dim";
-                  }
-                }
-              }
-
-              const onEnter = () => onCellEnter(idx, v);
-
-              return (
-                <div
-                  key={`${y}-${x}`}
-                  className="flex items-center justify-center"
-                  onClick={() => onCellClick(x, y)}
-                  onMouseEnter={onEnter}
-                >
-                  <div
-                    className={`rounded-full ${extraClass}`}
-                    style={{
-                      width: DOT,
-                      height: DOT,
-                      background: fill,
-                      border: `2px solid ${stroke}`,
-                      ...(inlineShadow ? { boxShadow: inlineShadow } : {}),
-                    }}
-                    aria-label={isLast ? "Last move" : undefined}
-                    title={isLast ? "Last move" : undefined}
-                  />
-                </div>
-              );
-            }),
-          )}
-        </div>
-      </div>
-
-      {/* Chat log (if provided) */}
-      {chatItems && chatItems.length > 0 && showLog && (
-        <div
-          className="relative w-[min(720px,95vw)] max-w-[95vw]"
-          style={{
-            background: "var(--card-bg)",
-            border: `1px solid var(--card-border)`,
-            borderRadius: 10,
-            padding: "6px 8px",
-            color: "var(--text)",
-            maxHeight: "30vh",
-            overflowY: "auto",
-          }}
-        >
-          {chatItems
-            .slice(-8)
-            .reverse()
-            .map((it) => (
-              <div key={it.id} className="truncate" style={{ lineHeight: 1.5 }}>
-                <b style={{ color: "var(--muted)" }}>{it.sender}:</b>{" "}
-                <span>{it.text}</span>
+        {/* Scoreboard */}
+        {p1Name && p2Name ? (
+          !stackScores ? (
+            <div className="w-full flex justify-between gap-4 items-start">
+              <div
+                className="flex-1 flex justify-start"
+                style={{ opacity: scoreFeedback?.player === 0 ? 1 : leftDim }}
+              >
+                <ScoreCard
+                  label={p1Name!}
+                  score={board.m_players[0].m_score}
+                  align="left"
+                  glow={leftGlow}
+                  avatar={p1Avatar}
+                  feedback={scoreFeedback?.player === 0 ? scoreFeedback : null}
+                />
               </div>
-            ))}
-          <div className="text-xs" style={{ color: "var(--muted)" }}>
-            Press "\" to chat
-          </div>
-          <button
-            onClick={() => setShowLog(false)}
+              <div
+                className="flex flex-col items-center justify-start"
+                style={{ minWidth: 220, color: "var(--text)" }}
+              >
+                <div style={{ fontWeight: 800 }}>{midText}</div>
+              </div>
+              <div
+                className="flex-1 flex justify-end"
+                style={{ opacity: scoreFeedback?.player === 1 ? 1 : rightDim }}
+              >
+                <ScoreCard
+                  label={p2Name!}
+                  score={board.m_players[1].m_score}
+                  align="right"
+                  glow={rightGlow}
+                  avatar={p2Avatar}
+                  feedback={scoreFeedback?.player === 1 ? scoreFeedback : null}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="w-full flex flex-col items-center gap-2">
+              <div
+                style={{ opacity: scoreFeedback?.player === 0 ? 1 : leftDim }}
+              >
+                <ScoreCard
+                  label={p1Name!}
+                  score={board.m_players[0].m_score}
+                  align="left"
+                  glow={leftGlow}
+                  avatar={p1Avatar}
+                  compact
+                  feedback={scoreFeedback?.player === 0 ? scoreFeedback : null}
+                />
+              </div>
+              <div style={{ color: "var(--text)", fontWeight: 800 }}>
+                {midText}
+              </div>
+              <div
+                style={{ opacity: scoreFeedback?.player === 1 ? 1 : rightDim }}
+              >
+                <ScoreCard
+                  label={p2Name!}
+                  score={board.m_players[1].m_score}
+                  align="right"
+                  glow={rightGlow}
+                  avatar={p2Avatar}
+                  compact
+                  feedback={scoreFeedback?.player === 1 ? scoreFeedback : null}
+                />
+              </div>
+            </div>
+          )
+        ) : null}
+
+        {/* Board */}
+        <div
+          ref={boardRef}
+          className="relative"
+          style={{ width: bw, height: bh, margin: "0 auto", maxWidth: "100vw" }}
+          onMouseLeave={clearHover}
+        >
+          {scoreFeedback && scoreBadgePosition && (
+            <div
+              key={scoreFeedback.id}
+              className={`euclid-score-pop euclid-score-pop--${scoreFeedback.player === 0 ? "red" : "blue"}`}
+              style={scoreBadgePosition}
+              aria-hidden="true"
+            >
+              <strong>+{scoreFeedback.pointsScored}</strong>
+              <span>
+                {scoreFeedback.completedSquares.length}{" "}
+                {scoreFeedback.completedSquares.length === 1
+                  ? "square"
+                  : "squares"}
+              </span>
+            </div>
+          )}
+
+          {/* Overlay lines — do not intercept clicks */}
+          <svg
+            className="absolute top-0 left-0 w-full h-full z-10"
+            style={{ pointerEvents: "none" }}
+            viewBox={`0 0 ${bw} ${bh}`}
+          >
+            {footprintRects}
+            {lines}
+            {activePolygons}
+          </svg>
+
+          <div
+            className="grid"
             style={{
-              position: "absolute",
-              top: 4,
-              right: 4,
-              background: "transparent",
-              border: "none",
-              color: "var(--muted)",
-              cursor: "pointer",
-              fontSize: 14,
+              gridTemplateColumns: `repeat(${board.W}, ${cell}px)`,
+              gridAutoRows: `${cell}px`,
+              gap: 0,
             }}
           >
-            ×
+            {Array.from({ length: board.H }, (_, y) =>
+              Array.from({ length: board.W }, (_, x) => {
+                const idx = y * board.W + x;
+                const v = board.m_board[idx] ?? 0;
+                const isLast =
+                  v > 0 && board.m_last.x === x && board.m_last.y === y;
+
+                let fill = "var(--empty-fill)",
+                  stroke = "var(--empty-stroke)",
+                  extraClass = "";
+                let inlineShadow: string | undefined = undefined;
+
+                if (v === 1) {
+                  fill = "var(--dot-red-fill)";
+                  stroke = "var(--dot-red-stroke)";
+                  if (isLast) {
+                    inlineShadow =
+                      "0 0 0 5px var(--last-red-ring), 0 0 18px var(--last-red-glow)";
+                    extraClass = "last__pulse";
+                  }
+                } else if (v === 2) {
+                  fill = "var(--dot-blue-fill)";
+                  stroke = "var(--dot-blue-stroke)";
+                  if (isLast) {
+                    inlineShadow =
+                      "0 0 0 5px var(--last-blue-ring), 0 0 18px var(--last-blue-glow)";
+                    extraClass = "last__pulse";
+                  }
+                } else if (v === 0) {
+                  // Assist overlays for empty spots
+                  if (assistOn && hoverIdx !== null) {
+                    if (oneMoveTargets.has(idx)) {
+                      extraClass +=
+                        myColor === 1
+                          ? " hint-red-bright"
+                          : " hint-blue-bright";
+                    } else if (twoMoveTargets.has(idx)) {
+                      extraClass +=
+                        myColor === 1 ? " hint-red-dim" : " hint-blue-dim";
+                    } else {
+                      extraClass += " assist__dim";
+                    }
+                  }
+                }
+
+                const onEnter = () => onCellEnter(idx, v);
+
+                return (
+                  <div
+                    key={`${y}-${x}`}
+                    className="flex items-center justify-center"
+                    onClick={() => onCellClick(x, y)}
+                    onMouseEnter={onEnter}
+                  >
+                    <div
+                      className={`rounded-full ${extraClass}`}
+                      style={{
+                        width: DOT,
+                        height: DOT,
+                        background: fill,
+                        border: `2px solid ${stroke}`,
+                        ...(inlineShadow ? { boxShadow: inlineShadow } : {}),
+                      }}
+                      aria-label={isLast ? "Last move" : undefined}
+                      title={isLast ? "Last move" : undefined}
+                    />
+                  </div>
+                );
+              }),
+            )}
+          </div>
+        </div>
+
+        {/* Chat log (if provided) */}
+        {chatItems && chatItems.length > 0 && (
+          <div
+            className="relative w-[min(720px,95vw)] max-w-[95vw]"
+            style={{
+              background: "var(--card-bg)",
+              border: `1px solid var(--card-border)`,
+              borderRadius: 10,
+              padding: "6px 8px",
+              color: "var(--text)",
+            }}
+          >
+            <div
+              ref={chatLogRef}
+              role="log"
+              aria-label="Game chat messages"
+              aria-live="polite"
+              aria-relevant="additions text"
+              style={{ maxHeight: "calc(30vh - 1.5rem)", overflowY: "auto" }}
+            >
+              {chatItems.slice(-8).map((it) => (
+                <div
+                  key={it.id}
+                  className="euclid-chat-log__message"
+                  style={{ lineHeight: 1.5 }}
+                >
+                  <b style={{ color: "var(--muted)" }}>{it.sender}:</b>{" "}
+                  <span>{it.text}</span>
+                </div>
+              ))}
+            </div>
+            <div className="text-xs" style={{ color: "var(--muted)" }}>
+              {chatReadOnly
+                ? "Chat is read only while spectating."
+                : !chatCanCompose
+                  ? "Chat is unavailable after the game ends."
+                  : chatHasVisibleTrigger
+                    ? 'Use the Chat button or press "\\".'
+                    : 'Press "\\" to chat.'}
+            </div>
+          </div>
+        )}
+
+        {/* Leave/Back */}
+        <div
+          className="flex gap-2 mt-2"
+          style={{ marginBottom: stackScores ? 96 : 76 }}
+        >
+          <button
+            type="button"
+            className="euclid-square-toggle rounded cursor-pointer"
+            onClick={() => setShowHistoricalSquares((visible) => !visible)}
+          >
+            {showHistoricalSquares ? "Hide past squares" : "Show past squares"}
+          </button>
+          <button
+            type="button"
+            className={`rounded ${exitPending ? "" : "cursor-pointer"}`}
+            style={{
+              background: "#ef4444",
+              color: "#fff",
+              padding: "6px 12px",
+              cursor: exitPending ? "wait" : "pointer",
+              opacity: exitPending ? 0.65 : 1,
+            }}
+            disabled={exitPending}
+            aria-busy={exitPending || undefined}
+            onClick={onLeave}
+          >
+            {exitPending ? exitPendingLabel : exitLabel}
           </button>
         </div>
-      )}
-
-      {/* Leave/Back */}
-      <div
-        className="flex gap-2 mt-2"
-        style={{ marginBottom: stackScores ? 96 : 76 }}
-      >
-        <button
-          className="rounded cursor-pointer"
-          style={{ background: "#ef4444", color: "#fff", padding: "6px 12px" }}
-          onClick={onLeave}
-        >
-          {exitLabel}
-        </button>
       </div>
     </div>
   );

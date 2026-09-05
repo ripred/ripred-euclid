@@ -26,6 +26,9 @@ import type {
 class MemoryRedis implements RedisCasClient {
   readonly commits: RedisCasWrite[][] = [];
   beforeExec: (() => void | Promise<void>) | undefined;
+  afterGet:
+    | ((key: string, value: string | undefined) => void | Promise<void>)
+    | undefined;
 
   private readonly values = new Map<string, string>();
   private readonly versions = new Map<string, number>();
@@ -58,7 +61,9 @@ class MemoryRedis implements RedisCasClient {
   }
 
   async get(key: string): Promise<string | undefined> {
-    return this.value(key);
+    const value = this.value(key);
+    await this.afterGet?.(key, value);
+    return value;
   }
 
   async watch(...keys: string[]): Promise<RedisCasTransaction> {
@@ -192,6 +197,13 @@ function leaveRequest(gameId: string, expectedRevision = 0): H2HLeaveRequest {
   return { gameId, expectedRevision };
 }
 
+function closeResultRequest(
+  gameId: string,
+  expectedRevision: number,
+): H2HLeaveRequest {
+  return { gameId, expectedRevision, intent: "close_result" };
+}
+
 function terminalMoveFixture(gameId: string): {
   board: H2HBoardSnapshot;
   request: H2HMoveRequest;
@@ -228,7 +240,45 @@ function terminalMoveFixture(gameId: string): {
   throw new Error("Terminal move fixture did not reach a legal outcome.");
 }
 
+async function completeSeededGame(
+  redis: MemoryRedis,
+  store: H2HStore,
+  gameId: string,
+) {
+  const fixture = terminalMoveFixture(gameId);
+  redis.externalSet(H2H_STORE_KEYS.game(gameId), JSON.stringify(fixture.board));
+  const commit = await store.applyMove(fixture.userId, fixture.request);
+  expect(commit.response.ended).toBe(true);
+  return commit.response;
+}
+
 describe("H2H queue and mappings", () => {
+  it("reads queue membership across queue lifecycle transitions", async () => {
+    const { store } = createFixture();
+
+    await expect(store.isQueued(" ")).rejects.toMatchObject({
+      code: "invalid_identifier",
+    });
+    await expect(store.isQueued("p1")).resolves.toBe(false);
+    await expect(store.queueOrResume("p1")).resolves.toMatchObject({
+      status: "queued",
+    });
+    await expect(store.isQueued("p1")).resolves.toBe(true);
+
+    await expect(store.queueOrResume("p2")).resolves.toMatchObject({
+      status: "paired",
+    });
+    await expect(store.isQueued("p1")).resolves.toBe(false);
+    await expect(store.isQueued("p2")).resolves.toBe(false);
+
+    await expect(store.queueOrResume("p3")).resolves.toMatchObject({
+      status: "queued",
+    });
+    await expect(store.isQueued("p3")).resolves.toBe(true);
+    await expect(store.cancelQueue("p3")).resolves.toEqual({ removed: true });
+    await expect(store.isQueued("p3")).resolves.toBe(false);
+  });
+
   it("pairs atomically, resumes live mappings, and never duplicates a caller", async () => {
     const { redis, store } = createFixture();
     await Promise.all([store.queueOrResume("p1"), store.queueOrResume("p1")]);
@@ -418,6 +468,17 @@ describe("H2H canonical mutations", () => {
     expect(terminalCommit?.map((write) => write.key)).toContain(
       H2H_STORE_KEYS.pendingSettlements,
     );
+    const terminalRevision = fixture.board.revision + 1;
+    expect(terminalCommit?.map((write) => write.key)).toContain(
+      H2H_STORE_KEYS.result(gameId, terminalRevision),
+    );
+    const archived = await store.getTerminalState(gameId, terminalRevision);
+    expect(archived).toMatchObject({
+      gameId,
+      revision: terminalRevision,
+      ended: true,
+    });
+    expect(archived?.board).toEqual(commit.response.board);
   });
 
   it("returns exactly one forfeit transition and keeps the opponent mapping", async () => {
@@ -451,6 +512,9 @@ describe("H2H canonical mutations", () => {
       endedReason: "player_left",
       victorSide: 2,
     });
+    await expect(store.getTerminalState(gameId, 1)).resolves.toEqual(
+      transition?.state,
+    );
   });
 
   it("never follows a concurrently changed mapping into a newer game", async () => {
@@ -489,28 +553,121 @@ describe("H2H canonical mutations", () => {
     });
   });
 
-  it("rematches atomically with a monotonic revision and restored mappings", async () => {
+  it("rematches atomically with a monotonic revision and preserved mappings", async () => {
     const { redis, store } = createFixture();
     const gameId = await pair(store);
-    await store.leave("p1", leaveRequest(gameId));
-    const ended = await store.getState(gameId);
+    const ended = await completeSeededGame(redis, store, gameId);
 
-    const rematch = await store.rematch("p2", gameId);
+    const rematch = await store.rematch("p2", {
+      gameId,
+      expectedRevision: ended.revision,
+    });
 
     expect(rematch).toMatchObject({
       gameId,
-      revision: (ended?.revision ?? 0) + 1,
+      revision: ended.revision + 1,
       ended: false,
     });
     expect(rematch.board.m_history).toEqual([]);
     expect(redis.value(H2H_STORE_KEYS.userGame("p1"))).toBe(gameId);
     expect(redis.value(H2H_STORE_KEYS.userGame("p2"))).toBe(gameId);
     expect(redis.json(H2H_STORE_KEYS.activeGames)).toContain(gameId);
+    expect(redis.json(H2H_STORE_KEYS.result(gameId, ended.revision))).toEqual(
+      ended.board,
+    );
+    const archived = await store.getTerminalState(gameId, ended.revision);
+    expect(archived).toMatchObject({
+      gameId,
+      revision: ended.revision,
+      ended: true,
+    });
+    expect(archived?.board).toEqual(ended.board);
     expect(
       parseH2HSettlementEvents(redis.value(H2H_STORE_KEYS.pendingSettlements)),
     ).toEqual([
-      expect.objectContaining({ eventId: `${gameId}:1`, revision: 1 }),
+      expect.objectContaining({
+        eventId: `${gameId}:${ended.revision}`,
+        revision: ended.revision,
+      }),
     ]);
+  });
+
+  it("requires both players to remain attached before starting a rematch", async () => {
+    const { redis, store } = createFixture();
+    const gameId = await pair(store);
+    const ended = await completeSeededGame(redis, store, gameId);
+    await store.leave("p1", leaveRequest(gameId, ended.revision));
+
+    await expect(
+      store.rematch("p2", { gameId, expectedRevision: ended.revision }),
+    ).rejects.toMatchObject({
+      name: "H2HStoreError",
+      code: "not_mapped",
+    } satisfies Partial<H2HStoreError>);
+    expect(redis.value(H2H_STORE_KEYS.userGame("p1"))).toBeUndefined();
+    await expect(store.getState(gameId)).resolves.toMatchObject({
+      revision: ended.revision,
+      ended: true,
+    });
+  });
+
+  it("reports rematch availability from the terminal result and mappings", async () => {
+    const { redis, store } = createFixture();
+    const gameId = await pair(store);
+    const live = await store.getState(gameId);
+    if (!live) throw new Error("Paired game was not found.");
+    await expect(store.canRematch("p1", live)).resolves.toBe(false);
+
+    const ended = await completeSeededGame(redis, store, gameId);
+    await expect(store.canRematch("p1", ended)).resolves.toBe(true);
+    await expect(store.canRematch("p2", ended)).resolves.toBe(true);
+    await expect(store.canRematch("intruder", ended)).resolves.toBe(false);
+    const gameBeforeDetach = redis.value(H2H_STORE_KEYS.game(gameId));
+    const archiveBeforeDetach = redis.value(
+      H2H_STORE_KEYS.result(gameId, ended.revision),
+    );
+    const settlementBeforeDetach = redis.value(
+      H2H_STORE_KEYS.pendingSettlements,
+    );
+
+    await store.leave("p1", leaveRequest(gameId, ended.revision));
+    await expect(store.canRematch("p2", ended)).resolves.toBe(false);
+    expect(redis.value(H2H_STORE_KEYS.game(gameId))).toBe(gameBeforeDetach);
+    expect(redis.value(H2H_STORE_KEYS.result(gameId, ended.revision))).toBe(
+      archiveBeforeDetach,
+    );
+    expect(redis.value(H2H_STORE_KEYS.pendingSettlements)).toBe(
+      settlementBeforeDetach,
+    );
+  });
+
+  it("retries viewer state when rematch availability crosses revisions", async () => {
+    const { redis, store } = createFixture();
+    const gameId = await pair(store);
+    const ended = await completeSeededGame(redis, store, gameId);
+    let rematchRevision = -1;
+    redis.afterGet = async (key, value) => {
+      if (key !== H2H_STORE_KEYS.userGame("p1") || value !== gameId) return;
+      redis.afterGet = undefined;
+      const rematch = await store.rematch("p1", {
+        gameId,
+        expectedRevision: ended.revision,
+      });
+      rematchRevision = rematch.revision;
+      await store.leave("p2", leaveRequest(gameId, rematch.revision));
+    };
+
+    const viewer = await store.getStateForViewer(gameId, "p1");
+
+    expect(viewer).toMatchObject({
+      canRematch: false,
+      state: {
+        gameId,
+        revision: rematchRevision + 1,
+        ended: true,
+        endedReason: "player_left",
+      },
+    });
   });
 
   it("does not manufacture settlement events while reading legacy ended games", async () => {
@@ -527,14 +684,174 @@ describe("H2H canonical mutations", () => {
     expect(redis.value(H2H_STORE_KEYS.pendingSettlements)).toBeUndefined();
   });
 
+  it("archives a legacy completed round before a rematch replaces it", async () => {
+    const { redis, store } = createFixture();
+    const gameId = "legacy-rematch";
+    const fixture = terminalMoveFixture(gameId);
+    const completed = applyH2HMove(
+      fixture.board,
+      fixture.userId,
+      fixture.request,
+      500,
+    ).board;
+    redis.seed(H2H_STORE_KEYS.game(gameId), JSON.stringify(completed));
+    redis.seed(H2H_STORE_KEYS.userGame("p1"), gameId);
+    redis.seed(H2H_STORE_KEYS.userGame("p2"), gameId);
+
+    await expect(
+      store.getTerminalState(gameId, completed.revision),
+    ).resolves.toMatchObject({
+      gameId,
+      revision: completed.revision,
+      ended: true,
+    });
+    expect(
+      redis.value(H2H_STORE_KEYS.result(gameId, completed.revision)),
+    ).toBeUndefined();
+
+    await store.rematch("p1", {
+      gameId,
+      expectedRevision: completed.revision,
+    });
+
+    await expect(store.getState(gameId)).resolves.toMatchObject({
+      revision: completed.revision + 1,
+      ended: false,
+    });
+    await expect(
+      store.getTerminalState(gameId, completed.revision),
+    ).resolves.toMatchObject({
+      gameId,
+      revision: completed.revision,
+      ended: true,
+      board: completed,
+    });
+  });
+
+  it("finds an archive created while a legacy terminal read races a rematch", async () => {
+    const { redis, store } = createFixture();
+    const gameId = "legacy-share-race";
+    const fixture = terminalMoveFixture(gameId);
+    const completed = applyH2HMove(
+      fixture.board,
+      fixture.userId,
+      fixture.request,
+      500,
+    ).board;
+    const resultKey = H2H_STORE_KEYS.result(gameId, completed.revision);
+    redis.seed(H2H_STORE_KEYS.game(gameId), JSON.stringify(completed));
+    redis.seed(H2H_STORE_KEYS.userGame("p1"), gameId);
+    redis.seed(H2H_STORE_KEYS.userGame("p2"), gameId);
+    redis.afterGet = async (key, value) => {
+      if (key !== resultKey || value !== undefined) return;
+      redis.afterGet = undefined;
+      await store.rematch("p1", {
+        gameId,
+        expectedRevision: completed.revision,
+      });
+    };
+
+    const archived = await store.getTerminalState(gameId, completed.revision);
+
+    expect(archived).toMatchObject({
+      gameId,
+      revision: completed.revision,
+      ended: true,
+      board: completed,
+    });
+    await expect(store.getState(gameId)).resolves.toMatchObject({
+      revision: completed.revision + 1,
+      ended: false,
+    });
+  });
+
+  it("accepts an equivalent terminal archive with different JSON encoding", async () => {
+    const { redis, store } = createFixture();
+    const gameId = "equivalent-result";
+    const fixture = terminalMoveFixture(gameId);
+    const completed = applyH2HMove(
+      fixture.board,
+      fixture.userId,
+      fixture.request,
+      500,
+    ).board;
+    const resultKey = H2H_STORE_KEYS.result(gameId, completed.revision);
+    const prettyArchive = JSON.stringify(completed, null, 2);
+    redis.seed(H2H_STORE_KEYS.game(gameId), JSON.stringify(completed));
+    redis.seed(H2H_STORE_KEYS.userGame("p1"), gameId);
+    redis.seed(H2H_STORE_KEYS.userGame("p2"), gameId);
+    redis.seed(resultKey, prettyArchive);
+
+    await expect(
+      store.rematch("p2", {
+        gameId,
+        expectedRevision: completed.revision,
+      }),
+    ).resolves.toMatchObject({
+      gameId,
+      revision: completed.revision + 1,
+      ended: false,
+    });
+    expect(redis.value(resultKey)).toBe(prettyArchive);
+  });
+
+  it("rejects a conflicting completed-round archive without mutating the game", async () => {
+    const { redis, store } = createFixture();
+    const gameId = "conflicting-result";
+    const fixture = terminalMoveFixture(gameId);
+    const resultKey = H2H_STORE_KEYS.result(
+      gameId,
+      fixture.request.expectedRevision + 1,
+    );
+    redis.seed(H2H_STORE_KEYS.game(gameId), JSON.stringify(fixture.board));
+    redis.seed(H2H_STORE_KEYS.userGame("p1"), gameId);
+    redis.seed(H2H_STORE_KEYS.userGame("p2"), gameId);
+    redis.seed(H2H_STORE_KEYS.activeGames, JSON.stringify([gameId]));
+    redis.seed(resultKey, "conflicting archive");
+    const before = redis.value(H2H_STORE_KEYS.game(gameId));
+
+    await expect(
+      store.applyMove(fixture.userId, fixture.request),
+    ).rejects.toMatchObject({
+      name: "H2HStoreError",
+      code: "result_conflict",
+    } satisfies Partial<H2HStoreError>);
+
+    expect(redis.value(H2H_STORE_KEYS.game(gameId))).toBe(before);
+    expect(redis.value(H2H_STORE_KEYS.pendingSettlements)).toBeUndefined();
+    expect(redis.value(resultKey)).toBe("conflicting archive");
+  });
+
+  it("rejects rematch attempts after a departure result", async () => {
+    const { store } = createFixture();
+    const gameId = await pair(store);
+    const ended = await store.leave("p1", leaveRequest(gameId));
+    expect(ended.state).not.toBeNull();
+    if (!ended.state) throw new Error("Departure did not produce a result.");
+    await expect(store.canRematch("p2", ended.state)).resolves.toBe(false);
+
+    await expect(
+      store.rematch("p2", {
+        gameId,
+        expectedRevision: ended.state.revision,
+      }),
+    ).rejects.toMatchObject({
+      name: "H2HStoreError",
+      code: "rematch_unavailable",
+    } satisfies Partial<H2HStoreError>);
+  });
+
   it("rejects a delayed leave after a same-id rematch", async () => {
     const { redis, store } = createFixture();
     const gameId = await pair(store);
-    await store.leave("p1", leaveRequest(gameId));
-    const rematch = await store.rematch("p2", gameId);
+    const ended = await completeSeededGame(redis, store, gameId);
+    const rematch = await store.rematch("p2", {
+      gameId,
+      expectedRevision: ended.revision,
+    });
 
     await expect(
-      store.leave("p1", leaveRequest(gameId, 0)),
+      store.leave("p1", leaveRequest(gameId, ended.revision)),
     ).rejects.toMatchObject({
       name: "H2HDomainError",
       code: "stale_revision",
@@ -545,6 +862,111 @@ describe("H2H canonical mutations", () => {
       revision: rematch.revision,
       ended: false,
     });
+  });
+
+  it("cancels a pristine rematch when a terminal Close wins the race", async () => {
+    const { redis, store } = createFixture();
+    const gameId = await pair(store);
+    const ended = await completeSeededGame(redis, store, gameId);
+    const settlementBefore = redis.value(H2H_STORE_KEYS.pendingSettlements);
+    const archiveBefore = redis.value(
+      H2H_STORE_KEYS.result(gameId, ended.revision),
+    );
+    await store.rematch("p2", {
+      gameId,
+      expectedRevision: ended.revision,
+    });
+
+    const closed = await store.leave(
+      "p1",
+      closeResultRequest(gameId, ended.revision),
+    );
+
+    expect(closed).toMatchObject({
+      gameId,
+      state: null,
+      causedForfeitTransition: false,
+      settlementEvent: null,
+      canceledPristineRematch: true,
+    });
+    expect(redis.value(H2H_STORE_KEYS.game(gameId))).toBeUndefined();
+    expect(redis.value(H2H_STORE_KEYS.userGame("p1"))).toBeUndefined();
+    expect(redis.value(H2H_STORE_KEYS.userGame("p2"))).toBeUndefined();
+    expect(redis.json<string[]>(H2H_STORE_KEYS.activeGames)).not.toContain(
+      gameId,
+    );
+    expect(redis.value(H2H_STORE_KEYS.pendingSettlements)).toBe(
+      settlementBefore,
+    );
+    expect(redis.value(H2H_STORE_KEYS.result(gameId, ended.revision))).toBe(
+      archiveBefore,
+    );
+  });
+
+  it("heals a nonparticipant mapping without canceling the real players' rematch", async () => {
+    const { redis, store } = createFixture();
+    const gameId = await pair(store);
+    const ended = await completeSeededGame(redis, store, gameId);
+    const rematch = await store.rematch("p1", {
+      gameId,
+      expectedRevision: ended.revision,
+    });
+    const intruderMapping = H2H_STORE_KEYS.userGame("intruder");
+    redis.seed(intruderMapping, gameId);
+    const gameBefore = redis.value(H2H_STORE_KEYS.game(gameId));
+    const settlementBefore = redis.value(H2H_STORE_KEYS.pendingSettlements);
+
+    const result = await store.leave(
+      "intruder",
+      closeResultRequest(gameId, ended.revision),
+    );
+
+    expect(result).toMatchObject({
+      gameId,
+      state: null,
+      causedForfeitTransition: false,
+      settlementEvent: null,
+    });
+    expect(result.canceledPristineRematch).toBeUndefined();
+    expect(redis.value(intruderMapping)).toBeUndefined();
+    expect(redis.value(H2H_STORE_KEYS.game(gameId))).toBe(gameBefore);
+    await expect(store.getState(gameId)).resolves.toMatchObject({
+      revision: rematch.revision,
+      ended: false,
+    });
+    expect(redis.value(H2H_STORE_KEYS.userGame("p1"))).toBe(gameId);
+    expect(redis.value(H2H_STORE_KEYS.userGame("p2"))).toBe(gameId);
+    expect(redis.value(H2H_STORE_KEYS.pendingSettlements)).toBe(
+      settlementBefore,
+    );
+  });
+
+  it("never converts a delayed terminal Close into a live-game forfeit", async () => {
+    const { redis, store } = createFixture();
+    const gameId = await pair(store);
+    const ended = await completeSeededGame(redis, store, gameId);
+    const rematch = await store.rematch("p1", {
+      gameId,
+      expectedRevision: ended.revision,
+    });
+    await store.applyMove("p1", move(gameId, 0, 0, rematch.revision));
+    const settlementBefore = redis.value(H2H_STORE_KEYS.pendingSettlements);
+
+    await expect(
+      store.leave("p2", closeResultRequest(gameId, ended.revision)),
+    ).rejects.toMatchObject({
+      name: "H2HDomainError",
+      code: "stale_revision",
+    });
+
+    expect(redis.value(H2H_STORE_KEYS.userGame("p2"))).toBe(gameId);
+    await expect(store.getState(gameId)).resolves.toMatchObject({
+      revision: rematch.revision + 1,
+      ended: false,
+    });
+    expect(redis.value(H2H_STORE_KEYS.pendingSettlements)).toBe(
+      settlementBefore,
+    );
   });
 
   it("does not overwrite a concurrent move while appending chat", async () => {
@@ -693,14 +1115,49 @@ describe("H2H canonical mutations", () => {
   it("prevents rematch from overwriting another live mapping", async () => {
     const { redis, store } = createFixture();
     const gameId = await pair(store);
-    await store.leave("p1", leaveRequest(gameId));
+    const ended = await completeSeededGame(redis, store, gameId);
     redis.externalSet(H2H_STORE_KEYS.userGame("p1"), "other-game");
 
-    await expect(store.rematch("p2", gameId)).rejects.toMatchObject({
+    await expect(
+      store.rematch("p2", { gameId, expectedRevision: ended.revision }),
+    ).rejects.toMatchObject({
       name: "H2HStoreError",
       code: "mapping_conflict",
     } satisfies Partial<H2HStoreError>);
     expect(redis.value(H2H_STORE_KEYS.userGame("p1"))).toBe("other-game");
+  });
+
+  it("lets simultaneous rematch requests converge on one new round", async () => {
+    const { redis, store } = createFixture();
+    const gameId = await pair(store);
+    const ended = await completeSeededGame(redis, store, gameId);
+    const request = { gameId, expectedRevision: ended.revision };
+
+    const results = await Promise.allSettled([
+      store.rematch("p1", request),
+      store.rematch("p2", request),
+    ]);
+
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    const rejected = results.find((result) => result.status === "rejected");
+    expect(rejected).toMatchObject({
+      reason: {
+        name: "H2HDomainError",
+        code: "stale_revision",
+        state: {
+          gameId,
+          revision: ended.revision + 1,
+          ended: false,
+        },
+      },
+    });
+    await expect(store.getState(gameId)).resolves.toMatchObject({
+      revision: ended.revision + 1,
+      ended: false,
+      board: { m_history: [] },
+    });
   });
 });
 

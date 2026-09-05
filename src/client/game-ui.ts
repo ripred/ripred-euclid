@@ -1,4 +1,8 @@
+import type { H2HCanonicalState, H2HEndReason } from "../shared/types/api";
+
 export type PlayerSide = 1 | 2;
+
+export type H2HViewEndReason = H2HEndReason | "gone" | "";
 
 export interface H2HResultPresentation {
   headline: string;
@@ -60,6 +64,103 @@ export function getH2HExitAction(spectating: boolean): H2HExitAction {
   return spectating
     ? { label: "Stop Watching", notifyServer: false }
     : { label: "Leave Game", notifyServer: true };
+}
+
+/** Chat is available only to a participant while the canonical round is live. */
+export function isH2HChatAvailable({
+  hasGame,
+  hasBoard,
+  spectating,
+  endReason,
+}: {
+  hasGame: boolean;
+  hasBoard: boolean;
+  spectating: boolean;
+  endReason: H2HViewEndReason;
+}): boolean {
+  return hasGame && hasBoard && !spectating && endReason === "";
+}
+
+/** A rematch can restart only a normally completed round with both players. */
+export function isH2HRematchAvailable(
+  endReason: H2HViewEndReason,
+  spectating: boolean,
+  canRematch: boolean | null = true,
+): boolean {
+  return (
+    canRematch !== false &&
+    !spectating &&
+    (endReason === "game_over" || endReason === "tie")
+  );
+}
+
+/**
+ * Live views always poll. A completed participant view keeps polling only
+ * while another participant can replace it with a canonical rematch round.
+ */
+export function shouldPollH2HState({
+  ended,
+  endReason,
+  spectating,
+  canRematch = true,
+}: {
+  ended: boolean;
+  endReason: H2HViewEndReason | null;
+  spectating: boolean;
+  canRematch?: boolean | null;
+}): boolean {
+  if (!ended) return true;
+  return isH2HRematchAvailable(
+    endReason ?? "game_over",
+    spectating,
+    canRematch,
+  );
+}
+
+/**
+ * Poll metadata can change without a board revision when a participant
+ * detaches from an already completed round.
+ */
+export function shouldProcessH2HPollSnapshot({
+  activeGameId,
+  currentRevision,
+  currentCanRematch,
+  hasBaseline,
+  incoming,
+}: {
+  activeGameId: string | null;
+  currentRevision: number;
+  currentCanRematch: boolean;
+  hasBaseline: boolean;
+  incoming: Pick<H2HCanonicalState, "gameId" | "revision" | "ended"> & {
+    canRematch: boolean;
+  };
+}): boolean {
+  if (
+    !shouldAdoptH2HState(
+      activeGameId,
+      currentRevision,
+      incoming.gameId,
+      incoming.revision,
+    )
+  ) {
+    return false;
+  }
+  if (!hasBaseline || incoming.revision !== currentRevision) return true;
+  return incoming.ended && incoming.canRematch !== currentCanRematch;
+}
+
+/** Recognizes the canonical live round returned after a stale rematch retry. */
+export function isH2HRematchRecovery(
+  expectedGameId: string,
+  expectedRevision: number,
+  state: Pick<H2HCanonicalState, "gameId" | "revision" | "ended">,
+): boolean {
+  return (
+    state.gameId === expectedGameId &&
+    state.revision > expectedRevision &&
+    !state.ended
+  );
 }
 
 export function shouldAdoptH2HState(

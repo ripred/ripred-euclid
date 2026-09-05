@@ -135,6 +135,12 @@ export type H2HMoveRequest = {
 export type H2HLeaveRequest = {
   gameId: string;
   expectedRevision: number;
+  intent?: "leave" | "close_result";
+};
+
+export type H2HShareRequest = {
+  gameId: string;
+  terminalRevision: number;
 };
 
 export type H2HMoveRejectionReason =
@@ -168,6 +174,7 @@ export type H2HQueueResponse =
       ok: true;
       state: "paired" | "resumed";
       isPlayer1: boolean;
+      canRematch: boolean;
     });
 
 export type H2HCancelQueueResponse = {
@@ -176,23 +183,37 @@ export type H2HCancelQueueResponse = {
 };
 
 export type H2HMappingResponse =
-  | { ok: true; gameId: null }
+  | { ok: true; state: "idle"; gameId: null }
+  | { ok: true; state: "queued"; gameId: null }
   | (H2HCanonicalState & {
       ok: true;
+      state: "active";
       isPlayer1: boolean;
+      canRematch: boolean;
     });
 
-export type H2HStateResponse = H2HCanonicalState & { ok: true };
+export type H2HStateResponse = H2HCanonicalState & {
+  ok: true;
+  canRematch: boolean;
+};
 
 export type H2HLeaveResponse =
-  | { ok: true; left: false; gameId: null }
+  | {
+      ok: true;
+      left: boolean;
+      gameId: null;
+      canceledPristineRematch?: boolean;
+    }
   | (H2HCanonicalState & {
       ok: true;
       left: true;
       forfeit: boolean;
     });
 
-export type H2HRematchRequest = { gameId: string };
+export type H2HRematchRequest = {
+  gameId: string;
+  expectedRevision: number;
+};
 export type H2HRematchResponse = H2HCanonicalState & { ok: true };
 
 export type H2HChatRequest = { gameId: string; text: string };
@@ -250,6 +271,19 @@ export type SoloEndReason = "score_target" | "board_full" | "abandoned";
 export type RankedRatingChange = {
   before: number;
   after: number;
+};
+
+export type RatingRecord = {
+  rating: number;
+  games: number;
+  wins: number;
+  losses: number;
+  draws: number;
+};
+
+export type UserStatsResponse = {
+  hvh: RatingRecord;
+  hva: RatingRecord;
 };
 
 export type SoloMoveEvent = {

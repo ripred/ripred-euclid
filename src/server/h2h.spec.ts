@@ -84,8 +84,11 @@ function squareBoard(): H2HBoardSnapshot {
   return playMoves([0, 63, 1, 62, 8, 61, 9]);
 }
 
-function terminalBoard(): H2HBoardSnapshot {
-  let board = initialBoard();
+function terminalBoard(
+  source: H2HBoardSnapshot = initialBoard(),
+  startTime = source.lastSaved ?? INITIAL_TIME,
+): H2HBoardSnapshot {
+  let board = source;
   const firstPlayerIndexes = [
     0, 7, 56, 63, 1, 6, 49, 54, 8, 15, 48, 55, 2, 5, 42, 45,
   ];
@@ -102,7 +105,7 @@ function terminalBoard(): H2HBoardSnapshot {
         ? firstPlayerIndexes[firstOffset++]
         : secondPlayerIndexes[secondOffset++];
     if (index === undefined) break;
-    const result = applyIndex(board, index, INITIAL_TIME + moveNumber + 1);
+    const result = applyIndex(board, index, startTime + moveNumber + 1);
     board = result.board;
     if (result.ended) return board;
   }
@@ -667,14 +670,15 @@ describe("H2H departure, chat, and rematch transitions", () => {
       names: { p1: "One", p2: "Two" },
       avatars: { p1: "one.png", p2: "two.png" },
     });
-    const moved = applyIndex(named, 0, 101).board;
-    const chatted = appendH2HChat(moved, "p2", "game", "again?", 102).state;
-    const ended = endH2HByDeparture(chatted.board, "p1", "game", 103);
-    const before = structuredClone(ended.board);
+    const chatted = appendH2HChat(named, "p1", "game", "again?", 101).state;
+    const ended = terminalBoard(chatted.board);
+    const before = structuredClone(ended);
+    const rematchTime = (ended.lastSaved ?? INITIAL_TIME) + 1;
 
-    const rematch = createH2HRematch(ended.board, "p2", "game", 104);
+    const rematch = createH2HRematch(ended, "p2", "game", rematchTime);
 
-    expect(ended.board).toEqual(before);
+    expect(ended).toEqual(before);
+    expect(ended.endedReason).toBe("game_over");
     expect(rematch).toMatchObject({
       gameId: "game",
       revision: ended.revision + 1,
@@ -685,7 +689,7 @@ describe("H2H departure, chat, and rematch transitions", () => {
     });
     expect(rematch.board).toMatchObject({
       createdAt: 100,
-      lastSaved: 104,
+      lastSaved: rematchTime,
       m_turn: 0,
       m_last: { x: -1, y: -1, index: -1 },
       m_lastPoints: 0,
@@ -708,20 +712,42 @@ describe("H2H departure, chat, and rematch transitions", () => {
 
   it("validates rematch participant, state, and timestamp", () => {
     const board = initialBoard();
-    const ended = endH2HByDeparture(board, "p1", "game", 101);
+    const ended = terminalBoard();
 
     expectDomainError(
       () => createH2HRematch(board, "p1", "game", 101),
       "invalid_request",
     );
     expectDomainError(
-      () => createH2HRematch(ended.board, "intruder", "game", 102),
+      () => createH2HRematch(ended, "intruder", "game", 200),
       "not_participant",
     );
     expectDomainError(
-      () => createH2HRematch(ended.board, "p2", "game", 100),
+      () => createH2HRematch(ended, "p2", "game", INITIAL_TIME),
       "invalid_request",
     );
+  });
+
+  it("rejects a rematch after a participant departure", () => {
+    const ended = endH2HByDeparture(initialBoard(), "p1", "game", 101);
+
+    const error = expectDomainError(
+      () => createH2HRematch(ended.board, "p2", "game", 102),
+      "invalid_request",
+    );
+    expect(error.message).toBe(
+      "Only a normally completed game can be rematched.",
+    );
+  });
+
+  it("rematches a completed legacy board without an explicit end reason", () => {
+    const legacy = asRecord(terminalBoard());
+    delete legacy.endedReason;
+
+    const rematch = createH2HRematch(legacy, "p1", "game", 200);
+
+    expect(rematch.ended).toBe(false);
+    expect(rematch.endedReason).toBeNull();
   });
 
   it("creates initial metadata without aliasing caller-owned inputs", () => {
