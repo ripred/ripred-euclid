@@ -33,6 +33,14 @@ Locally, the Vite server owns game state in memory under an HttpOnly, same-site 
 
 The packaged Devvit route uses the signed-in Reddit identity and Redis compare-and-set transactions in its own versioned Tide namespace. Actual Reddit deployment and verification are separate steps. Both HTML entrypoints load Tide. Deployment commands retain the original application ID: do not upload this branch over the established release without deliberately choosing to replace that application.
 
+## Live spectators
+
+Games are private until their player enables **Allow spectators**. **Live games** lists available broadcasts for this edition; choose **Watch** to follow a server-confirmed board, scores, and result. The read-only view polls roughly once per second while the page is visible. **Back to my game** returns to your own saved game without changing either player's board.
+
+Spectators can inspect stones, their remaining turns, anchored corners, and completed squares, but cannot place stones or start a game for the broadcaster. Expiration follows accepted moves, not the spectator's clock: watching cannot age a stone. Starting a new game begins privately; stopping a broadcast revokes access to it. This does not add chat, online head-to-head matchmaking, or shared control of a board.
+
+Local testing uses separate browser profiles, or one normal window and one private window, for separate cookie-based identities; its loopback server is not publicly reachable. Reddit broadcasts use the authenticated player's public username and are scoped to the current community and edition. Private account identifiers, command receipts, and owner-only hints are not exposed to spectators.
+
 ## Implementation
 
 - `src/shared/edition-geometry.ts`: exact integer-square enumeration and footprint scoring.
