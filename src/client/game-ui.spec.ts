@@ -260,41 +260,38 @@ describe("getH2HResultPresentation", () => {
 });
 
 describe("calculateBoardLayout", () => {
-  it("responds to width changes within the same breakpoint", () => {
-    const wideMobile = calculateBoardLayout(700, 900, 16, 16);
-    const narrowMobile = calculateBoardLayout(500, 900, 16, 16);
-
-    expect(wideMobile.isMobile).toBe(true);
-    expect(narrowMobile.isMobile).toBe(true);
-    expect(wideMobile.cellSize).toBe(40);
-    expect(narrowMobile.cellSize).toBe(30);
-  });
-
-  it("responds to height-only changes", () => {
-    const tall = calculateBoardLayout(700, 900, 16, 16);
-    const short = calculateBoardLayout(700, 700, 16, 16);
-
-    expect(tall.cellSize).toBe(40);
-    expect(short.cellSize).toBe(27);
-  });
-
-  it("recalculates for portrait and landscape viewport dimensions", () => {
-    const portrait = calculateBoardLayout(390, 844, 8, 8);
-    const landscape = calculateBoardLayout(844, 390, 8, 8);
-
-    expect(portrait).toMatchObject({
-      isMobile: true,
-      cellSize: 46,
-      boardWidth: 368,
-      stackScores: true,
-    });
-    expect(landscape).toMatchObject({
-      isMobile: false,
-      cellSize: 22,
-      boardWidth: 176,
-      stackScores: false,
+  it("uses the space remaining after measured controls, not a fixed viewport allowance", () => {
+    // A 744x614 frame with 32px horizontal padding and 345px of non-board
+    // content must leave its action row visible even with stacked scores.
+    expect(calculateBoardLayout(712, 269, 8, 8)).toMatchObject({
+      cellSize: 33,
+      boardWidth: 264,
+      boardHeight: 264,
     });
   });
+
+  it("responds to width and height changes without changing breakpoints", () => {
+    expect(calculateBoardLayout(640, 640, 16, 16).cellSize).toBe(40);
+    expect(calculateBoardLayout(480, 640, 16, 16).cellSize).toBe(30);
+    expect(calculateBoardLayout(640, 432, 16, 16).cellSize).toBe(27);
+  });
+
+  it.each([
+    [358, 499, 8, 8],
+    [812, 141, 8, 8],
+    [712, 269, 8, 16],
+    [712, 269, 16, 8],
+    [400.5, 256.5, 16, 16],
+  ])(
+    "fits rectangular boards within the available %s x %s area",
+    (width, height, columns, rows) => {
+      const layout = calculateBoardLayout(width, height, columns, rows);
+      expect(layout.boardWidth).toBeLessThanOrEqual(width);
+      expect(layout.boardHeight).toBeLessThanOrEqual(height);
+      expect(layout.boardWidth / columns).toBe(layout.boardHeight / rows);
+      expect(Number.isInteger(layout.cellSize)).toBe(true);
+    },
+  );
 
   it("preserves cell-size clamps and large-board dot scaling", () => {
     expect(calculateBoardLayout(1_200, 900, 8, 8)).toMatchObject({
@@ -302,20 +299,36 @@ describe("calculateBoardLayout", () => {
       dotSize: 52,
       boardWidth: 512,
       boardHeight: 512,
-      stackScores: false,
     });
 
-    expect(calculateBoardLayout(200, 300, 16, 16)).toMatchObject({
+    expect(calculateBoardLayout(168, 0, 16, 16)).toMatchObject({
       cellSize: 16,
       dotSize: 10,
       boardWidth: 256,
       boardHeight: 256,
-      stackScores: true,
     });
   });
 
-  it("rejects invalid dimensions instead of producing unusable CSS", () => {
-    expect(() => calculateBoardLayout(0, 900, 8, 8)).toThrow(RangeError);
-    expect(() => calculateBoardLayout(700, 900, 0, 8)).toThrow(RangeError);
+  it("preserves usable cells before measurement or when controls fill the viewport", () => {
+    expect(calculateBoardLayout(0, 0, 8, 8)).toMatchObject({
+      cellSize: 16,
+      dotSize: 12,
+      boardWidth: 128,
+      boardHeight: 128,
+    });
+  });
+
+  it.each([
+    [-1, 900, 8, 8],
+    [700, -1, 8, 8],
+    [NaN, 900, 8, 8],
+    [700, Infinity, 8, 8],
+    [700, 900, 0, 8],
+    [700, 900, 8, 0],
+    [700, 900, 8.5, 8],
+  ])("rejects invalid geometry %s,%s,%s,%s", (width, height, columns, rows) => {
+    expect(() => calculateBoardLayout(width, height, columns, rows)).toThrow(
+      RangeError,
+    );
   });
 });

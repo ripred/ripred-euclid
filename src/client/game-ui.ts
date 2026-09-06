@@ -10,22 +10,16 @@ export interface H2HResultPresentation {
 }
 
 export interface BoardLayout {
-  isMobile: boolean;
   cellSize: number;
   dotSize: number;
   boardWidth: number;
   boardHeight: number;
-  stackScores: boolean;
 }
 
 export type H2HExitAction =
   | { label: "Leave Game"; notifyServer: true }
   | { label: "Stop Watching"; notifyServer: false };
 
-const MOBILE_BREAKPOINT = 768;
-const MOBILE_RESERVED_HEIGHT = 260;
-const DESKTOP_RESERVED_HEIGHT = 240;
-const MINIMUM_BOARD_HEIGHT = 180;
 const MINIMUM_CELL_SIZE = 16;
 const MAXIMUM_CELL_SIZE = 64;
 
@@ -174,40 +168,34 @@ export function shouldAdoptH2HState(
   return incomingRevision == null || incomingRevision >= currentRevision;
 }
 
+/** Fit the rendered board area; minimum-sized cells can overflow into scrolling. */
 export function calculateBoardLayout(
-  viewportWidth: number,
-  viewportHeight: number,
+  availableWidth: number,
+  availableHeight: number,
   boardColumns: number,
   boardRows: number,
 ): BoardLayout {
   if (
-    !Number.isFinite(viewportWidth) ||
-    !Number.isFinite(viewportHeight) ||
+    !Number.isFinite(availableWidth) ||
+    !Number.isFinite(availableHeight) ||
     !Number.isInteger(boardColumns) ||
     !Number.isInteger(boardRows) ||
-    viewportWidth <= 0 ||
-    viewportHeight <= 0 ||
+    availableWidth < 0 ||
+    availableHeight < 0 ||
     boardColumns <= 0 ||
     boardRows <= 0
   ) {
-    throw new RangeError("Viewport and board dimensions must be positive.");
+    throw new RangeError(
+      "Available space must be non-negative and board dimensions positive integers.",
+    );
   }
 
-  const isMobile = viewportWidth <= MOBILE_BREAKPOINT;
-  const reservedHeight = isMobile
-    ? MOBILE_RESERVED_HEIGHT
-    : DESKTOP_RESERVED_HEIGHT;
-  const maximumWidth = Math.floor(viewportWidth * 0.96);
-  const maximumHeight = Math.max(
-    MINIMUM_BOARD_HEIGHT,
-    Math.floor(viewportHeight - reservedHeight),
-  );
   const cellSize = Math.max(
     MINIMUM_CELL_SIZE,
     Math.min(
       MAXIMUM_CELL_SIZE,
       Math.floor(
-        Math.min(maximumWidth / boardColumns, maximumHeight / boardRows),
+        Math.min(availableWidth / boardColumns, availableHeight / boardRows),
       ),
     ),
   );
@@ -220,11 +208,9 @@ export function calculateBoardLayout(
   const boardHeight = boardRows * cellSize;
 
   return {
-    isMobile,
     cellSize,
     dotSize,
     boardWidth,
     boardHeight,
-    stackScores: isMobile || boardWidth > viewportWidth * 0.82,
   };
 }

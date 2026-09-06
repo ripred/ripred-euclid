@@ -1138,11 +1138,15 @@ body[data-color-scheme="light"] .euclid-home {
 }
 
 .euclid-game-screen {
+  box-sizing: border-box;
   width: 100%;
-  min-height: 100vh;
-  min-height: 100dvh;
-  overflow-x: hidden;
-  overflow-y: auto;
+  height: 100vh;
+  height: 100dvh;
+  padding: 1rem;
+  /* Leave room below game actions for the fixed sound and chat controls. */
+  padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+  overflow: auto;
+  background: var(--bg);
 }
 
 .euclid-game-screen__content {
@@ -1151,6 +1155,43 @@ body[data-color-scheme="light"] .euclid-home {
   flex-direction: column;
   align-items: center;
   gap: 1rem;
+}
+
+.euclid-game-screen__content > * {
+  flex-shrink: 0;
+}
+
+.euclid-game-scores {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 1fr minmax(0, 220px) 1fr;
+  grid-template-areas: "player1 turn player2";
+  align-items: start;
+  gap: 1rem;
+}
+
+.euclid-game-scores__turn {
+  grid-area: turn;
+  color: var(--text);
+  font-weight: 800;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.euclid-game-scores--stacked {
+  grid-template-columns: 1fr;
+  grid-template-areas: "player1" "turn" "player2";
+  justify-items: center;
+  gap: 0.5rem;
+}
+
+.euclid-game-actions {
+  display: flex;
+  max-width: 100%;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
 }
 
 @media (max-width: 480px) {
