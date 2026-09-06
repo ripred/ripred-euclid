@@ -9,6 +9,8 @@ import { EditionRuleError } from "./edition-contract";
 export interface EditionSession<T extends EditionState>
   extends EditionSnapshot<T> {
   lastCommand: { id: string; signature: string };
+  /** Written by the transport authority, never copied from command input. */
+  activity?: { updatedAt: number; hostName: string };
 }
 
 export class EditionError extends Error {
@@ -21,6 +23,20 @@ export class EditionError extends Error {
 }
 
 export class EditionInvariantError extends Error {}
+
+/** Rule upgrades retain the match identity and exact-command retry receipt. */
+export function reconcileEditionSession<T extends EditionState>(
+  definition: EditionDefinition<T>,
+  session: EditionSession<T> | null,
+): EditionSession<T> | null {
+  if (!session || !definition.reconcile) return session;
+  const state = definition.reconcile(session.state);
+  if (state.revision !== session.state.revision)
+    throw new EditionInvariantError(
+      "Reconciling saved rules must preserve the move revision.",
+    );
+  return state === session.state ? session : { ...session, state };
+}
 
 /** Never expose storage keys, account identifiers, or internal exception messages. */
 export function editionErrorResponse(error: unknown): {
@@ -54,6 +70,7 @@ export function runEditionCommand<T extends EditionState>(
   current: EditionSession<T> | null,
   input: unknown,
   newId: string,
+  activity?: { updatedAt: number; hostName: string },
 ): EditionSession<T> {
   const command = record(input);
   if (
@@ -71,7 +88,7 @@ export function runEditionCommand<T extends EditionState>(
         "That command was already used for another move.",
         409,
       );
-    return current;
+    return reconcileEditionSession(definition, current)!;
   }
   let state: T;
   let mode: PlayMode;
@@ -98,7 +115,7 @@ export function runEditionCommand<T extends EditionState>(
     }
     state = definition.create(command.options);
     id = newId;
-  } else if (command.kind === "move") {
+  } else if (command.kind === "move" || command.kind === "spectators") {
     if (!current) throw new EditionError("Start a game first.", 409);
     if (
       command.expectedId !== current.id ||
@@ -108,6 +125,18 @@ export function runEditionCommand<T extends EditionState>(
         "This game changed in another tab. The current board has been restored.",
         409,
       );
+    }
+    // Validate the client's snapshot before applying a pure saved-state upgrade.
+    current = reconcileEditionSession(definition, current)!;
+    if (command.kind === "spectators") {
+      if (typeof command.enabled !== "boolean")
+        throw new EditionError("Choose whether to allow spectators.");
+      return {
+        ...current,
+        spectatorsEnabled: command.enabled,
+        ...(activity ? { activity } : {}),
+        lastCommand: { id: command.commandId, signature },
+      };
     }
     if (current.state.winner !== null && current.mode !== "puzzle")
       throw new EditionError("This game has finished.", 409);
@@ -134,13 +163,30 @@ export function runEditionCommand<T extends EditionState>(
       throw new EditionInvariantError("The opponent did not finish its turn.");
     }
   }
-  return { id, mode, state, lastCommand: { id: command.commandId, signature } };
+  return {
+    id,
+    mode,
+    state,
+    spectatorsEnabled:
+      command.kind === "start" ? false : current?.spectatorsEnabled === true,
+    ...(activity
+      ? { activity }
+      : current?.activity
+        ? { activity: current.activity }
+        : {}),
+    lastCommand: { id: command.commandId, signature },
+  };
 }
 
 export function editionSnapshot<T extends EditionState>(
   session: EditionSession<T> | null,
 ): EditionSnapshot<T> | null {
   return session
-    ? { id: session.id, mode: session.mode, state: session.state }
+    ? {
+        id: session.id,
+        mode: session.mode,
+        state: session.state,
+        spectatorsEnabled: session.spectatorsEnabled === true,
+      }
     : null;
 }

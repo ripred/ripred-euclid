@@ -39,6 +39,14 @@ Move inputs are never queued. The interface rejects repeated held activation key
 
 The renderer caps pixel density, responds to resizing, stops animation while the page is hidden, honours reduced-motion preferences, and disposes graphics resources on exit. If WebGL 2 is unavailable or the graphics context is lost, a labelled, fully playable flat board replaces it. Fonts are bundled locally; there are no external font requests.
 
+## Live spectators
+
+Games are private until their player enables **Allow spectators**. **Live games** lists available broadcasts for this edition; choose **Watch** to follow a server-confirmed board, scores, and result. The read-only view polls roughly once per second while the page is visible. **Back to my game** returns to your own saved game without changing either player's board.
+
+Spectators can switch between Tilt and Flat views and inspect point coordinates and ownership with the keyboard. They cannot claim points or start a game for the broadcaster. Starting a new game begins privately; stopping a broadcast revokes access to it. This does not add chat, online head-to-head matchmaking, or shared control of a board.
+
+Local testing uses separate browser profiles, or one normal window and one private window, for separate cookie-based identities; its loopback server is not publicly reachable. Reddit broadcasts use the authenticated player's public username and are scoped to the current community and edition. Private account identifiers, command receipts, and owner-only hints are not exposed to spectators.
+
 ## Implementation
 
 - `src/shared/edition-game.ts` owns the immutable serializable game state, complete square catalogue, scoring, validation, and opponent policy. The original shared scoring function is reused.
