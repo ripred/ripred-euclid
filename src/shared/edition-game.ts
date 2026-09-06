@@ -1,24 +1,22 @@
 import { EditionRuleError } from "./edition-contract";
 import type { EditionDefinition, EditionState } from "./edition-contract";
-import { coordinate, squareCatalog } from "./edition-geometry";
+import { coordinate } from "./edition-geometry";
+import {
+  generateRelayPuzzle,
+  readRelayGeneratorOptions,
+} from "./relay-generator";
+import {
+  SIZE,
+  SQUARES,
+  SQUARES_AT_POINT as squaresAtPoint,
+  solveRelayBoard,
+  type RelayPuzzle,
+  type RelayPuzzleDefinition,
+} from "./relay-puzzle";
+export { SIZE, SQUARES, SQUARE_BY_ID } from "./relay-puzzle";
+export type { RelayPuzzle, RelayPuzzleDefinition } from "./relay-puzzle";
 
-export const SIZE = 6;
-export const SQUARES = squareCatalog(SIZE);
-export const SQUARE_BY_ID = new Map(
-  SQUARES.map((square) => [square.id, square]),
-);
-const squaresAtPoint = Array.from({ length: SIZE * SIZE }, (_, point) =>
-  SQUARES.filter((square) => square.corners.includes(point)),
-);
-
-export interface RelayPuzzle {
-  name: string;
-  description: string;
-  initial: readonly number[];
-  solution: readonly number[];
-  goal: number;
-  moves: number;
-}
+const CURRENT_RULES_VERSION = 1;
 
 function transform(point: number, turns: number, reflect: boolean): number {
   let x = point % SIZE;
@@ -65,7 +63,7 @@ export const PUZZLES: readonly RelayPuzzle[] = [
   ),
   puzzle(
     "Set the stage",
-    "Place a quiet first point. Let the second connect them.",
+    "Complete both squares in two placements. Either order works.",
     [0, 2, 16, 4],
     [12, 14],
     2,
@@ -82,7 +80,7 @@ export const PUZZLES: readonly RelayPuzzle[] = [
   ),
   puzzle(
     "The hidden thread",
-    "Prepare one missing corner, then find the shared finish.",
+    "Prepare a missing corner, then complete three squares.",
     [12, 0, 2, 4, 7, 9],
     [16, 14],
     3,
@@ -97,7 +95,7 @@ export const PUZZLES: readonly RelayPuzzle[] = [
   ),
   puzzle(
     "Fourfold",
-    "Build toward four squares that all finish in one move.",
+    "Build four squares within three placements.",
     [12, 0, 2, 16, 4, 9],
     [7, 19, 14],
     4,
@@ -105,7 +103,7 @@ export const PUZZLES: readonly RelayPuzzle[] = [
   ),
   puzzle(
     "The long relay",
-    "Four deliberate points. One final connection.",
+    "Four placements to uncover four squares.",
     [0, 4, 7, 9, 27, 10, 23],
     [12, 2, 16, 14],
     4,
@@ -115,17 +113,49 @@ export const PUZZLES: readonly RelayPuzzle[] = [
 ];
 
 export interface RelayState extends EditionState {
+  /** Absent in sessions created before cumulative goals and generated puzzles. */
+  rulesVersion?: number;
   level: number;
+  generatedPuzzle?: RelayPuzzleDefinition;
   cells: (0 | 1)[];
   placements: number[];
   completed: string[];
   lastSquares: string[];
-  hint: { point: number | null; message: string } | null;
+  /** Older saved sessions do not include this server-derived guidance yet. */
+  canFinish?: boolean;
+  hint: {
+    point: number | null;
+    message: string;
+    /** Squares completed along the suggested plan; absent in older hints. */
+    squares?: string[];
+  } | null;
 }
 
 export function createRelay(options: unknown = {}): RelayState {
   if (!options || typeof options !== "object" || Array.isArray(options))
     throw new EditionRuleError("Choose a puzzle from the collection.");
+  if ("generator" in options) {
+    const settings = options.generator;
+    if (!settings || typeof settings !== "object" || Array.isArray(settings))
+      throw new EditionRuleError("Choose generator settings.");
+    const generated = generateRelayPuzzle(
+      readRelayGeneratorOptions({
+        ...settings,
+        seed:
+          "seed" in settings ? settings.seed : globalThis.crypto.randomUUID(),
+      }),
+    );
+    // Retain enough data to resume and restart, without publishing the answer.
+    const definition: RelayPuzzleDefinition = {
+      name: generated.name,
+      description: generated.description,
+      initial: generated.initial,
+      moves: generated.moves,
+      goal: generated.goal,
+      generator: generated.generator,
+    };
+    return replay(0, [], 0, definition);
+  }
   const level = "level" in options ? options.level : 0;
   if (
     typeof level !== "number" ||
@@ -137,13 +167,21 @@ export function createRelay(options: unknown = {}): RelayState {
   return replay(level, [], 0);
 }
 
+export function relayPuzzle(state: RelayState): RelayPuzzleDefinition {
+  const definition = state.generatedPuzzle ?? PUZZLES[state.level];
+  if (!definition)
+    throw new EditionRuleError("That puzzle is not in the collection.");
+  return definition;
+}
+
 /** Reconstructing from the puzzle and placement history makes undo exact. */
 function replay(
   level: number,
   placements: number[],
   revision: number,
+  generatedPuzzle?: RelayPuzzleDefinition,
 ): RelayState {
-  const definition = PUZZLES[level];
+  const definition = generatedPuzzle ?? PUZZLES[level];
   if (!definition)
     throw new EditionRuleError("That puzzle is not in the collection.");
   const cells: RelayState["cells"] = Array.from(
@@ -160,70 +198,40 @@ function replay(
     completed = [...completed, ...lastSquares];
   }
   const winner =
-    lastSquares.length >= definition.goal
+    completed.length >= definition.goal
       ? 1
       : placements.length >= definition.moves
         ? 0
         : null;
-  return {
+  const state: RelayState = {
+    rulesVersion: CURRENT_RULES_VERSION,
     revision,
     turn: 1,
     winner,
     level,
+    ...(generatedPuzzle ? { generatedPuzzle } : {}),
     cells,
     placements,
     completed,
     lastSquares,
     hint: null,
   };
+  return { ...state, canFinish: solveRelay(state) !== null };
 }
 
 /**
- * A final point cannot complete a square before it is placed. Search combinations
- * of squares sharing that point, minimizing their missing-corner union. This is
- * bounded by four target squares and three setup placements, not game-tree depth.
+ * Complete the remaining goal with the smallest union of missing square corners.
+ * Squares count across the whole attempt, so no shared finishing point or move
+ * order is required. The collection bounds this search to four placements.
  */
 export function solveRelay(state: RelayState): number[] | null {
   if (state.winner === 1) return [];
-  const definition = PUZZLES[state.level];
-  if (!definition) return null;
-  const goal = definition.goal;
-  const remaining = definition.moves - state.placements.length;
-  if (remaining <= 0) return null;
-  for (let setupBudget = 0; setupBudget < remaining; setupBudget++) {
-    for (let finalPoint = 0; finalPoint < SIZE * SIZE; finalPoint++) {
-      if (state.cells[finalPoint] !== 0) continue;
-      const candidates = (squaresAtPoint[finalPoint] ?? [])
-        .map((square) =>
-          square.corners.filter(
-            (corner) => corner !== finalPoint && state.cells[corner] === 0,
-          ),
-        )
-        .filter((missing) => missing.length <= setupBudget)
-        .sort((a, b) => a.length - b.length);
-      if (candidates.length < goal) continue;
-      function search(
-        index: number,
-        count: number,
-        missing: Set<number>,
-      ): Set<number> | null {
-        if (count >= goal) return missing;
-        if (candidates.length - index < goal - count) return null;
-        for (let next = index; next < candidates.length; next++) {
-          const candidate = candidates[next];
-          if (!candidate) continue;
-          const union = new Set([...missing, ...candidate]);
-          if (union.size > setupBudget) continue;
-          const result = search(next + 1, count + 1, union);
-          if (result) return result;
-        }
-        return null;
-      }
-      const setup = search(0, 0, new Set());
-      if (setup) return [...setup].sort((a, b) => a - b).concat(finalPoint);
-    }
-  }
-  return null;
+  const definition = relayPuzzle(state);
+  return solveRelayBoard(
+    state.cells,
+    definition.goal - state.completed.length,
+    definition.moves - state.placements.length,
+  );
 }
 
 export function moveRelay(state: RelayState, action: unknown): RelayState {
@@ -236,6 +244,7 @@ export function moveRelay(state: RelayState, action: unknown): RelayState {
       state.level,
       state.placements.slice(0, -1),
       state.revision + 1,
+      state.generatedPuzzle,
     );
   }
   if (state.winner !== null)
@@ -247,17 +256,40 @@ export function moveRelay(state: RelayState, action: unknown): RelayState {
   if ("type" in action && action.type === "hint") {
     const solution = solveRelay(state);
     const point = solution?.[0] ?? null;
+    const plannedPoints = new Set(solution);
+    const squares = SQUARES.filter(
+      (square) =>
+        square.corners.some((corner) => plannedPoints.has(corner)) &&
+        square.corners.every(
+          (corner) => state.cells[corner] === 1 || plannedPoints.has(corner),
+        ),
+    ).map((square) => square.id);
+    const nextSquares =
+      point === null
+        ? 0
+        : (squaresAtPoint[point] ?? []).filter((square) =>
+            square.corners.every(
+              (corner) => corner === point || state.cells[corner] === 1,
+            ),
+          ).length;
+    const needed = relayPuzzle(state).goal - state.completed.length;
+    const afterNext = Math.max(0, needed - nextSquares);
+    const reward = `${nextSquares} new ${nextSquares === 1 ? "square" : "squares"}`;
     return {
       ...state,
       revision: state.revision + 1,
+      canFinish: solution !== null,
       hint: {
         point,
+        squares,
         message:
           point === null
             ? "No finish fits the moves left. Undo a point and try another route."
-            : solution?.length === 1
-              ? `Try ${coordinate(point)}. This point connects the squares.`
-              : `Try ${coordinate(point)} as a setup point. Keep the final connection open.`,
+            : nextSquares === 0
+              ? `Try ${coordinate(point)} as a setup point toward the ${needed} remaining ${needed === 1 ? "square" : "squares"}.`
+              : afterNext === 0
+                ? `Try ${coordinate(point)} to complete ${reward} and finish the puzzle.`
+                : `Try ${coordinate(point)} to complete ${reward}. ${afterNext} more ${afterNext === 1 ? "square" : "squares"} will remain.`,
       },
     };
   }
@@ -276,13 +308,44 @@ export function moveRelay(state: RelayState, action: unknown): RelayState {
     state.level,
     [...state.placements, action.point],
     state.revision + 1,
+    state.generatedPuzzle,
   );
+}
+
+/** Upgrade persisted rules and guidance without inventing another player move. */
+export function reconcileRelay(state: RelayState): RelayState {
+  // Persisted state is server-owned; current saves need no repeated search.
+  if (state.rulesVersion === CURRENT_RULES_VERSION) return state;
+  let reconciled = {
+    ...state,
+    ...replay(
+      state.level,
+      [...state.placements],
+      state.revision,
+      state.generatedPuzzle,
+    ),
+  };
+  if (state.hint && reconciled.winner === null) {
+    reconciled = {
+      ...moveRelay(reconciled, { type: "hint" }),
+      revision: state.revision,
+    };
+  }
+  return JSON.stringify(reconciled) === JSON.stringify(state)
+    ? state
+    : reconciled;
 }
 
 export const edition: EditionDefinition<RelayState> = {
   id: "relay",
   create: createRelay,
   move: moveRelay,
+  reconcile: reconcileRelay,
+  spectatorState: (state) => {
+    const visible = { ...state, hint: null };
+    delete visible.canFinish;
+    return visible;
+  },
   chooseMove: (state) => {
     const point = solveRelay(state)?.[0];
     if (point === undefined)
