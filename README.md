@@ -31,6 +31,14 @@ Every cube scores once. When the lattice fills, the higher score wins; equal sco
 
 Keyboard: Tab moves between controls; arrows move between points in the inspector; Enter or Space selects. Page Up / Down changes layers. Tab to Place point to confirm. With the 3D view focused, arrows rotate, + / − zoom, and R resets. Held-key repeats never confirm a second move. Reduced-motion settings disable the selection pulse. Teal uses circles and Vermilion uses diamonds in the inspector and legend.
 
+## Live spectators
+
+Games are private until their player enables **Allow spectators**. **Live games** lists available broadcasts for this edition; choose **Watch** to follow a server-confirmed board, scores, and result. The read-only view polls roughly once per second while the page is visible. **Back to my game** returns to your own saved game without changing either player's board.
+
+Spectators can rotate and zoom, change layers, isolate a layer, inspect points, and show or hide cube outlines. They cannot place points or start a game for the broadcaster. Starting a new game begins privately; stopping a broadcast revokes access to it. This does not add chat, online head-to-head matchmaking, or shared control of a board.
+
+Local testing uses separate browser profiles, or one normal window and one private window, for separate cookie-based identities; its loopback server is not publicly reachable. Reddit broadcasts use the authenticated player's public username and are scoped to the current community and edition. Private account identifiers, command receipts, and owner-only hints are not exposed to spectators.
+
 ## Local development
 
 The package remains at the preserved release baseline `0.1.98`, with Devvit `0.14.2`, React, Vite, TypeScript, and pinned Three.js `0.179.1`. New edition source is under `src/client/edition/`; `src/shared/edition-game.ts` owns the pure cube rules. Both HTML entrypoints launch Lattice on this branch.

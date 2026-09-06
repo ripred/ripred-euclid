@@ -233,6 +233,7 @@ function LayerInspector({
   onLayer,
   onSelect,
   names,
+  readOnly,
 }: {
   game: LatticeState;
   layer: number;
@@ -240,6 +241,7 @@ function LayerInspector({
   onLayer: (layer: number) => void;
   onSelect: (index: number) => void;
   names: [string, string];
+  readOnly: boolean;
 }) {
   const grid = useRef<HTMLDivElement>(null);
   const coords = Array.from({ length: game.size }, (_, index) => index);
@@ -335,15 +337,27 @@ function LayerInspector({
         ])}
       </div>
       <p className="inspector-help">
-        Select a point here or in 3D. Placement always asks for confirmation.
+        {readOnly
+          ? "Select a point here or in 3D to inspect it. This board is read-only."
+          : "Select a point here or in 3D. Placement always asks for confirmation."}
       </p>
     </section>
   );
 }
 
 export function Lattice() {
-  const { game, mode, loading, busy, error, start, move, reload } =
-    useEdition<LatticeState>();
+  const {
+    game,
+    mode,
+    loading,
+    busy,
+    error,
+    start,
+    move,
+    reload,
+    watching,
+    hostName,
+  } = useEdition<LatticeState>();
   const [size, setSize] = useState<3 | 4>(4);
   const [opening, setOpening] = useState<"foundation" | "empty">("foundation");
   const [computerStyle, setComputerStyle] = useState<"builder" | "tactician">(
@@ -360,10 +374,12 @@ export function Lattice() {
     () => createLattice({ size, opening, computerStyle }),
     [size, opening, computerStyle],
   );
-  const display = game && !configuring ? game : preview;
-  const setup = game === null || configuring;
+  const display = game && (!configuring || watching) ? game : preview;
+  const setup = !watching && (game === null || configuring);
+  const humanName = watching ? (hostName ?? "Redditor") : "You";
   const names: [string, string] =
-    mode === "duel" && !setup ? ["Teal", "Vermilion"] : ["You", "Euclid"];
+    mode === "duel" && !setup ? ["Teal", "Vermilion"] : [humanName, "Euclid"];
+  const personalTurn = !watching && mode !== "duel";
   const effectiveLayer = Math.min(layer, display.size - 1);
   const selection =
     selected !== null && selected < display.board.length ? selected : null;
@@ -377,6 +393,7 @@ export function Lattice() {
   const bestCube = progress.find((item) => item.owned > 0);
   const trace = showTrace && bestCube ? bestCube.cube.id : null;
   const canPlay =
+    !watching &&
     !setup &&
     !loading &&
     !busy &&
@@ -396,6 +413,7 @@ export function Lattice() {
     setShowTrace(false);
   }, [game?.revision, game?.opening, game?.size]);
   const begin = async (nextMode: PlayMode) => {
+    if (watching) return;
     setSelected(null);
     if (await start({ size, opening, computerStyle }, nextMode))
       setConfiguring(false);
@@ -416,10 +434,10 @@ export function Lattice() {
     : display.winner !== null
       ? display.winner === 0
         ? "A perfect balance."
-        : `${names[display.winner - 1]} ${display.winner === 1 && mode !== "duel" ? "win" : "wins"}.`
+        : `${names[display.winner - 1]} ${display.winner === 1 && personalTurn ? "win" : "wins"}.`
       : busy
-        ? "Confirming your move…"
-        : `${names[display.turn - 1]}${display.turn === 1 && mode !== "duel" ? "r" : "’s"} move`;
+        ? "Confirming move…"
+        : `${names[display.turn - 1]}${display.turn === 1 && personalTurn ? "r" : "’s"} move`;
   const model: SceneModel = {
     game: display,
     selected: selection,
@@ -428,6 +446,13 @@ export function Lattice() {
     showCubes,
     trace,
   };
+
+  if (watching && !game)
+    return (
+      <main className="lattice-app">
+        <p>Waiting for the broadcast…</p>
+      </main>
+    );
 
   return (
     <div className="lattice-app">
@@ -438,8 +463,9 @@ export function Lattice() {
         <nav aria-label="Game">
           <button onClick={() => setDialog("rules")}>Rules</button>
           <button
-            disabled={busy || loading}
+            disabled={watching || busy || loading}
             onClick={() => {
+              if (watching) return;
               if (!setup && display.winner === null && display.revision > 0)
                 setDialog("restart");
               else setConfiguring(true);
@@ -496,6 +522,7 @@ export function Lattice() {
             onLayer={onLayer}
             onSelect={selectPoint}
             names={names}
+            readOnly={watching}
           />
           <section
             className={`turn-panel player-${display.turn}`}
@@ -595,37 +622,45 @@ export function Lattice() {
                   The lattice is complete. {display.cubes.length}{" "}
                   {display.cubes.length === 1 ? "cube" : "cubes"} claimed.
                 </p>
-                <button
-                  className="primary-button"
-                  onClick={() => setConfiguring(true)}
-                >
-                  Build another lattice
-                </button>
+                {!watching && (
+                  <button
+                    className="primary-button"
+                    onClick={() => setConfiguring(true)}
+                  >
+                    Build another lattice
+                  </button>
+                )}
               </>
             ) : (
               <>
                 <p className="selected-coordinates">
                   {selectedPoint
                     ? `X ${selectedPoint.x + 1} · Y ${selectedPoint.y + 1} · Z ${selectedPoint.z + 1}`
-                    : "Select an empty point"}
+                    : watching
+                      ? "Inspect a point"
+                      : "Select an empty point"}
                 </p>
                 <p className="selection-state">
                   {owner === null
                     ? "Use the layer inspector for a precise view."
                     : owner === 0
-                      ? "Empty point · ready to claim"
+                      ? watching
+                        ? "Empty point"
+                        : "Empty point · ready to claim"
                       : `Already claimed by ${names[owner - 1]}`}
                 </p>
-                <button
-                  className="primary-button"
-                  disabled={!canPlay || owner !== 0}
-                  onClick={confirm}
-                  onKeyDown={(event) => {
-                    if (event.repeat) event.preventDefault();
-                  }}
-                >
-                  Place point
-                </button>
+                {!watching && (
+                  <button
+                    className="primary-button"
+                    disabled={!canPlay || owner !== 0}
+                    onClick={confirm}
+                    onKeyDown={(event) => {
+                      if (event.repeat) event.preventDefault();
+                    }}
+                  >
+                    Place point
+                  </button>
+                )}
                 {last && (
                   <p className="last-move" aria-live="polite">
                     {last.points > 0
@@ -718,7 +753,11 @@ export function Lattice() {
                 ))}
               </ol>
             ) : (
-              <p className="small-print">Your first point starts the story.</p>
+              <p className="small-print">
+                {watching
+                  ? "The first point starts the story."
+                  : "Your first point starts the story."}
+              </p>
             )}
           </section>
         </aside>
@@ -825,7 +864,7 @@ export function Lattice() {
           </div>
         </Modal>
       )}
-      {dialog === "restart" && (
+      {!watching && dialog === "restart" && (
         <Modal title="Start a new lattice?" onClose={() => setDialog(null)}>
           <p>
             Your current unranked game stays available until you start the next
