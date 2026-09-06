@@ -1,4 +1,5 @@
 import express, { type Response } from "express";
+import { editionRouter } from "./edition";
 import { randomUUID } from "node:crypto";
 import type {
   CanonicalBoardSnapshot,
@@ -41,6 +42,7 @@ import { SoloDomainError, rankedSoloSessionMetadata } from "./solo";
 import { SoloStore, SoloStoreError } from "./solo-store";
 
 const app = express();
+app.use("/api/edition", editionRouter);
 app.use(express.json({ limit: "15mb" }));
 app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 app.use(express.text({ limit: "15mb" }));
