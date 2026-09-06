@@ -188,4 +188,4 @@ The full real-surface checklist still requires three distinct Reddit identities,
 
 ## License
 
-BSD 3-Clause. See [LICENSE](LICENSE).
+MIT. Copyright (c) 2025-2026 Trent M. Wyatt. See [LICENSE](LICENSE).
