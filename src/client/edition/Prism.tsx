@@ -26,6 +26,10 @@ function makeExhibit(): PrismState {
 }
 const exhibit = makeExhibit();
 
+function formatSquareCount(count: number): string {
+  return `${count} ${count === 1 ? "square" : "squares"}`;
+}
+
 function PlayerMark({ player }: { player: 1 | 2 }) {
   return (
     <svg
@@ -178,8 +182,18 @@ function GameOptions({
 }
 
 export function Prism() {
-  const { game, mode, loading, busy, error, start, move, reload } =
-    useEdition<PrismState>();
+  const {
+    game,
+    mode,
+    loading,
+    busy,
+    error,
+    start,
+    move,
+    reload,
+    watching,
+    hostName,
+  } = useEdition<PrismState>();
   const [flat, setFlat] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
@@ -188,6 +202,7 @@ export function Prism() {
   const busyRef = useRef(busy);
   busyRef.current = busy;
   const canPlay =
+    !watching &&
     game !== null &&
     game.winner === null &&
     !busy &&
@@ -195,7 +210,9 @@ export function Prism() {
     !rulesOpen &&
     (mode === "duel" || game.turn === 1);
   const playerNames: [string, string] =
-    mode === "duel" ? ["Coral", "Mint"] : ["You", "Euclid"];
+    mode === "duel"
+      ? ["Coral", "Mint"]
+      : [watching ? (hostName ?? "Redditor") : "You", "Euclid"];
   const latest = game?.history.at(-1);
   const lastScoring = [...(game?.history ?? [])]
     .reverse()
@@ -205,7 +222,7 @@ export function Prism() {
       ? ""
       : game.winner === 0
         ? "An even match."
-        : mode === "solo" && game.winner === 1
+        : !watching && mode === "solo" && game.winner === 1
           ? "You win."
           : `${playerNames[game.winner - 1]} wins.`;
   const status = !game
@@ -213,12 +230,12 @@ export function Prism() {
     : result ||
       (busy || (mode === "solo" && game.turn === 2)
         ? "Euclid is considering…"
-        : mode === "solo"
+        : !watching && mode === "solo"
           ? "Your turn"
           : `${playerNames[game.turn - 1]}'s turn`);
 
   async function begin(nextMode: PlayMode): Promise<void> {
-    if (inFlight.current || busyRef.current) return;
+    if (watching || inFlight.current || busyRef.current) return;
     inFlight.current = true;
     try {
       if (await start({ target }, nextMode)) setNewOpen(false);
@@ -237,6 +254,13 @@ export function Prism() {
     }
   }
 
+  if (watching && !game)
+    return (
+      <main className="prism-app">
+        <p>Waiting for the broadcast…</p>
+      </main>
+    );
+
   return (
     <main className="prism-app">
       <header className="masthead">
@@ -246,7 +270,12 @@ export function Prism() {
         </div>
         <nav aria-label="Game controls">
           <button onClick={() => setRulesOpen(true)}>How to play</button>
-          <button disabled={busy || loading} onClick={() => setNewOpen(true)}>
+          <button
+            disabled={watching || busy || loading}
+            onClick={() => {
+              if (!watching) setNewOpen(true);
+            }}
+          >
             New game
           </button>
         </nav>
@@ -256,6 +285,7 @@ export function Prism() {
           <PrismBoard
             game={game ?? exhibit}
             active={canPlay}
+            readOnly={watching}
             flat={flat}
             onMove={(index) => {
               void claim(index);
@@ -272,7 +302,11 @@ export function Prism() {
               </svg>
               Tilt view
             </button>
-            <p>Claim a point. Complete the square.</p>
+            <p>
+              {watching
+                ? "Inspect the points and completed squares."
+                : "Claim a point. Complete the square."}
+            </p>
             <button
               className={flat ? "view-toggle selected" : "view-toggle"}
               aria-pressed={flat}
@@ -353,14 +387,16 @@ export function Prism() {
                   <p>
                     {game.winner === 0
                       ? "Neither side found an edge. Try a fresh board."
-                      : `${game.completed.filter((square) => square.owner === game.winner).length} squares. One well-earned victory.`}
+                      : `${formatSquareCount(game.completed.filter((square) => square.owner === game.winner).length)}. One well-earned victory.`}
                   </p>
-                  <button
-                    className="primary-button"
-                    onClick={() => setNewOpen(true)}
-                  >
-                    Play again<span aria-hidden="true">↗</span>
-                  </button>
+                  {!watching && (
+                    <button
+                      className="primary-button"
+                      onClick={() => setNewOpen(true)}
+                    >
+                      Play again<span aria-hidden="true">↗</span>
+                    </button>
+                  )}
                 </div>
               )}
               <div className="last-move">
@@ -381,7 +417,7 @@ export function Prism() {
                   </>
                 ) : (
                   <p>
-                    Your first point
+                    {watching ? "The first point" : "Your first point"}
                     <br />
                     can go anywhere.
                   </p>
@@ -394,8 +430,8 @@ export function Prism() {
                 </p>
               )}
               <p className="board-count">
-                {game.completed.length} squares · {64 - game.revision} open
-                points
+                {formatSquareCount(game.completed.length)} ·{" "}
+                {64 - game.revision} open points
               </p>
             </>
           )}
@@ -423,7 +459,9 @@ export function Prism() {
         </span>
         <p>8 × 8 · Grid Footprint</p>
         <span className="keyboard-note">
-          Arrows to explore · Enter to claim
+          {watching
+            ? "Arrows to explore · Read-only board"
+            : "Arrows to explore · Enter to claim"}
         </span>
       </footer>
 
@@ -461,34 +499,36 @@ export function Prism() {
           I see it<span aria-hidden="true">↗</span>
         </button>
       </Modal>
-      <Modal
-        open={newOpen}
-        onClose={() => setNewOpen(false)}
-        title={
-          game?.winner === null
-            ? "A fresh perspective?"
-            : "Make your next move."
-        }
-      >
-        <p className="dialog-intro">
-          {game?.winner === null
-            ? "Starting a new game replaces this unfinished board."
-            : "Play against Euclid or share the board with someone beside you."}
-        </p>
-        <GameOptions
-          target={target}
-          setTarget={setTarget}
-          busy={busy}
-          onStart={(nextMode) => {
-            void begin(nextMode);
-          }}
-        />
-        {error && (
-          <p className="error-message" role="alert">
-            {error}
+      {!watching && (
+        <Modal
+          open={newOpen}
+          onClose={() => setNewOpen(false)}
+          title={
+            game?.winner === null
+              ? "A fresh perspective?"
+              : "Make your next move."
+          }
+        >
+          <p className="dialog-intro">
+            {game?.winner === null
+              ? "Starting a new game replaces this unfinished board."
+              : "Play against Euclid or share the board with someone beside you."}
           </p>
-        )}
-      </Modal>
+          <GameOptions
+            target={target}
+            setTarget={setTarget}
+            busy={busy}
+            onStart={(nextMode) => {
+              void begin(nextMode);
+            }}
+          />
+          {error && (
+            <p className="error-message" role="alert">
+              {error}
+            </p>
+          )}
+        </Modal>
+      )}
     </main>
   );
 }

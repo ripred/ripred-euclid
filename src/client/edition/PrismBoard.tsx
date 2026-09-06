@@ -6,6 +6,7 @@ import { nearestProjectedPoint, type ProjectedPoint } from "./prism-projection";
 interface BoardProps {
   game: PrismState;
   active: boolean;
+  readOnly?: boolean;
   flat: boolean;
   onMove(index: number): void;
 }
@@ -18,7 +19,14 @@ function fallbackPoints(): ProjectedPoint[] {
 }
 
 /** Every rendered point has a native, projected button: no inaccessible canvas-only input. */
-export function PrismBoard({ game, active, flat, onMove }: BoardProps) {
+export function PrismBoard({
+  game,
+  active: mayPlay,
+  readOnly = false,
+  flat,
+  onMove,
+}: BoardProps) {
+  const active = mayPlay && !readOnly;
   const boardRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<PrismRenderer | null>(null);
@@ -159,7 +167,11 @@ export function PrismBoard({ game, active, flat, onMove }: BoardProps) {
       <div
         className="board-controls"
         role="group"
-        aria-label="Eight by eight point board. Arrow keys move focus; Enter or Space claims a point."
+        aria-label={
+          readOnly
+            ? "Eight by eight point board. Arrow keys inspect points. Read-only."
+            : "Eight by eight point board. Arrow keys move focus; Enter or Space claims a point."
+        }
       >
         {game.board.map((owner, index) => (
           <button
@@ -173,7 +185,7 @@ export function PrismBoard({ game, active, flat, onMove }: BoardProps) {
               top: `${points[index]!.y}%`,
             }}
             type="button"
-            tabIndex={active && index === focused ? 0 : -1}
+            tabIndex={(active || readOnly) && index === focused ? 0 : -1}
             aria-label={`${coordinate(index)}, ${owner === 0 ? "empty" : owner === 1 ? "coral diamond" : "mint ring"}`}
             aria-disabled={!active || owner !== 0}
             onFocus={() => {
