@@ -1,0 +1,130 @@
+/* Reddit supplies the viewport. Constrain the scroll owner, not its content:
+   a min-height alone lets the page grow behind the game shell's hidden overflow. */
+.euclid-result-share {
+  box-sizing: border-box;
+  height: 100vh;
+  height: 100dvh;
+  overflow: auto;
+  padding: 28px 12px 16px;
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.euclid-result-share *,
+.euclid-result-share *::before,
+.euclid-result-share *::after {
+  box-sizing: border-box;
+}
+
+.euclid-result-share:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -3px;
+}
+
+.euclid-result-share__card {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 16px;
+  border: 1px solid var(--share-border);
+  border-radius: 20px;
+  display: grid;
+  gap: 16px;
+  align-items: start;
+}
+
+.euclid-result-share__summary,
+.euclid-result-share__replay {
+  min-width: 0;
+}
+
+.euclid-result-share p,
+.euclid-result-share h1,
+.euclid-result-share dl,
+.euclid-result-share dd {
+  margin: 0;
+}
+
+.euclid-result-share__eyebrow {
+  color: var(--share-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.euclid-result-share h1 {
+  margin-top: 8px;
+  font-size: clamp(22px, 3.5vw, 30px);
+  font-weight: 800;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+.euclid-result-share .euclid-result-share__rules {
+  margin-top: 12px;
+  color: var(--share-text);
+}
+
+.euclid-result-share .euclid-result-share__scores {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.euclid-result-share__player {
+  min-width: 0;
+  padding: 12px;
+  background: var(--share-surface);
+  border: 1px solid var(--share-border);
+  border-radius: 12px;
+}
+
+.euclid-result-share__player dt {
+  font-weight: 700;
+}
+
+.euclid-result-share__player dd {
+  margin: 4px 0;
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.euclid-result-share__outcome {
+  display: block;
+  margin-top: 4px;
+  color: var(--share-text);
+  font-size: 12px;
+}
+
+.euclid-result-share .euclid-result-share__detail {
+  margin-top: 12px;
+  color: var(--share-text);
+  font-size: 13px;
+}
+
+.euclid-result-share footer {
+  margin-top: 18px;
+  color: var(--share-muted);
+  font-size: 12px;
+}
+
+.euclid-result-share footer p + p {
+  margin-top: 4px;
+}
+
+/* Share only: preserve the replay's drawing and animation, with room for scores
+   beside it on wide embeds. Narrow screens keep normal vertical scrolling. */
+@media (min-width: 640px) {
+  .euclid-result-share__card {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .euclid-result-share__replay {
+    width: 100%;
+    max-width: 340px;
+    justify-self: center;
+  }
+}

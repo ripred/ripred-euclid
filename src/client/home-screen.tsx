@@ -217,12 +217,6 @@ function formatUsername(username: string): string {
 function EuclidBrand({ titleId }: { titleId: string }) {
   return (
     <div className="euclid-home__brand">
-      <span className="euclid-home__brand-mark" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-        <span />
-      </span>
       <div>
         <p className="euclid-home__eyebrow">A game of completed squares</p>
         <h1 id={titleId}>Euclid</h1>

@@ -67,6 +67,24 @@ function completeButtonMarkup(markup: string, className: string): string {
 }
 
 describe("home dashboard structure", () => {
+  it("keeps the home and status headers text-only", () => {
+    const screens = [
+      <HomeScreen {...homeProps()} />,
+      <HomeStatusScreen heading="Loading" detail="Preparing your game" />,
+    ];
+
+    for (const screen of screens) {
+      const markup = renderToStaticMarkup(screen);
+      const header = markup.slice(
+        markup.indexOf("<header"),
+        markup.indexOf("</header>"),
+      );
+      expect(header).toContain("Euclid</h1>");
+      expect(header).not.toContain("euclid-home__brand-mark");
+      expect(header).not.toMatch(/<(?:img|svg)\b/);
+    }
+  });
+
   it("keeps the primary, secondary, and utility actions in visual order", () => {
     const markup = renderToStaticMarkup(<HomeScreen {...homeProps()} />);
 

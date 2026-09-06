@@ -6,7 +6,9 @@ Euclid is a turn-based Reddit strategy game about claiming grid points and compl
 
 ![Euclid game](Euclid-Game2.png)
 
-The current app version is `0.1.95` and the project is pinned to Devvit `0.14.2`.
+The current app version is `0.1.98` and the project is pinned to Devvit `0.14.2`.
+
+The intended public-facing community is [r/EuclidTheGame](https://www.reddit.com/r/EuclidTheGame/), currently private for beta testing. Its installed release was verified as `0.1.98` on September 5, 2026. Its community icon and desktop/mobile banners match those of `r/ripred_euclid_dev`; the development playtest target remains unchanged.
 
 ## Game rules
 
@@ -52,11 +54,12 @@ Home records, resume and queue status, and live scoring effects are projections 
 
 - The default inline post entrypoint is a self-running preview: intro, rules demo, then live leaderboards. Preview onboarding is complete only after the full demo finishes.
 - **Start Playing!** opens the full game entrypoint.
+- Solo gameplay shortcuts require a fresh key press during the displayed human turn. Buffered keys, held-key repeats, and partial shortcut input do not carry into the next turn; gameplay keys are ignored while a move is pending or the game has ended. Chat typing is unaffected.
 - The expanded entrypoint opens on a responsive navy-and-vector-grid dashboard. **Play Euclid** is the primary action, **Play a Redditor** is secondary, separate solo and multiplayer ratings are shown, and saved solo games, active Redditor matches, and matchmaking state have explicit continue or cancel controls. Live games, Leaderboard, Options, and Rules remain quieter navigation.
 - Canonical scoring moves show `+N` and the completed-square count beside the move and scorecard, animate only the newly completed squares, and briefly show each new square's enclosing footprint in Grid Footprint mode. Players can hide accumulated square lines without hiding the active scoring event; True Area does not show a footprint overlay.
 - Live Redditor matches give participants a visible, touch-sized **Chat** control while retaining the `\` keyboard shortcut. The focus-contained composer has explicit Send and Cancel actions, and its chronological live log wraps long messages without trapping the board controls below the viewport. Spectators can read the existing shared log but cannot compose messages.
 - After a normally completed Redditor match, either participant can select **Rematch** while both players remain attached. The request is bound to the terminal revision, simultaneous requests converge on one canonical new round, and a player who already left is never silently restored. The server derives ongoing rematch availability from both participant mappings; if either player closes, the remaining client hides the action and stops terminal polling without changing the finished board. If terminal Close and an untouched rematch race, Close cancels that rematch without recording a forfeit. Finished-round sharing is bound to the immutable terminal revision, so a rematch cannot replace the result being shared.
-- Shared leaderboard and victory posts render dedicated previews and board replays. Older solo replay payloads retain their player-one-first fallback.
+- Shared leaderboard and victory posts render dedicated previews and board replays. Victory posts use the same responsive result layout in both entrypoints, with compact final scores, a side-by-side replay on wider screens, and a keyboard-accessible viewport scroll area on smaller screens. Older solo replay payloads retain their player-one-first fallback.
 - A moderator subreddit menu item creates a fresh Euclid post.
 - Spectators receive neutral result copy and a local-only **Stop Watching** action; they cannot mutate or leave on behalf of participants.
 
@@ -151,6 +154,7 @@ npx devvit view ripred-euclid@<version>
 
 ## Assets
 
+- Preserve the established page artwork and icons, including the landing page, splash screen, and demo. Change them only when explicitly requested; functional UI work does not authorize artwork changes.
 - `Euclid-Game2.png` is the repository overview image.
 - `src/client/public/snoo.png` is the bundled splash background referenced by server-created posts.
 - `subreddit/images/` contains curated branding candidates and moderator upload assets. These are not runtime imports; keep purpose-named files needed for final selection or a distinct Reddit upload role.
@@ -161,11 +165,11 @@ Before installing a release beyond the test subreddit:
 
 1. Verify dashboard idle, saved-solo, queued, and active-H2H states; resume an in-progress Ranked game after reload and verify cancel-versus-forfeit behavior.
 2. Complete Ranked win, loss, and tie paths; confirm one rating settlement and winner-only sharing.
-3. Complete custom Practice games across sizes, scoring modes, targets, and difficulty; verify live score feedback and the accumulated-line toggle, and confirm Ranked data is unchanged.
+3. Complete custom Practice games across sizes, scoring modes, targets, and difficulty; verify live score feedback and the accumulated-line toggle, and confirm Ranked data is unchanged. Hold or rapidly press gameplay shortcut keys during a pending move: the next human turn must require a fresh press, and no gameplay key may place a dot after the result.
 4. Queue two accounts, reload both, verify local-response and polled-opponent score feedback, and test simultaneous/stale moves, pointer/touch and keyboard chat entry, leave/forfeit, and rematch.
 5. Spectate both winner sides and confirm neutral copy, no celebration, and local-only exit.
 6. Exercise preview onboarding, explicit tutorial dismissal, same-breakpoint resizing, height-only resizing, and orientation changes.
-7. Verify leaderboard shares render their canonical frozen snapshot and result shares render their exact terminal-revision replay rather than a generic fallback, including when a rematch has already begun.
+7. Verify leaderboard shares render their canonical frozen snapshot and result shares render their exact terminal-revision replay rather than a generic fallback, including when a rematch has already begun. Check new and existing victory posts at desktop and mobile widths and increased browser zoom: final scores must be readable, and the entire replay and footer must remain reachable by scrolling.
 
 The full real-surface checklist still requires three distinct Reddit identities, simultaneous player sessions, a fresh browser-storage context, and a physical Reddit mobile-app session. Ranked win, loss, and tie outcomes also cannot be selected deterministically from the release surface; use naturally completed games unless an isolated, non-production QA fixture is designed and approved.
 
@@ -179,9 +183,7 @@ The full real-surface checklist still requires three distinct Reddit identities,
 
 ## Pending release work
 
-- Select the final desktop banner, mobile banner, community icon, and compact-post icon from `subreddit/images/`; keep distinct files for distinct Reddit upload roles even when artwork currently matches.
-- Verify the intended private-beta community and its current privacy/moderator state immediately before configuration. The existing planning direction names `r/EuclidTheGame`, but this repository does not prove its live state.
-- Install an explicitly chosen uploaded version there and run the real-surface checklist above in desktop card view, compact view, and the Reddit mobile app.
+- Run the real-surface checklist above on the installed release in `r/EuclidTheGame`, including desktop card view, compact view, and the Reddit mobile app. Installation and asset verification do not replace gameplay and layout testing.
 - After private-beta results are acceptable, decide whether the community remains private, becomes restricted, or opens publicly, and prepare any introductory or how-to-play post.
 
 ## License

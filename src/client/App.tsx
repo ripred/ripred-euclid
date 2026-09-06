@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -72,7 +73,7 @@ import {
   installThemeModeSync,
   type ThemeMode,
 } from "./theme";
-import { ReplayBoardCard } from "./share-replay";
+import { ResultShareView } from "./share-preview";
 import {
   createPracticeSoloStartIntent,
   createRankedSoloStartIntent,
@@ -87,6 +88,7 @@ import {
   isSoloHumanTurn,
   shouldAdoptSoloSnapshot,
 } from "./solo-ui";
+import { isFreshSoloGameplayKey } from "./solo-keyboard";
 import {
   HomeScreen,
   HomeStatusScreen,
@@ -2662,11 +2664,13 @@ export const App = () => {
       if (
         !snapshot ||
         !getSoloAssistancePolicy(snapshot.mode).allowSecretAutoMove ||
-        !isSoloHumanTurn(snapshot)
+        !isSoloHumanTurn(snapshot) ||
+        soloMovePendingRef.current ||
+        soloAbandonPendingRef.current
       ) {
         return;
       }
-      const analysisBoard = board.clone();
+      const analysisBoard = Board.fromJSON(snapshot.board);
       const human = analysisBoard.m_players[snapshot.rules.humanPlayer];
       const savedStyle = human.m_playStyle;
       human.m_playStyle = Board.PS_BRUTAL;
@@ -2801,6 +2805,24 @@ export const App = () => {
   };
 
   const secretIdxRef = useRef(0);
+  const soloKeyboardTurnStartedAtRef = useRef(Infinity);
+
+  useLayoutEffect(() => {
+    if (mode !== "ai") {
+      soloKeyboardTurnStartedAtRef.current = Infinity;
+      return;
+    }
+    // Reopen input only after the human turn is rendered. Reset partial secret
+    // input too, so keystrokes cannot carry over from the previous turn.
+    secretIdxRef.current = 0;
+    soloKeyboardTurnStartedAtRef.current =
+      !chatOpen &&
+      soloPending === null &&
+      soloSnapshot &&
+      isSoloHumanTurn(soloSnapshot)
+        ? performance.now()
+        : Infinity;
+  }, [mode, chatOpen, soloPending, soloSnapshot]);
 
   useEffect(() => {
     const secret = "ripred";
@@ -2812,6 +2834,20 @@ export const App = () => {
       if (k === "\\") {
         if (openChat()) e.preventDefault();
         return;
+      }
+
+      if (mode === "ai") {
+        const snapshot = soloSnapshotRef.current;
+        if (
+          !snapshot ||
+          !isSoloHumanTurn(snapshot) ||
+          soloMovePendingRef.current ||
+          soloAbandonPendingRef.current ||
+          !isFreshSoloGameplayKey(e, soloKeyboardTurnStartedAtRef.current)
+        ) {
+          secretIdxRef.current = 0;
+          return;
+        }
       }
 
       const lower = k.toLowerCase();
@@ -5758,140 +5794,5 @@ const SharedPostView: React.FC<{ share: SharedPostPayload }> = ({ share }) => {
     );
   }
 
-  const score1 = share.board.m_players[0]?.m_score ?? 0;
-  const score2 = share.board.m_players[1]?.m_score ?? 0;
-
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        overflowY: "auto",
-        background:
-          "radial-gradient(circle at top right, #17304f 0%, #07101d 48%)",
-      }}
-    >
-      <div
-        style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 20px 64px" }}
-      >
-        <div style={panelStyle}>
-          <div style={{ color: "#cbd5e1", fontSize: 18, fontWeight: 700 }}>
-            r/{share.subredditName}
-          </div>
-          <div
-            style={{
-              marginTop: 12,
-              color: "#f8fafc",
-              fontSize: 42,
-              fontWeight: 800,
-            }}
-          >
-            {share.title}
-          </div>
-          <div style={{ marginTop: 10, color: "#94a3b8", fontSize: 20 }}>
-            {share.subtitle}
-          </div>
-
-          <div
-            style={{
-              marginTop: 24,
-              background: "#11253d",
-              border: "1px solid #2b4a72",
-              borderRadius: 28,
-              padding: "24px 28px",
-            }}
-          >
-            <div style={{ color: "#f8fafc", fontSize: 34, fontWeight: 800 }}>
-              {share.headline}
-            </div>
-            <div style={{ marginTop: 8, color: "#93c5fd", fontSize: 18 }}>
-              {share.details}
-            </div>
-          </div>
-
-          <div
-            style={{
-              marginTop: 24,
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-              gap: 18,
-            }}
-          >
-            <div
-              style={{
-                background: "#31181e",
-                border: "1px solid #7f1d1d",
-                borderRadius: 26,
-                padding: "22px 24px",
-              }}
-            >
-              <div style={{ color: "#fecaca", fontSize: 20, fontWeight: 700 }}>
-                {share.p1Name}
-              </div>
-              <div
-                style={{
-                  marginTop: 12,
-                  color: "#fff",
-                  fontSize: 56,
-                  fontWeight: 800,
-                }}
-              >
-                {score1}
-              </div>
-            </div>
-            <div
-              style={{
-                background: "#132a46",
-                border: "1px solid #1d4ed8",
-                borderRadius: 26,
-                padding: "22px 24px",
-              }}
-            >
-              <div style={{ color: "#bfdbfe", fontSize: 20, fontWeight: 700 }}>
-                {share.p2Name}
-              </div>
-              <div
-                style={{
-                  marginTop: 12,
-                  color: "#fff",
-                  fontSize: 56,
-                  fontWeight: 800,
-                }}
-              >
-                {score2}
-              </div>
-            </div>
-          </div>
-
-          <div
-            style={{
-              marginTop: 24,
-              background: "#132743",
-              border: "1px solid #315781",
-              borderRadius: 26,
-              padding: "20px 24px",
-            }}
-          >
-            <div style={{ color: "#86efac", fontSize: 30, fontWeight: 800 }}>
-              {share.winnerSide === 1
-                ? `${share.p1Name} Wins!`
-                : `${share.p2Name} Wins!`}
-            </div>
-            <div style={{ marginTop: 8, color: "#cbd5e1", fontSize: 18 }}>
-              {share.footer}
-            </div>
-          </div>
-
-          <div style={{ marginTop: 28 }}>
-            <ReplayBoardCard board={share.board} theme="dark" />
-          </div>
-
-          <div style={{ marginTop: 20, color: "#94a3b8", fontSize: 16 }}>
-            Shared {formatDisplayDate(share.sharedAt)} from Euclid •{" "}
-            {boardScoringLabel(share.board.scoring)} scoring • {share.board.W}x
-            {share.board.H} board
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  return <ResultShareView share={share} theme="dark" />;
 };
