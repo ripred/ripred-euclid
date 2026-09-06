@@ -10,18 +10,28 @@ const position = (point: number) => ({
   x: 70 + (point % SIZE) * 100,
   y: 70 + Math.floor(point / SIZE) * 100,
 });
-const ownerName = (player: number, mode: PlayMode) =>
+const ownerName = (player: number, mode: PlayMode, humanName: string) =>
   player === 1
     ? mode === "duel"
       ? "Coral"
-      : "You"
+      : humanName
     : mode === "duel"
       ? "Teal"
       : "Undertow";
 
 export function Tide() {
-  const { game, loading, busy, error, mode, start, move, reload } =
-    useEdition<TideState>();
+  const {
+    game,
+    loading,
+    busy,
+    error,
+    mode,
+    start,
+    move,
+    reload,
+    watching,
+    hostName,
+  } = useEdition<TideState>();
   const [selected, setSelected] = useState<number | null>(null);
   const [focus, setFocus] = useState(14);
   const [chosenMode, setChosenMode] = useState<PlayMode>("solo");
@@ -33,7 +43,8 @@ export function Tide() {
   const grid = useRef<HTMLDivElement>(null);
   const modal = useRef<HTMLDialogElement>(null);
   const playable = Boolean(
-    game &&
+    !watching &&
+      game &&
       game.winner === null &&
       !busy &&
       !loading &&
@@ -56,9 +67,10 @@ export function Tide() {
     if (!busy) humanEpoch.current = performance.now();
   }, [busy]);
   useEffect(() => {
-    if (dialog && !modal.current?.open) modal.current?.showModal();
-    if (!dialog) modal.current?.close();
-  }, [dialog]);
+    const open = dialog && (!watching || dialog === "rules");
+    if (open && !modal.current?.open) modal.current?.showModal();
+    if (!open) modal.current?.close();
+  }, [dialog, watching]);
 
   const selectPoint = (point: number) => {
     setFocus(point);
@@ -110,6 +122,7 @@ export function Tide() {
       ?.focus();
   };
   const begin = async () => {
+    if (watching) return;
     if (await start({ target }, chosenMode)) {
       previous.current = null;
       setFresh([]);
@@ -117,6 +130,9 @@ export function Tide() {
     }
   };
   const activeMode = game ? mode : chosenMode;
+  const humanName = watching ? (hostName ?? "Redditor") : "You";
+  const name = (player: number) => ownerName(player, activeMode, humanName);
+  const personalTurn = !watching && mode === "solo";
   const scores = game?.scores ?? [0, 0];
   const finished = game?.winner !== null && game !== null;
   const status = loading
@@ -126,11 +142,18 @@ export function Tide() {
       : finished
         ? game.winner === 0
           ? "An even tide."
-          : `${ownerName(game.winner!, activeMode)} ${game.winner === 1 && mode === "solo" ? "win" : "wins"}!`
+          : `${name(game.winner!)} ${game.winner === 1 && personalTurn ? "win" : "wins"}!`
         : game
-          ? `${ownerName(game.turn, activeMode)}${game.turn === 1 && mode === "solo" ? "r" : "’s"} turn`
+          ? `${name(game.turn)}${game.turn === 1 && personalTurn ? "r" : "’s"} turn`
           : "Ready for the tide?";
   const recent = game?.history.slice(mode === "solo" ? -2 : -1) ?? [];
+
+  if (watching && !game)
+    return (
+      <main className="tide-shell">
+        <p>Waiting for the broadcast…</p>
+      </main>
+    );
 
   return (
     <div className="tide-shell">
@@ -141,7 +164,12 @@ export function Tide() {
         </div>
         <nav aria-label="Game controls">
           <button onClick={() => setDialog("rules")}>How to play</button>
-          <button disabled={busy || loading} onClick={() => setDialog("new")}>
+          <button
+            disabled={watching || busy || loading}
+            onClick={() => {
+              if (!watching) setDialog("new");
+            }}
+          >
             New game
           </button>
         </nav>
@@ -163,7 +191,11 @@ export function Tide() {
             className="board-wrap"
             ref={grid}
             role="group"
-            aria-label="Six by six board. Arrow keys navigate, Enter selects, then use Place stone."
+            aria-label={
+              watching
+                ? "Six by six board. Arrow keys inspect points. Read-only."
+                : "Six by six board. Arrow keys navigate, Enter selects, then use Place stone."
+            }
           >
             <svg className="board-art" viewBox="0 0 640 640" aria-hidden="true">
               <defs>
@@ -240,7 +272,7 @@ export function Tide() {
                   : 0;
               const p = position(point);
               const description = owner
-                ? `${ownerName(owner, activeMode)}, ${anchored ? "anchored" : `${turnsLeft} turns until it washes away`}`
+                ? `${name(owner)}, ${anchored ? "anchored" : `${turnsLeft} ${turnsLeft === 1 ? "turn" : "turns"} until it washes away`}`
                 : "empty";
               return (
                 <button
@@ -288,25 +320,27 @@ export function Tide() {
               <span className="mode-dot" />
               {mode === "duel" && game ? "Pass & play" : "Against Undertow"}
             </div>
-            <div className="placement">
-              <button
-                className="primary"
-                disabled={!playable || selected === null}
-                onClick={place}
-              >
-                Place stone
-                {selected !== null ? (
-                  <span className="coordinate">{coordinate(selected)}</span>
-                ) : null}
-              </button>
-              <button
-                className="cancel"
-                disabled={selected === null || busy}
-                onClick={() => setSelected(null)}
-              >
-                Cancel
-              </button>
-            </div>
+            {!watching && (
+              <div className="placement">
+                <button
+                  className="primary"
+                  disabled={!playable || selected === null}
+                  onClick={place}
+                >
+                  Place stone
+                  {selected !== null ? (
+                    <span className="coordinate">{coordinate(selected)}</span>
+                  ) : null}
+                </button>
+                <button
+                  className="cancel"
+                  disabled={selected === null || busy}
+                  onClick={() => setSelected(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
           </div>
           <p className="board-caption">
             Scores stay. Completed squares anchor their corners.
@@ -314,13 +348,17 @@ export function Tide() {
         </section>
         <aside className="game-rail">
           <h2>Ride the moment.</h2>
-          <p className="intro">Build a square before your stones drift away.</p>
+          <p className="intro">
+            {watching
+              ? "Watch squares take shape before the stones drift away."
+              : "Build a square before your stones drift away."}
+          </p>
           <div className="scores" aria-label="Scores">
             {([1, 2] as const).map((player) => (
               <div key={player} className={`score player-${player}`}>
                 <span>
                   <i className={`token token-${player}`} />
-                  {ownerName(player, activeMode)}
+                  {name(player)}
                 </span>
                 <strong>{scores[player - 1]}</strong>
               </div>
@@ -337,11 +375,13 @@ export function Tide() {
             <p>
               {finished
                 ? `Final score ${scores[0]}–${scores[1]}. ${game.revision >= game.moveLimit ? "Thirty rounds played." : "The shore is yours to inspect."}`
-                : game
-                  ? selected === null
-                    ? "Choose an empty point."
-                    : `${coordinate(selected)} is ready. Place your stone.`
-                  : "Six turns to build something lasting."}
+                : watching
+                  ? "Inspect the shore while the players take their turns."
+                  : game
+                    ? selected === null
+                      ? "Choose an empty point."
+                      : `${coordinate(selected)} is ready. Place your stone.`
+                    : "Six turns to build something lasting."}
             </p>
             {!game && (
               <div className="start-options">
@@ -365,7 +405,7 @@ export function Tide() {
                 </button>
               </div>
             )}
-            {finished && (
+            {finished && !watching && (
               <button
                 className="primary"
                 disabled={busy}
@@ -388,7 +428,7 @@ export function Tide() {
                       ? `+${event.points}`
                       : coordinate(event.point)}
                   </strong>{" "}
-                  · {ownerName(event.player, activeMode)}
+                  · {name(event.player)}
                   {event.squares.length
                     ? ` anchored ${event.squares.length === 1 ? "a square" : `${event.squares.length} squares`}`
                     : " placed a stone"}
@@ -445,9 +485,11 @@ export function Tide() {
       </main>
       <footer>
         Unranked ·{" "}
-        {game && mode === "duel"
-          ? "Two players, one screen"
-          : "Your moves are checked by the game server"}
+        {watching
+          ? "Read-only live board"
+          : game && mode === "duel"
+            ? "Two players, one screen"
+            : "Your moves are checked by the game server"}
       </footer>
       <dialog
         ref={modal}
@@ -504,7 +546,7 @@ export function Tide() {
               Back to the shore
             </button>
           </>
-        ) : (
+        ) : !watching ? (
           <>
             <p>
               {game && game.winner === null
@@ -546,7 +588,7 @@ export function Tide() {
               </button>
             </div>
           </>
-        )}
+        ) : null}
       </dialog>
     </div>
   );

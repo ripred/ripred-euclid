@@ -14,9 +14,28 @@ export interface EditionDefinition<T extends EditionState> {
   create(options: unknown): T;
   move(state: T, action: unknown): T;
   chooseMove(state: T): unknown;
+  /** Refresh saved derived values without changing the accepted move revision. */
+  reconcile?(state: T): T;
+  /** Remove private coaching data while retaining a renderable board. */
+  spectatorState?(state: T): T;
 }
 export interface EditionSnapshot<T extends EditionState> {
   id: string;
   mode: PlayMode;
   state: T;
+  spectatorsEnabled?: boolean;
+}
+
+export interface LiveEditionGame {
+  id: string;
+  mode: PlayMode;
+  hostName: string;
+  updatedAt: number;
+  revision: number;
+}
+
+export interface EditionWatchSnapshot<T extends EditionState>
+  extends EditionSnapshot<T> {
+  hostName: string;
+  updatedAt: number;
 }
