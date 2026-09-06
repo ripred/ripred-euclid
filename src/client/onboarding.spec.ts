@@ -93,6 +93,13 @@ describe("full tutorial visibility", () => {
       }),
     ).toBe(false);
   });
+
+  it("keeps first-time spectators in the match without a player tutorial", () => {
+    expect(shouldShowFullTutorial("multiplayer", incomplete, true)).toBe(false);
+    expect(shouldShowFullTutorial("spectate", incomplete)).toBe(false);
+    expect(shouldShowFullTutorial("watch-demo", incomplete)).toBe(false);
+    expect(shouldShowFullTutorial("multiplayer", incomplete, false)).toBe(true);
+  });
 });
 
 describe("preview demo completion", () => {

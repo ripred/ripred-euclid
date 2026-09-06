@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type {
   CanonicalBoardSnapshot,
   H2HLeaveRequest,
+  H2HLiveGamesResponse,
   H2HMappingResponse,
   H2HMoveRejectionReason,
   H2HMoveRequest,
@@ -223,29 +224,37 @@ type H2HStateWithBoard = {
   board: CanonicalBoardSnapshot;
 };
 
+async function enrichH2HNames(
+  playerIds: readonly string[],
+  storedNames: Record<string, string> = {},
+): Promise<Record<string, string>> {
+  const cachedNames = await Promise.all(
+    playerIds.map((playerId) => redis.get(NAMEKEY(playerId))),
+  );
+  const names = { ...storedNames };
+  for (const [index, playerId] of playerIds.entries()) {
+    const name = cachedNames[index];
+    if (name && name.toLowerCase() !== "anonymous") names[playerId] = name;
+  }
+  return names;
+}
+
 async function enrichH2HProfiles<T extends H2HStateWithBoard>(
   state: T,
 ): Promise<T> {
   const [firstPlayer, secondPlayer] = state.board.m_players;
   const playerIds = [firstPlayer.userId, secondPlayer.userId] as const;
-  const [firstName, secondName, firstAvatar, secondAvatar] = await Promise.all([
-    redis.get(NAMEKEY(playerIds[0])),
-    redis.get(NAMEKEY(playerIds[1])),
+  const [names, firstAvatar, secondAvatar] = await Promise.all([
+    enrichH2HNames(playerIds, state.board.playerNames),
     redis.get(AVAKEY(playerIds[0])),
     redis.get(AVAKEY(playerIds[1])),
   ]);
-  const names = { ...(state.board.playerNames ?? {}) };
   const avatars = { ...(state.board.playerAvatars ?? {}) };
-  const cachedNames = [firstName, secondName];
   const cachedAvatars = [firstAvatar, secondAvatar];
 
   for (let index = 0; index < playerIds.length; index++) {
     const playerId = playerIds[index];
-    const name = cachedNames[index];
     const avatar = cachedAvatars[index];
-    if (playerId && name && name.toLowerCase() !== "anonymous") {
-      names[playerId] = name;
-    }
     if (playerId && avatar) avatars[playerId] = avatar;
   }
 
@@ -1015,14 +1024,13 @@ router.get("/api/games/list", async (_req, res) => {
   try {
     const games = await h2hStore.listLiveGames();
     const enrichedGames = await Promise.all(
-      games.map(async (game) => {
-        const state = await h2hStore.getState(game.gameId);
-        if (!state) return game;
-        const enriched = await enrichH2HProfiles(state);
-        return { ...game, names: enriched.board.playerNames ?? {} };
-      }),
+      games.map(async (game) => ({
+        ...game,
+        // Enrich this summary's participants without mixing in a later round.
+        names: await enrichH2HNames(game.playerIds, game.names),
+      })),
     );
-    return res.json({ games: enrichedGames });
+    return res.json({ games: enrichedGames } satisfies H2HLiveGamesResponse);
   } catch (error: unknown) {
     return sendH2HError(res, "live games", error);
   }

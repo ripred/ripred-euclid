@@ -13,6 +13,8 @@ export default defineConfig({
       input: {
         default: "preview.html",
         game: "index.html",
+        leaderboard: "leaderboard.html",
+        watch: "watch.html",
       },
       output: {
         entryFileNames: "[name].js",

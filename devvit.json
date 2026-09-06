@@ -11,6 +11,12 @@
       },
       "game": {
         "entry": "index.html"
+      },
+      "leaderboard": {
+        "entry": "leaderboard.html"
+      },
+      "watch": {
+        "entry": "watch.html"
       }
     }
   },

@@ -19,7 +19,6 @@ import type {
   H2HRematchResponse,
   H2HShareRequest,
   H2HStateResponse,
-  RankingsResponse,
   RankingsShareRow,
   SerializableBoard,
   ShareChatItem,
@@ -74,6 +73,17 @@ import {
   type ThemeMode,
 } from "./theme";
 import { ResultShareView } from "./share-preview";
+import { fetchRankings, type LoadedRankings } from "./rankings-loader";
+import { errorMessage } from "./error-message";
+import { isRecord } from "./fetch-json";
+import { useLiveGames } from "./live-games";
+import {
+  WatchActions,
+  WatchLobby,
+  WatchReplay,
+  WatchUnavailable,
+} from "./watch-view";
+import { captureWatchRecording, type WatchRecording } from "./watch-recording";
 import {
   createPracticeSoloStartIntent,
   createRankedSoloStartIntent,
@@ -120,8 +130,6 @@ import {
 
 const HUMAN_VS_EUCLID_LABEL = "Redditor vs Euclid";
 const HUMAN_VS_HUMAN_LABEL = "Redditor vs Redditor";
-const WATCH_OTHER_REDDITORS_LIVE_GAMES_LABEL =
-  "Watch Other Redditor's Live Games";
 const LEADERBOARD_LABEL = "Leaderboard";
 const EUCLID_LABEL = "Euclid";
 
@@ -474,14 +482,6 @@ type AdminMetrics = {
   daily: { dates: string[]; hvh: number[]; ai: Record<AiDifficulty, number[]> };
 };
 
-type LiveGameSummary = {
-  gameId: string;
-  names: Record<string, string>;
-  scores: [number, number];
-  lastSaved: number;
-  ended?: boolean;
-};
-
 type ShareResponse = {
   ok?: boolean;
   message?: string;
@@ -492,11 +492,6 @@ type BrowserAudioWindow = Window &
   typeof globalThis & {
     webkitAudioContext?: typeof AudioContext;
   };
-
-function errorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) return error.message;
-  return typeof error === "string" && error ? error : fallback;
-}
 
 function reportRequestFailure(action: string, error: unknown): void {
   console.warn(`[Euclid] ${action} failed:`, error);
@@ -525,10 +520,6 @@ function trapDialogTab(event: React.KeyboardEvent<HTMLElement>): void {
       : focusable[0];
     target?.focus();
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function isH2HMappingResponse(value: unknown): value is H2HMappingResponse {
@@ -587,6 +578,7 @@ type Mode =
   | "ai"
   | "multiplayer"
   | "spectate"
+  | "watch-demo"
   | "rankings"
   | "admin"
   | "options"
@@ -615,12 +607,19 @@ function readViewportSize(): ViewportSize {
   };
 }
 
-export const App = () => {
+export const App = ({
+  initialMode = null,
+}: { initialMode?: "rankings" | "spectate" | null } = {}) => {
   const appliedThemeRef = useRef<ThemeMode | null>(null);
+  const [watchTheme, setWatchTheme] = useState<ThemeMode>("light");
   const [initState, setInitState] = useState<InitResponse | null>(null);
   const [initError, setInitError] = useState("");
-  const [mode, setMode] = useState<Mode>(null);
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [board, setBoard] = useState<Board | null>(null);
+  const [watchRecording, setWatchRecording] = useState<WatchRecording | null>(
+    null,
+  );
+  const [showWatchReplay, setShowWatchReplay] = useState(false);
   const [scoreFeedbackQueue, setScoreFeedbackQueue] = useState<
     ScoreFeedbackEvent[]
   >([]);
@@ -975,13 +974,17 @@ export const App = () => {
     const previewOnboardingSeen = hasStoredCompletion(PREVIEW_ONBOARDING_KEY);
     const fullTutorialCompleted = hasStoredCompletion(FULL_TUTORIAL_KEY);
     setShowTutorial(
-      shouldShowFullTutorial(mode, {
-        previewDemoCompleted: previewOnboardingSeen,
-        fullTutorialCompleted,
-        completedThisSession: tutorialCompletedThisSession,
-      }),
+      shouldShowFullTutorial(
+        mode,
+        {
+          previewDemoCompleted: previewOnboardingSeen,
+          fullTutorialCompleted,
+          completedThisSession: tutorialCompletedThisSession,
+        },
+        spectating,
+      ),
     );
-  }, [mode, tutorialCompletedThisSession]);
+  }, [mode, spectating, tutorialCompletedThisSession]);
 
   const completeTutorial = useCallback(() => {
     setShowTutorial(false);
@@ -1014,6 +1017,7 @@ export const App = () => {
       if (appliedThemeRef.current === nextTheme) return;
       applyThemeModeToDocument(nextTheme);
       appliedThemeRef.current = nextTheme;
+      setWatchTheme(nextTheme);
     });
   }, []);
   useEffect(() => {
@@ -1410,6 +1414,9 @@ export const App = () => {
       }
       setFinalSide(side);
       setFinalReason(endReason);
+      if (spectatingRef.current) {
+        setWatchRecording(captureWatchRecording(state, side));
+      }
       if (endReason === "tie") setNotice("Tie game!");
       else if (
         spectatingRef.current &&
@@ -1483,6 +1490,7 @@ export const App = () => {
       if (h2hSessionRef.current !== session || gameIdRef.current !== gid)
         return;
       if (r.status === 404 || r.status === 410) {
+        setWatchRecording(null);
         setFinalReason("gone");
         setNotice("This game is no longer available.");
         setStatus("This game is no longer available.");
@@ -1516,7 +1524,12 @@ export const App = () => {
       }
       adoptH2HState(j);
     } catch (error) {
+      if (h2hSessionRef.current !== session || gameIdRef.current !== gid)
+        return;
       reportRequestFailure("refreshing the multiplayer game", error);
+      if (spectatingRef.current) {
+        setStatus("Could not load the live game. Retrying…");
+      }
     } finally {
       if (h2hSessionRef.current === session && gameIdRef.current === gid) {
         h2hRefreshPendingRef.current = false;
@@ -1754,52 +1767,55 @@ export const App = () => {
   }, [mode, board, pollMapping, spectating]);
 
   /* ===== Spectate list ===== */
-  const [games, setGames] = useState<LiveGameSummary[]>([]);
-  const [loadingGames, setLoadingGames] = useState(true);
-  const gamesRequestRef = useRef(0);
-  const loadGames = useCallback(async () => {
-    const request = ++gamesRequestRef.current;
-    setLoadingGames(true);
-    try {
-      const r = await fetch("/api/games/list");
-      const j = (await r.json()) as { games?: LiveGameSummary[] };
-      if (gamesRequestRef.current !== request) return;
-      setGames(
-        (j.games ?? []).slice().sort((a, b) => b.lastSaved - a.lastSaved),
-      );
-    } catch (error) {
-      if (gamesRequestRef.current !== request) return;
-      reportRequestFailure("loading live games", error);
-      setGames([]);
-    } finally {
-      if (gamesRequestRef.current === request) setLoadingGames(false);
-    }
-  }, []);
+  const liveGames = useLiveGames(
+    initState?.type === "init" && mode === "spectate",
+  );
 
   /* ===== Rankings ===== */
-  const [rankings, setRankings] = useState<{
-    hvh: RankingsShareRow[];
-    hva: RankingsShareRow[];
-    hvaRules?: RankingsResponse["hvaRules"];
-  }>({ hvh: [], hva: [] });
+  const [rankings, setRankings] = useState<LoadedRankings>({
+    hvh: [],
+    hva: [],
+  });
+  const [rankingsLoaded, setRankingsLoaded] = useState(false);
+  const [rankingsLoading, setRankingsLoading] = useState(false);
+  const [rankingsError, setRankingsError] = useState("");
   const rankingsRequestRef = useRef(0);
+  const rankingsAbortRef = useRef<AbortController | null>(null);
+  const cancelRankings = useCallback(() => {
+    // Aborted or late responses cannot update a different route or remount.
+    rankingsRequestRef.current++;
+    rankingsAbortRef.current?.abort();
+    rankingsAbortRef.current = null;
+  }, []);
   const loadRankings = useCallback(async () => {
-    const request = ++rankingsRequestRef.current;
+    cancelRankings();
+    const request = rankingsRequestRef.current;
+    const controller = new AbortController();
+    rankingsAbortRef.current = controller;
+    setRankingsLoading(true);
+    setRankingsError("");
     try {
-      const r = await fetch("/api/rankings");
-      const j = (await r.json()) as RankingsResponse;
+      const j = await fetchRankings(controller.signal);
       if (rankingsRequestRef.current !== request) return;
-      setRankings({
-        hvh: j.hvh ?? [],
-        hva: j.hva ?? [],
-        ...(j.hvaRules ? { hvaRules: j.hvaRules } : {}),
-      });
+      setRankings(j);
+      setRankingsLoaded(true);
     } catch (error) {
       if (rankingsRequestRef.current !== request) return;
       reportRequestFailure("loading rankings", error);
-      setRankings({ hvh: [], hva: [] });
+      setRankingsError(errorMessage(error, "Unable to load the leaderboard."));
+    } finally {
+      if (rankingsRequestRef.current === request) {
+        setRankingsLoading(false);
+        rankingsAbortRef.current = null;
+      }
     }
-  }, []);
+  }, [cancelRankings]);
+
+  useEffect(() => {
+    if (initState?.type !== "init" || mode !== "rankings") return;
+    void loadRankings();
+    return cancelRankings;
+  }, [initState, mode, loadRankings, cancelRankings]);
 
   /* ===== Admin metrics ===== */
   const [admin, setAdmin] = useState<AdminMetrics | null>(null);
@@ -1851,6 +1867,8 @@ export const App = () => {
     spectatingRef.current = false;
     setSpectating(false);
     setBoard(null);
+    setWatchRecording(null);
+    setShowWatchReplay(false);
     setMode(nextMode);
     setStatus("");
     setNotice("");
@@ -2344,7 +2362,28 @@ export const App = () => {
 
   const stopWatching = () => {
     clearMultiplayerState({ nextMode: "spectate" });
-    void loadGames();
+  };
+
+  const watchGame = (gameId: string) => {
+    // Starting a spectator session invalidates pending reads from the old one.
+    // It deliberately sends no join, leave or result-close command.
+    clearMultiplayerState({ nextMode: "multiplayer" });
+    setGameId(gameId);
+    gameIdRef.current = gameId;
+    spectatingRef.current = true;
+    setSpectating(true);
+    setStatus("Loading live game…");
+    void refreshStateOnce();
+    pollGame();
+  };
+
+  const watchDemo = () => {
+    clearMultiplayerState({ nextMode: "watch-demo" });
+  };
+
+  const playFromWatch = () => {
+    if (spectatingRef.current) clearMultiplayerState({ refreshHome: true });
+    else returnHome();
   };
 
   const exitSoloGame = async (): Promise<boolean> => {
@@ -3200,13 +3239,11 @@ export const App = () => {
             if (navigationLocked) return;
             stopHomePresenceMonitoring();
             setMode("spectate");
-            void loadGames();
           }}
           onLeaderboard={() => {
             if (navigationLocked) return;
             stopHomePresenceMonitoring();
             setMode("rankings");
-            void loadRankings();
           }}
           onOptions={() => {
             if (navigationLocked) return;
@@ -3759,26 +3796,67 @@ export const App = () => {
           </h1>
         </div>
         <div
-          className="flex-1 overflow-y-auto w-full flex flex-col items-center gap-6"
+          className="flex-1 min-h-0 overflow-y-auto w-full flex flex-col items-center gap-6"
+          role="region"
+          aria-label="Full leaderboard"
+          tabIndex={0}
           style={{ paddingBottom: 8 }}
         >
-          <Section
-            title={HUMAN_VS_HUMAN_LABEL}
-            rows={rankings.hvh}
-            accent="red"
-            bucket="hvh"
-          />
-          <Section
-            title={`${HUMAN_VS_EUCLID_LABEL} — Ranked`}
-            subtitle={
-              rankings.hvaRules
-                ? `${rankings.hvaRules.rules.W}×${rankings.hvaRules.rules.H} • ${boardScoringLabel(rankings.hvaRules.rules.scoring)} • First to ${rankings.hvaRules.rules.winScore} • ${AI_DIFFICULTY_LABELS[rankings.hvaRules.rules.difficulty]}`
-                : "8×8 • Grid Footprint • First to 150 • Brutal"
-            }
-            rows={rankings.hva}
-            accent="blue"
-            bucket="hva"
-          />
+          {rankingsLoading || (!rankingsLoaded && !rankingsError) ? (
+            <p role="status" style={{ color: "var(--muted)" }}>
+              {rankingsLoaded
+                ? "Refreshing leaderboard…"
+                : "Loading leaderboard…"}
+            </p>
+          ) : null}
+          {rankingsError ? (
+            <div className="w-[min(720px,92vw)]">
+              <p
+                role="alert"
+                style={{ color: "var(--text)", overflowWrap: "anywhere" }}
+              >
+                {rankingsError}
+              </p>
+              {rankingsLoaded ? (
+                <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
+                  Showing the last loaded standings.
+                </p>
+              ) : null}
+              <button
+                type="button"
+                className="rounded cursor-pointer mt-2"
+                style={{
+                  background: "#6b7280",
+                  color: "#fff",
+                  padding: "8px 12px",
+                }}
+                onClick={() => void loadRankings()}
+              >
+                Try again
+              </button>
+            </div>
+          ) : null}
+          {rankingsLoaded ? (
+            <>
+              <Section
+                title={HUMAN_VS_HUMAN_LABEL}
+                rows={rankings.hvh}
+                accent="red"
+                bucket="hvh"
+              />
+              <Section
+                title={`${HUMAN_VS_EUCLID_LABEL} — Ranked`}
+                subtitle={
+                  rankings.hvaRules
+                    ? `${rankings.hvaRules.rules.W}×${rankings.hvaRules.rules.H} • ${boardScoringLabel(rankings.hvaRules.rules.scoring)} • First to ${rankings.hvaRules.rules.winScore} • ${AI_DIFFICULTY_LABELS[rankings.hvaRules.rules.difficulty]}`
+                    : "8×8 • Grid Footprint • First to 150 • Brutal"
+                }
+                rows={rankings.hva}
+                accent="blue"
+                bucket="hva"
+              />
+            </>
+          ) : null}
         </div>
         <div style={{ padding: 12 }}>
           <button
@@ -3798,114 +3876,28 @@ export const App = () => {
       </div>
     );
   } else if (mode === "spectate") {
-    /* ===== Spectate ===== */
     content = (
-      <div
-        className="flex flex-col items-center"
-        style={{ background: "var(--bg)", height: "100vh", overflow: "hidden" }}
-      >
-        <div style={{ paddingTop: 16, paddingBottom: 8 }}>
-          <h1
-            className="text-2xl font-bold text-center"
-            style={{ color: "var(--text)" }}
-          >
-            Euclid — {WATCH_OTHER_REDDITORS_LIVE_GAMES_LABEL}
-          </h1>
-        </div>
-        <div
-          className="flex-1 overflow-y-auto w-full flex flex-col items-center gap-4"
-          style={{ paddingBottom: 8 }}
-        >
-          {loadingGames ? (
-            <div style={{ color: "var(--text)" }}>Loading active games…</div>
-          ) : games.length === 0 ? (
-            <div style={{ color: "var(--muted)" }}>
-              No active games right now.
-            </div>
-          ) : (
-            games.map((g) => {
-              const p1Id = Object.keys(g.names)[0] || "";
-              const p2Id = Object.keys(g.names)[1] || "";
-              const p1Name = g.names[p1Id] || "Redditor 1";
-              const p2Name = g.names[p2Id] || "Redditor 2";
-              return (
-                <div
-                  key={g.gameId}
-                  className="w-[min(720px,92vw)]"
-                  style={{
-                    background: "var(--card-bg)",
-                    border: `1px solid var(--card-border)`,
-                    borderRadius: 12,
-                    padding: "12px 16px",
-                  }}
-                >
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <span style={{ fontWeight: 700 }}>{p1Name}</span> (
-                      {g.scores[0]}) vs{" "}
-                      <span style={{ fontWeight: 700 }}>{p2Name}</span> (
-                      {g.scores[1]})
-                    </div>
-                    <button
-                      className="rounded cursor-pointer"
-                      style={{
-                        background: "#7c3aed",
-                        color: "#fff",
-                        padding: "4px 10px",
-                      }}
-                      onClick={() => {
-                        clearScoreFeedback();
-                        h2hSessionRef.current++;
-                        h2hMutationRef.current = null;
-                        setH2HMutation(null);
-                        h2hRefreshPendingRef.current = false;
-                        h2hMappingPendingRef.current = false;
-                        stopPolling();
-                        pollActiveRef.current = "none";
-                        setGameId(g.gameId);
-                        gameIdRef.current = g.gameId;
-                        gameRevisionRef.current = 0;
-                        setBoard(null);
-                        setWinner(null);
-                        setFinalSide(null);
-                        setFinalReason("");
-                        setNotice("");
-                        setStatus("Loading live game…");
-                        spectatingRef.current = true;
-                        setSpectating(true);
-                        setMode("multiplayer");
-                        void refreshStateOnce();
-                        pollGame();
-                      }}
-                    >
-                      Watch
-                    </button>
-                  </div>
-                  <div
-                    className="text-xs"
-                    style={{ color: "var(--muted)", marginTop: 4 }}
-                  >
-                    Last updated: {new Date(g.lastSaved).toLocaleTimeString()}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-        <div style={{ padding: 12 }}>
-          <button
-            className="rounded cursor-pointer"
-            style={{
-              background: "#6b7280",
-              color: "#fff",
-              padding: "6px 12px",
-            }}
-            onClick={returnHome}
-          >
-            Back
-          </button>
-        </div>
-      </div>
+      <WatchLobby
+        {...liveGames}
+        theme={watchTheme}
+        onRefresh={liveGames.refresh}
+        onWatch={watchGame}
+        onDemo={watchDemo}
+        onPlay={playFromWatch}
+      />
+    );
+  } else if (
+    mode === "watch-demo" ||
+    (spectating && showWatchReplay && watchRecording)
+  ) {
+    content = (
+      <WatchReplay
+        board={mode === "watch-demo" ? null : watchRecording!.board}
+        headline={mode === "watch-demo" ? undefined : watchRecording!.headline}
+        theme={watchTheme}
+        onAnother={stopWatching}
+        onPlay={playFromWatch}
+      />
     );
   } else if (mode === "admin") {
     /* ===== Admin ===== */
@@ -4378,6 +4370,15 @@ export const App = () => {
         </div>
       </div>
     );
+  } else if (mode === "multiplayer" && spectating && finalReason === "gone") {
+    content = (
+      <WatchUnavailable
+        theme={watchTheme}
+        onAnother={stopWatching}
+        onDemo={watchDemo}
+        onPlay={playFromWatch}
+      />
+    );
   } else if (mode === "multiplayer" && !isBoardValid(board)) {
     const multiplayerTransitionPending =
       !spectating &&
@@ -4566,6 +4567,10 @@ export const App = () => {
               padding: "16px 22px",
               textAlign: "center",
               maxWidth: 520,
+              width: "calc(100% - 32px)",
+              maxHeight: "calc(100dvh - 32px)",
+              overflowY: "auto",
+              overflowWrap: "anywhere",
               zIndex: 60,
             }}
           >
@@ -4623,34 +4628,45 @@ export const App = () => {
                 onClick={() => void requestH2HRematch()}
               />
             )}
-            <button
-              autoFocus
-              type="button"
-              className="rounded cursor-pointer"
-              style={{
-                background: "#ef4444",
-                color: "#fff",
-                padding: "6px 12px",
-                cursor: h2hExitPending ? "wait" : "pointer",
-                opacity: h2hExitPending ? 0.65 : 1,
-              }}
-              onClick={() => {
-                if (h2hExitPending) return;
-                if (showTerminalResult) {
-                  exitMultiplayer();
-                } else {
-                  setNotice("");
+            {spectating && showTerminalResult ? (
+              <WatchActions
+                initialFocus
+                onReplay={
+                  watchRecording ? () => setShowWatchReplay(true) : undefined
                 }
-              }}
-              aria-disabled={h2hExitPending || undefined}
-              aria-busy={h2hExitPending || undefined}
-            >
-              {showTerminalResult
-                ? h2hExitPending && h2hMutation !== "rematch"
-                  ? h2hExitPendingLabel
-                  : "Close"
-                : "OK"}
-            </button>
+                onAnother={stopWatching}
+                onPlay={playFromWatch}
+              />
+            ) : (
+              <button
+                autoFocus
+                type="button"
+                className="rounded cursor-pointer"
+                style={{
+                  background: "#ef4444",
+                  color: "#fff",
+                  padding: "6px 12px",
+                  cursor: h2hExitPending ? "wait" : "pointer",
+                  opacity: h2hExitPending ? 0.65 : 1,
+                }}
+                onClick={() => {
+                  if (h2hExitPending) return;
+                  if (showTerminalResult) {
+                    exitMultiplayer();
+                  } else {
+                    setNotice("");
+                  }
+                }}
+                aria-disabled={h2hExitPending || undefined}
+                aria-busy={h2hExitPending || undefined}
+              >
+                {showTerminalResult
+                  ? h2hExitPending && h2hMutation !== "rematch"
+                    ? h2hExitPendingLabel
+                    : "Close"
+                  : "OK"}
+              </button>
+            )}
             {mode === "multiplayer" &&
               showWinner &&
               youAreWinner &&
@@ -5632,8 +5648,11 @@ const SharedPostView: React.FC<{ share: SharedPostPayload }> = ({ share }) => {
 
     return (
       <div
+        role="region"
+        aria-label="Shared leaderboard snapshot"
+        tabIndex={0}
         style={{
-          minHeight: "100vh",
+          height: "100dvh",
           overflowY: "auto",
           background:
             "radial-gradient(circle at top right, #17304f 0%, #09111d 48%)",

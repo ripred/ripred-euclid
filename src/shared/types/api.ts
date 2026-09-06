@@ -125,6 +125,22 @@ export type H2HCanonicalState = {
   victorSide: PlayerColor | null;
 };
 
+/** Player and score positions always follow the canonical board's player order. */
+export type H2HLiveGameSummary = {
+  gameId: string;
+  playerIds: [string, string];
+  names: Record<string, string>;
+  scores: [number, number];
+  lastSaved: number;
+  revision: number;
+  width: number;
+  height: number;
+  scoring: SerializableBoard["scoring"];
+  winScore: number;
+};
+
+export type H2HLiveGamesResponse = { games: H2HLiveGameSummary[] };
+
 export type H2HMoveRequest = {
   gameId: string;
   x: number;

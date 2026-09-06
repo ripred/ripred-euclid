@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties, type MouseEventHandler } from "react";
 
 import "./share-preview.css";
 import type {
@@ -64,146 +64,17 @@ function formatDisplayDate(input: string | number | Date = Date.now()) {
   });
 }
 
-function RankingsPreview({
-  share,
-  theme,
-}: {
-  share: RankingsSharePayload;
-  theme: ThemeMode;
-}) {
-  const palette = surfacePalette[theme];
-  const accent = share.bucket === "hvh" ? "#ef4444" : "#2563eb";
-
+function ResultHeading({ share }: { share: ResultSharePayload }) {
   return (
-    <div
-      style={{
-        background: palette.shellBg,
-        color: palette.title,
-        display: "flex",
-        justifyContent: "center",
-        padding: "8px 12px 6px",
-      }}
-    >
-      <div
-        style={{
-          width: "min(760px, 100%)",
-          borderRadius: 22,
-          border: `1px solid ${palette.cardBorder}`,
-          background: palette.cardBg,
-          boxShadow:
-            theme === "dark"
-              ? "0 28px 64px rgba(2,8,23,.34)"
-              : "0 18px 44px rgba(15,23,42,.12)",
-          padding: "18px 16px 16px",
-          display: "grid",
-          gap: 10,
-          backdropFilter: "blur(10px)",
-        }}
-      >
-        <div>
-          <div
-            style={{
-              color: palette.accent,
-              fontSize: 12,
-              fontWeight: 800,
-              letterSpacing: "0.14em",
-              textTransform: "uppercase",
-            }}
-          >
-            r/{share.subredditName}
-          </div>
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 32,
-              fontWeight: 900,
-              lineHeight: 1.02,
-            }}
-          >
-            {share.title}
-          </div>
-          <div style={{ marginTop: 8, color: palette.text, fontSize: 14 }}>
-            {share.subtitle}
-          </div>
-        </div>
-
-        <div
-          style={{
-            borderRadius: 16,
-            border: `1px solid ${palette.softBorder}`,
-            background: palette.softBg,
-            padding: "12px 14px",
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 10,
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ color: palette.title, fontSize: 16, fontWeight: 800 }}>
-            Leaderboard Snapshot
-          </div>
-          <div style={{ color: palette.muted, fontSize: 13 }}>
-            Shared from Euclid on {formatDisplayDate(share.sharedAt)}
-          </div>
-        </div>
-
-        <div style={{ display: "grid", gap: 8 }}>
-          {share.rows.slice(0, 5).map((row, index) => (
-            <div
-              key={`${row.userId}-${index}`}
-              style={{
-                borderRadius: 16,
-                border: `1px solid ${palette.softBorder}`,
-                background: palette.softBg,
-                padding: "10px 12px",
-                display: "grid",
-                gridTemplateColumns: "auto 1fr auto auto",
-                alignItems: "center",
-                gap: 12,
-              }}
-            >
-              <div
-                style={{
-                  color: accent,
-                  fontSize: 22,
-                  fontWeight: 900,
-                  width: 28,
-                  textAlign: "center",
-                }}
-              >
-                {index + 1}
-              </div>
-              <div
-                style={{
-                  color: palette.title,
-                  fontSize: 16,
-                  fontWeight: 800,
-                  minWidth: 0,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {row.name || row.userId}
-              </div>
-              <div
-                style={{ color: palette.title, fontSize: 16, fontWeight: 800 }}
-              >
-                {row.rating}
-              </div>
-              <div style={{ color: palette.muted, fontSize: 13 }}>
-                {row.wins}-{row.losses}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
+    <header>
+      <p className="euclid-result-share__eyebrow">Euclid · Shared game</p>
+      <h1>{share.headline}</h1>
+      <p className="euclid-result-share__rules">{share.subtitle}</p>
+    </header>
   );
 }
 
-// Both entrypoints use this layout, including posts already created with "game".
-export function ResultShareView({
+function ResultScores({
   share,
   theme,
 }: {
@@ -215,6 +86,80 @@ export function ResultShareView({
     { side: 1, name: share.p1Name, color: palette.red },
     { side: 2, name: share.p2Name, color: palette.blue },
   ];
+
+  return (
+    <dl className="euclid-result-share__scores" aria-label="Final scores">
+      {players.map(({ side, name, color }) => (
+        <div className="euclid-result-share__player" key={side}>
+          <dt style={{ color }}>{name}</dt>
+          <dd>
+            {share.board.m_players[side - 1]?.m_score ?? 0}
+            <span className="euclid-result-share__outcome">
+              {share.winnerSide === side ? "Winner" : "Opponent"}
+            </span>
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function RankingsSummary({ share }: { share: RankingsSharePayload }) {
+  return (
+    <>
+      <header>
+        <p className="euclid-result-share__eyebrow">
+          Euclid · Leaderboard snapshot
+        </p>
+        <h1>{share.title}</h1>
+        <p className="euclid-result-share__rules">{share.subtitle}</p>
+      </header>
+      {share.rows.length > 0 ? (
+        <ol
+          className="euclid-share-preview__rankings"
+          aria-label="Shared leaderboard leaders"
+          style={
+            {
+              "--share-rank-accent":
+                share.bucket === "hvh" ? "#ef4444" : "#2563eb",
+            } as CSSProperties
+          }
+        >
+          {share.rows.slice(0, 3).map((row, index) => (
+            <li key={`${row.userId}-${index}`}>
+              <span className="euclid-share-preview__rank" aria-hidden="true">
+                {index + 1}
+              </span>
+              <span className="euclid-share-preview__name">
+                {row.name || row.userId}
+              </span>
+              <span
+                className="euclid-share-preview__rating"
+                aria-label={`Rating ${row.rating}`}
+              >
+                {row.rating}
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="euclid-share-preview__empty">
+          No ranked players in this snapshot.
+        </p>
+      )}
+    </>
+  );
+}
+
+// Full presentation for the expanded entrypoint and posts created with "game".
+export function ResultShareView({
+  share,
+  theme,
+}: {
+  share: ResultSharePayload;
+  theme: ThemeMode;
+}) {
+  const palette = surfacePalette[theme];
 
   return (
     <section
@@ -237,25 +182,8 @@ export function ResultShareView({
         style={{ background: palette.cardBg }}
       >
         <div className="euclid-result-share__summary">
-          <header>
-            <p className="euclid-result-share__eyebrow">Euclid · Shared game</p>
-            <h1>{share.headline}</h1>
-            <p className="euclid-result-share__rules">{share.subtitle}</p>
-          </header>
-
-          <dl className="euclid-result-share__scores" aria-label="Final scores">
-            {players.map(({ side, name, color }) => (
-              <div className="euclid-result-share__player" key={side}>
-                <dt style={{ color }}>{name}</dt>
-                <dd>
-                  {share.board.m_players[side - 1]?.m_score ?? 0}
-                  <span className="euclid-result-share__outcome">
-                    {share.winnerSide === side ? "Winner" : "Opponent"}
-                  </span>
-                </dd>
-              </div>
-            ))}
-          </dl>
+          <ResultHeading share={share} />
+          <ResultScores share={share} theme={theme} />
           <p className="euclid-result-share__detail">{share.details}</p>
           <footer>
             <p>{share.footer}</p>
@@ -278,12 +206,97 @@ export function ResultShareView({
 export function SharePreview({
   share,
   theme,
+  onExpand,
 }: {
   share: SharedPostPayload;
   theme: ThemeMode;
+  onExpand: MouseEventHandler<HTMLButtonElement>;
 }) {
-  if (share.kind === "rankings") {
-    return <RankingsPreview share={share} theme={theme} />;
-  }
-  return <ResultShareView share={share} theme={theme} />;
+  const palette = surfacePalette[theme];
+  const [expansionFailed, setExpansionFailed] = useState(false);
+  const expand: MouseEventHandler<HTMLButtonElement> = (event) => {
+    try {
+      onExpand(event);
+      setExpansionFailed(false);
+    } catch {
+      setExpansionFailed(true);
+    }
+  };
+
+  return (
+    <section
+      className="euclid-share-preview"
+      data-expansion-failed={expansionFailed || undefined}
+      aria-label={
+        share.kind === "rankings"
+          ? "Shared leaderboard preview"
+          : "Shared game result preview"
+      }
+      style={
+        {
+          background: palette.shellBg,
+          color: palette.title,
+          "--share-muted": palette.muted,
+          "--share-text": palette.text,
+          "--share-border": palette.cardBorder,
+          "--share-surface": palette.softBg,
+          "--share-accent": palette.accent,
+        } as CSSProperties
+      }
+    >
+      <article
+        className="euclid-share-preview__card"
+        style={{ background: palette.cardBg }}
+      >
+        <div className="euclid-share-preview__summary">
+          {share.kind === "rankings" ? (
+            <RankingsSummary share={share} />
+          ) : (
+            <>
+              <ResultHeading share={share} />
+              <ResultScores share={share} theme={theme} />
+              <p className="euclid-result-share__detail">{share.details}</p>
+            </>
+          )}
+          <p className="euclid-share-preview__metadata">
+            r/{share.subredditName} ·{" "}
+            <time dateTime={share.sharedAt}>
+              {formatDisplayDate(share.sharedAt)}
+            </time>
+          </p>
+        </div>
+        <div className="euclid-share-preview__actions">
+          {expansionFailed ? (
+            <p className="euclid-share-preview__error" role="alert">
+              Could not open this post. Try again.
+            </p>
+          ) : null}
+          <button
+            type="button"
+            className="euclid-share-preview__expand"
+            aria-label={
+              share.kind === "rankings"
+                ? "View full leaderboard snapshot"
+                : "View full result & replay"
+            }
+            onClick={expand}
+          >
+            <span className="euclid-share-preview__expand-label">
+              {share.kind === "rankings"
+                ? "View full leaderboard snapshot"
+                : "View full result & replay"}
+            </span>
+            <span
+              className="euclid-share-preview__expand-short"
+              aria-hidden="true"
+            >
+              {share.kind === "rankings"
+                ? "View full snapshot"
+                : "View full result"}
+            </span>
+          </button>
+        </div>
+      </article>
+    </section>
+  );
 }
