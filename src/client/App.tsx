@@ -4883,39 +4883,31 @@ export const App = () => {
       ) : null;
 
     content = (
-      <div
-        style={{
-          position: "relative",
-          height: "100vh",
-          background: "var(--bg)",
-        }}
-      >
-        <GameScreen
-          exitLabel={exitAction.label}
-          viewport={viewport}
-          board={board}
-          onCellClick={onCellClick}
-          onLeave={() => void exitSoloGame()}
-          exitPending={soloExitPending}
-          exitPendingLabel={soloExitPendingLabel}
-          p1Name={p1Name}
-          p2Name={p2Name}
-          midText={midText}
-          glowSide={
-            presentation.terminal ? null : board.m_turn === 0 ? "red" : "blue"
-          }
-          dimSide={
-            presentation.terminal ? null : board.m_turn === 0 ? "blue" : "red"
-          }
-          overlay={overlay}
-          chatItems={localChat.slice(-8)}
-          chatCanCompose={soloChatAvailable}
-          assistOn={assistance.allowAssistHighlights && assistOn}
-          myColor={presentation.humanSide}
-          scoreFeedback={soloScoreFeedback}
-          futureScoreFeedback={soloScoreFeedbackQueue.slice(1)}
-        />
-      </div>
+      <GameScreen
+        exitLabel={exitAction.label}
+        viewport={viewport}
+        board={board}
+        onCellClick={onCellClick}
+        onLeave={() => void exitSoloGame()}
+        exitPending={soloExitPending}
+        exitPendingLabel={soloExitPendingLabel}
+        p1Name={p1Name}
+        p2Name={p2Name}
+        midText={midText}
+        glowSide={
+          presentation.terminal ? null : board.m_turn === 0 ? "red" : "blue"
+        }
+        dimSide={
+          presentation.terminal ? null : board.m_turn === 0 ? "blue" : "red"
+        }
+        overlay={overlay}
+        chatItems={localChat.slice(-8)}
+        chatCanCompose={soloChatAvailable}
+        assistOn={assistance.allowAssistHighlights && assistOn}
+        myColor={presentation.humanSide}
+        scoreFeedback={soloScoreFeedback}
+        futureScoreFeedback={soloScoreFeedbackQueue.slice(1)}
+      />
     );
   }
 
@@ -5030,19 +5022,68 @@ const GameScreen: React.FC<{
   scoreFeedback,
   futureScoreFeedback,
 }) => {
+  const screenRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const boardRef = useRef<HTMLDivElement>(null);
+  const [boardSpace, setBoardSpace] = useState({ width: 0, height: 0 });
+  // Keep score arrangement independent of board size so measurement cannot
+  // alternate between stacked and side-by-side layouts.
+  const isMobile = viewport.width <= 768;
   const layout = useMemo(
     () =>
-      calculateBoardLayout(viewport.width, viewport.height, board.W, board.H),
-    [board.H, board.W, viewport.height, viewport.width],
+      calculateBoardLayout(
+        boardSpace.width,
+        boardSpace.height,
+        board.W,
+        board.H,
+      ),
+    [board.H, board.W, boardSpace.height, boardSpace.width],
   );
   const {
-    isMobile,
     cellSize: cell,
     dotSize: DOT,
     boardWidth: bw,
     boardHeight: bh,
-    stackScores,
   } = layout;
+
+  useLayoutEffect(() => {
+    const screen = screenRef.current;
+    const content = contentRef.current;
+    const boardElement = boardRef.current;
+    if (!screen || !content || !boardElement) return;
+
+    const measure = () => {
+      const style = getComputedStyle(screen);
+      const horizontalPadding =
+        parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+      const verticalPadding =
+        parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+      // Subtract the actual title, scores, chat, controls and gaps. Their height
+      // changes with wrapping, fonts and chat; a fixed allowance cannot fit them.
+      const reservedHeight =
+        content.getBoundingClientRect().height -
+        boardElement.getBoundingClientRect().height;
+      const width = Math.max(
+        0,
+        Math.floor(screen.clientWidth - horizontalPadding),
+      );
+      const height = Math.max(
+        0,
+        Math.floor(screen.clientHeight - verticalPadding - reservedHeight),
+      );
+      setBoardSpace((current) =>
+        current.width === width && current.height === height
+          ? current
+          : { width, height },
+      );
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    for (const element of [screen, content, boardElement])
+      observer.observe(element);
+    return () => observer.disconnect();
+  }, [viewport.width, viewport.height]);
 
   const [showHistoricalSquares, setShowHistoricalSquares] = useState(true);
 
@@ -5264,7 +5305,6 @@ const GameScreen: React.FC<{
   const clearHover = () => setHoverIdx(null);
 
   // Mobile touch for assist
-  const boardRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!assistOn || !isMobile || !boardRef.current) return;
     const boardElement = boardRef.current;
@@ -5311,13 +5351,19 @@ const GameScreen: React.FC<{
 
   return (
     <div
-      className="euclid-game-screen flex flex-col items-center gap-4 p-4"
-      style={{ background: "var(--bg)" }}
+      ref={screenRef}
+      className="euclid-game-screen"
+      role="region"
+      aria-label="Euclid game"
+      tabIndex={overlay ? -1 : 0}
+      style={{ maxHeight: viewport.height }}
     >
       {/* overlay (winner/notice) */}
       {overlay}
       <div
+        ref={contentRef}
         className="euclid-game-screen__content"
+        style={{ minWidth: bw }}
         inert={overlay ? true : undefined}
         aria-hidden={overlay ? true : undefined}
       >
@@ -5329,82 +5375,62 @@ const GameScreen: React.FC<{
         </h1>
 
         {/* Scoreboard */}
-        {p1Name && p2Name ? (
-          !stackScores ? (
-            <div className="w-full flex justify-between gap-4 items-start">
+        {p1Name && p2Name && (
+          <div
+            className={`euclid-game-scores${isMobile ? " euclid-game-scores--stacked" : ""}`}
+          >
+            {(
+              [
+                {
+                  name: p1Name,
+                  score: board.m_players[0].m_score,
+                  avatar: p1Avatar,
+                  glow: leftGlow,
+                  dim: leftDim,
+                },
+                {
+                  name: p2Name,
+                  score: board.m_players[1].m_score,
+                  avatar: p2Avatar,
+                  glow: rightGlow,
+                  dim: rightDim,
+                },
+              ] as const
+            ).map((player, index) => (
               <div
-                className="flex-1 flex justify-start"
-                style={{ opacity: scoreFeedback?.player === 0 ? 1 : leftDim }}
+                key={index}
+                style={{
+                  gridArea: `player${index + 1}`,
+                  justifySelf: isMobile
+                    ? "center"
+                    : index === 0
+                      ? "start"
+                      : "end",
+                  opacity: scoreFeedback?.player === index ? 1 : player.dim,
+                }}
               >
                 <ScoreCard
-                  label={p1Name!}
-                  score={board.m_players[0].m_score}
-                  align="left"
-                  glow={leftGlow}
-                  avatar={p1Avatar}
-                  feedback={scoreFeedback?.player === 0 ? scoreFeedback : null}
+                  label={player.name}
+                  score={player.score}
+                  align={index === 1 && !isMobile ? "right" : "left"}
+                  glow={player.glow}
+                  avatar={player.avatar}
+                  compact={isMobile}
+                  feedback={
+                    scoreFeedback?.player === index ? scoreFeedback : null
+                  }
                 />
               </div>
-              <div
-                className="flex flex-col items-center justify-start"
-                style={{ minWidth: 220, color: "var(--text)" }}
-              >
-                <div style={{ fontWeight: 800 }}>{midText}</div>
-              </div>
-              <div
-                className="flex-1 flex justify-end"
-                style={{ opacity: scoreFeedback?.player === 1 ? 1 : rightDim }}
-              >
-                <ScoreCard
-                  label={p2Name!}
-                  score={board.m_players[1].m_score}
-                  align="right"
-                  glow={rightGlow}
-                  avatar={p2Avatar}
-                  feedback={scoreFeedback?.player === 1 ? scoreFeedback : null}
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="w-full flex flex-col items-center gap-2">
-              <div
-                style={{ opacity: scoreFeedback?.player === 0 ? 1 : leftDim }}
-              >
-                <ScoreCard
-                  label={p1Name!}
-                  score={board.m_players[0].m_score}
-                  align="left"
-                  glow={leftGlow}
-                  avatar={p1Avatar}
-                  compact
-                  feedback={scoreFeedback?.player === 0 ? scoreFeedback : null}
-                />
-              </div>
-              <div style={{ color: "var(--text)", fontWeight: 800 }}>
-                {midText}
-              </div>
-              <div
-                style={{ opacity: scoreFeedback?.player === 1 ? 1 : rightDim }}
-              >
-                <ScoreCard
-                  label={p2Name!}
-                  score={board.m_players[1].m_score}
-                  align="right"
-                  glow={rightGlow}
-                  avatar={p2Avatar}
-                  compact
-                  feedback={scoreFeedback?.player === 1 ? scoreFeedback : null}
-                />
-              </div>
-            </div>
-          )
-        ) : null}
+            ))}
+            <div className="euclid-game-scores__turn">{midText}</div>
+          </div>
+        )}
 
         {/* Board */}
         <div
           ref={boardRef}
           className="relative"
-          style={{ width: bw, height: bh, margin: "0 auto", maxWidth: "100vw" }}
+          style={{ width: bw, height: bh, margin: "0 auto" }}
           onMouseLeave={clearHover}
         >
           {scoreFeedback && scoreBadgePosition && (
@@ -5519,7 +5545,7 @@ const GameScreen: React.FC<{
         {/* Chat log (if provided) */}
         {chatItems && chatItems.length > 0 && (
           <div
-            className="relative w-[min(720px,95vw)] max-w-[95vw]"
+            className="relative w-full max-w-[720px]"
             style={{
               background: "var(--card-bg)",
               border: `1px solid var(--card-border)`,
@@ -5560,10 +5586,7 @@ const GameScreen: React.FC<{
         )}
 
         {/* Leave/Back */}
-        <div
-          className="flex gap-2 mt-2"
-          style={{ marginBottom: stackScores ? 96 : 76 }}
-        >
+        <div className="euclid-game-actions">
           <button
             type="button"
             className="euclid-square-toggle rounded cursor-pointer"

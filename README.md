@@ -6,9 +6,9 @@ Euclid is a turn-based Reddit strategy game about claiming grid points and compl
 
 ![Euclid game](Euclid-Game2.png)
 
-The current app version is `0.1.98` and the project is pinned to Devvit `0.14.2`.
+The current app version is `0.1.99` and the project is pinned to Devvit `0.14.2`.
 
-The intended public-facing community is [r/EuclidTheGame](https://www.reddit.com/r/EuclidTheGame/), currently private for beta testing. Its installed release was verified as `0.1.98` on September 5, 2026. Its community icon and desktop/mobile banners match those of `r/ripred_euclid_dev`; the development playtest target remains unchanged.
+The intended public-facing community is [r/EuclidTheGame](https://www.reddit.com/r/EuclidTheGame/), currently private for beta testing. Its installed release and the release in `r/ripred_euclid_dev` were verified as `0.1.99` on September 6, 2026. Its community icon and desktop/mobile banners match those of `r/ripred_euclid_dev`; the development playtest target remains unchanged.
 
 ## Game rules
 
@@ -55,6 +55,7 @@ Home records, resume and queue status, and live scoring effects are projections 
 - The default inline post entrypoint is a self-running preview: intro, rules demo, then live leaderboards. Preview onboarding is complete only after the full demo finishes.
 - **Start Playing!** opens the full game entrypoint.
 - Solo gameplay shortcuts require a fresh key press during the displayed human turn. Buffered keys, held-key repeats, and partial shortcut input do not carry into the next turn; gameplay keys are ignored while a move is pending or the game has ended. Chat typing is unaffected.
+- Solo, multiplayer, and spectator games share a viewport-bounded layout. Board sizing accounts for the actual title, scores, chat, and action controls as they resize or wrap. Unusually small frames retain scrolling rather than clipping controls or shrinking cells below their minimum size.
 - The expanded entrypoint opens on a responsive navy-and-vector-grid dashboard. **Play Euclid** is the primary action, **Play a Redditor** is secondary, separate solo and multiplayer ratings are shown, and saved solo games, active Redditor matches, and matchmaking state have explicit continue or cancel controls. Live games, Leaderboard, Options, and Rules remain quieter navigation.
 - Canonical scoring moves show `+N` and the completed-square count beside the move and scorecard, animate only the newly completed squares, and briefly show each new square's enclosing footprint in Grid Footprint mode. Players can hide accumulated square lines without hiding the active scoring event; True Area does not show a footprint overlay.
 - Live Redditor matches give participants a visible, touch-sized **Chat** control while retaining the `\` keyboard shortcut. The focus-contained composer has explicit Send and Cancel actions, and its chronological live log wraps long messages without trapping the board controls below the viewport. Spectators can read the existing shared log but cannot compose messages.
