@@ -1,0 +1,154 @@
+/* Expanded spectator pages scroll as one surface, so controls remain reachable
+   even in Reddit's shortest viewport or with enlarged browser text. */
+.watch-page {
+  --watch-surface: #101d30;
+  --watch-border: #34465e;
+  --watch-muted: #b5c3d5;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding: clamp(12px, 3vw, 28px);
+  color: #f8fafc;
+  background: #0b1220;
+}
+
+.watch-page[data-theme="light"] {
+  --watch-surface: #ffffff;
+  --watch-border: #b8cbe3;
+  --watch-muted: #4b647f;
+  color: #0f172a;
+  background: #f1f5f9;
+}
+
+.watch-page *,
+.watch-controls,
+.watch-controls * {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.watch-page__content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto;
+  overflow-wrap: anywhere;
+}
+
+.watch-page h1,
+.watch-page h2,
+.watch-page h3,
+.watch-page p,
+.watch-page dl,
+.watch-page dd {
+  margin: 0;
+}
+
+.watch-page h1 {
+  font-size: clamp(23px, 4vw, 32px);
+  line-height: 1.2;
+  font-weight: 800;
+}
+
+.watch-page h2 {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.watch-page h3 {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.watch-page p {
+  line-height: 1.5;
+}
+
+.watch-page__muted {
+  color: var(--watch-muted);
+}
+
+.watch-page__panel,
+.watch-match {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--watch-border);
+  border-radius: 16px;
+  background: var(--watch-surface);
+}
+
+.watch-matches {
+  display: grid;
+  gap: 16px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.watch-match__scores {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.watch-match__scores dt {
+  font-weight: 600;
+}
+
+.watch-match__scores dd {
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.watch-match__activity {
+  font-size: 13px;
+}
+
+.watch-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+}
+
+.watch-controls button {
+  min-height: 44px;
+  max-width: 100%;
+  padding: 10px 16px;
+  border: 1px solid currentColor;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.watch-controls button.watch-controls__primary {
+  border-color: #2563eb;
+  color: #ffffff;
+  background: #2563eb;
+}
+
+.watch-controls button:focus-visible,
+.watch-page:focus-visible {
+  outline: 3px solid #c67612;
+  outline-offset: 3px;
+}
+
+.watch-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}

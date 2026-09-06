@@ -1162,6 +1162,57 @@ describe("H2H canonical mutations", () => {
 });
 
 describe("H2H live listing and stale cleanup", () => {
+  it("keeps names and scores in canonical player order regardless of map insertion", async () => {
+    const { redis, store } = createFixture();
+    const gameId = await pair(store);
+    let board = createInitialH2HBoard("p1", "p2", {
+      now: 1_000,
+      names: { p2: "Second player", p1: "First player" },
+    });
+    for (const index of [0, 7, 1, 6, 8, 5, 9]) {
+      board = applyH2HMove(
+        board,
+        board.m_players[board.m_turn].userId,
+        move(
+          gameId,
+          index % board.W,
+          Math.floor(index / board.W),
+          board.revision,
+        ),
+        1_000,
+      ).board;
+    }
+    redis.externalSet(H2H_STORE_KEYS.game(gameId), JSON.stringify(board));
+
+    await expect(store.listLiveGames()).resolves.toEqual([
+      {
+        gameId,
+        playerIds: ["p1", "p2"],
+        names: { p2: "Second player", p1: "First player" },
+        scores: [4, 0],
+        lastSaved: 1_000,
+        revision: 7,
+        width: H2H_RULES.W,
+        height: H2H_RULES.H,
+        scoring: H2H_RULES.scoring,
+        winScore: H2H_RULES.winScore,
+      },
+    ]);
+  });
+
+  it("excludes terminal games while retaining their finished boards", async () => {
+    const { redis, store } = createFixture();
+    const gameId = await pair(store);
+    const current = await store.getState(gameId);
+    if (!current) throw new Error("Pairing did not create a board.");
+    const ended = endH2HByDeparture(current.board, "p1", gameId, 1_000);
+    redis.externalSet(H2H_STORE_KEYS.game(gameId), JSON.stringify(ended.board));
+
+    await expect(store.listLiveGames()).resolves.toEqual([]);
+    expect(redis.json(H2H_STORE_KEYS.activeGames)).toEqual([]);
+    await expect(store.getState(gameId)).resolves.toEqual(ended);
+  });
+
   it("cleans stale games and deletes only mappings that still match", async () => {
     const { redis, store, setNow } = createFixture();
     const gameId = await pair(store);

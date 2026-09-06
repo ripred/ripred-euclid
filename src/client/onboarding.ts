@@ -44,10 +44,13 @@ export function storeCompletion(
 export function shouldShowFullTutorial(
   mode: string | null,
   completion: TutorialCompletionState,
+  spectating = false,
 ): boolean {
+  // Watching uses the multiplayer renderer but must not block it with player onboarding.
   const isGameMode = mode === "ai" || mode === "multiplayer";
   return (
     isGameMode &&
+    !spectating &&
     !completion.previewDemoCompleted &&
     !completion.fullTutorialCompleted &&
     !completion.completedThisSession

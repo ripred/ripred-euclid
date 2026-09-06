@@ -106,11 +106,13 @@ function ReplayBoard({
   frame,
   palette,
   compact,
+  reduceMotion,
 }: {
   board: SerializableBoard;
   frame: ReplayFrame;
   palette: typeof replayPalette.dark;
   compact: boolean;
+  reduceMotion: boolean;
 }) {
   const gap = Math.max(
     18,
@@ -237,7 +239,7 @@ function ReplayBoard({
               stroke="rgba(255,255,255,.18)"
               strokeWidth="1.5"
               style={
-                isCurrentMove
+                isCurrentMove && !reduceMotion
                   ? { animation: "shareReplayPlaceDot .7s ease-out both" }
                   : undefined
               }
@@ -257,7 +259,11 @@ function ReplayBoard({
                 : "rgba(59,130,246,.52)"
             }
             strokeWidth="3"
-            style={{ animation: "shareReplayPulse 1.25s ease-in-out infinite" }}
+            style={
+              reduceMotion
+                ? undefined
+                : { animation: "shareReplayPulse 1.25s ease-in-out infinite" }
+            }
           />
         ) : null}
 
@@ -277,8 +283,12 @@ function ReplayBoard({
             strokeLinecap="round"
             pathLength={1}
             strokeDasharray="1"
-            strokeDashoffset="1"
-            style={{ animation: "shareReplayDrawSquare .7s ease-out forwards" }}
+            strokeDashoffset={reduceMotion ? 0 : 1}
+            style={
+              reduceMotion
+                ? undefined
+                : { animation: "shareReplayDrawSquare .7s ease-out forwards" }
+            }
           />
         ))}
       </svg>
@@ -290,13 +300,16 @@ export function ReplayBoardCard({
   board,
   theme = "dark",
   compact = false,
+  kind = "replay",
 }: {
   board: SerializableBoard;
   theme?: ReplayTheme;
   compact?: boolean;
+  kind?: "replay" | "demo";
 }) {
   const palette = replayPalette[theme];
   const frames = buildReplayFrames(board);
+  const isDemo = kind === "demo";
   const totalMoves = Math.max(0, frames.length - 1);
   const finalScores: [number, number] = [
     board.m_players[0]?.m_score ?? 0,
@@ -344,18 +357,22 @@ export function ReplayBoardCard({
     return () => window.clearTimeout(timer);
   }, [currentFrame.newSquares.length, frameIndex, frames.length, reduceMotion]);
 
+  // The tutorial uses the same renderer, but never claims a real match or win.
+  const endLabel = isDemo ? "Demo overview" : "Final board";
   const replayLabel = reduceMotion
-    ? "Final board"
+    ? endLabel
     : totalMoves > 0
       ? currentFrame.moveNumber === 0
-        ? "Replay starting position"
+        ? `${isDemo ? "Demo" : "Replay"} starting position`
         : `Move ${currentFrame.moveNumber} of ${totalMoves}`
-      : "Final board";
+      : endLabel;
   const replayDetail =
     currentFrame.newSquares.length > 0
       ? `This move completed ${currentFrame.newSquares.length} square${currentFrame.newSquares.length === 1 ? "" : "s"} for ${currentFrame.newSquares.reduce((sum, square) => sum + square.points, 0)} points.`
       : currentFrame.moveNumber === 0
-        ? "Watching a passive replay of the real finished game."
+        ? isDemo
+          ? "Watching a recorded teaching demo, not a live match."
+          : "Watching a passive replay of the real finished game."
         : "No square scored on this move.";
 
   return (
@@ -400,7 +417,7 @@ export function ReplayBoardCard({
               textTransform: "uppercase",
             }}
           >
-            Real Game Replay
+            {isDemo ? "Teaching Demo" : "Real Game Replay"}
           </div>
           <div
             style={{
@@ -420,7 +437,7 @@ export function ReplayBoardCard({
             fontWeight: 700,
           }}
         >
-          Final {finalScores[0]}-{finalScores[1]}
+          {isDemo ? "Demo total" : "Final"} {finalScores[0]}-{finalScores[1]}
         </div>
       </div>
 
@@ -441,6 +458,7 @@ export function ReplayBoardCard({
           frame={currentFrame}
           palette={palette}
           compact={compact}
+          reduceMotion={reduceMotion}
         />
       </div>
     </div>

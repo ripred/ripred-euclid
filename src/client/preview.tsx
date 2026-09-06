@@ -1,20 +1,10 @@
 import "./index.css";
+import "./preview.css";
 
 import { requestExpandedMode } from "@devvit/web/client";
-import {
-  StrictMode,
-  useEffect,
-  useRef,
-  useState,
-  type MouseEvent,
-} from "react";
-import { createRoot } from "react-dom/client";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 
-import type {
-  InitResponse,
-  RankingsResponse,
-  RankingsShareRow,
-} from "../shared/types/api";
+import type { InitResponse, RankingsShareRow } from "../shared/types/api";
 import {
   DEMO_STEPS,
   IDLE_FRAME,
@@ -28,6 +18,9 @@ import {
   storeCompletion,
 } from "./onboarding";
 import { SharePreview } from "./share-preview";
+import { fetchRankings, type LoadedRankings } from "./rankings-loader";
+import { errorMessage } from "./error-message";
+import type { ExpandedEntry } from "./expanded-entry";
 import {
   applyThemeModeToDocument,
   installThemeModeSync,
@@ -62,19 +55,9 @@ const boardWidth =
   boardLayout.startX * 2 + boardLayout.gap * (boardLayout.cols - 1);
 const boardHeight =
   boardLayout.startY * 2 + boardLayout.gap * (boardLayout.rows - 1);
-const PREVIEW_BOARD_LANE_WIDTH = 218;
 const LEADERBOARD_REFRESH_MS = 60_000;
 
 type PreviewSurfaceMode = "intro" | "demo" | "leaderboard";
-type PreviewRankings = {
-  hvh: RankingsShareRow[];
-  hva: RankingsShareRow[];
-  hvaRules?: RankingsResponse["hvaRules"];
-};
-
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
-}
 
 const previewPalette: Record<
   ThemeMode,
@@ -136,19 +119,22 @@ const dotColor = (owner: Owner, emptyDot: string) =>
 const squareStroke = (owner: Owner, palette: typeof previewPalette.dark) =>
   owner === 1 ? palette.squareRed : palette.squareBlue;
 
-function PreviewStatus({
+export function PreviewStatus({
   theme,
   title,
   body,
+  onRetry,
 }: {
   theme: ThemeMode;
   title: string;
   body: string;
+  onRetry?: () => void;
 }) {
   const palette = previewPalette[theme];
 
   return (
     <div
+      className="euclid-preview euclid-preview-status"
       style={{
         background: palette.shellBg,
         color: palette.title,
@@ -156,11 +142,11 @@ function PreviewStatus({
         alignItems: "flex-start",
         justifyContent: "center",
         padding: "8px 12px 6px",
-        minHeight: "100vh",
         boxSizing: "border-box",
       }}
     >
       <div
+        className="euclid-preview-status-card"
         style={{
           width: "min(760px, 100%)",
           borderRadius: 22,
@@ -190,9 +176,22 @@ function PreviewStatus({
         <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.04 }}>
           {title}
         </div>
-        <div style={{ color: palette.text, fontSize: 14, lineHeight: 1.5 }}>
+        <div
+          className="euclid-preview-status-message"
+          style={{ color: palette.text, fontSize: 14, lineHeight: 1.5 }}
+        >
           {body}
         </div>
+        {onRetry && (
+          <button
+            type="button"
+            className="euclid-preview-more"
+            onClick={onRetry}
+            style={{ color: palette.title, borderColor: palette.panelBorder }}
+          >
+            Try again
+          </button>
+        )}
       </div>
     </div>
   );
@@ -283,6 +282,7 @@ function PreviewBoard({
   return (
     <div
       aria-hidden="true"
+      className="euclid-preview-board"
       style={{
         position: "relative",
         minWidth: 0,
@@ -319,9 +319,10 @@ function PreviewBoard({
       <svg
         viewBox={`0 0 ${boardWidth} ${boardHeight}`}
         style={{
-          width: 200,
+          width: "100%",
           maxWidth: "100%",
-          height: "auto",
+          height: "100%",
+          minHeight: 0,
           display: "block",
           justifySelf: "center",
         }}
@@ -447,8 +448,8 @@ function LeaderboardRow({
 
   return (
     <div
+      className="euclid-preview-leader-row"
       style={{
-        display: "grid",
         gridTemplateColumns: "auto minmax(0, 1fr) auto",
         gap: 10,
         alignItems: "center",
@@ -491,7 +492,10 @@ function LeaderboardRow({
         >
           {row.name}
         </div>
-        <div style={{ color: palette.text, fontSize: 11, lineHeight: 1.25 }}>
+        <div
+          className="euclid-preview-leader-record"
+          style={{ color: palette.text, fontSize: 11, lineHeight: 1.25 }}
+        >
           {row.wins}W · {row.losses}L · {row.draws}D · {row.games}G
         </div>
       </div>
@@ -528,25 +532,33 @@ function LeaderboardBucket({
 }) {
   return (
     <div
+      className="euclid-preview-bucket"
       style={{
         minHeight: 0,
         display: "grid",
-        gridTemplateRows: "auto minmax(0, 1fr)",
-        gap: 8,
       }}
     >
-      <div style={{ display: "grid", gap: 2 }}>
+      <div
+        className="euclid-preview-bucket-heading"
+        style={{ display: "grid", gap: 2 }}
+      >
         <div style={{ color: palette.title, fontSize: 14, fontWeight: 900 }}>
           {title}
         </div>
-        <div style={{ color: palette.text, fontSize: 11, lineHeight: 1.35 }}>
+        <div
+          className="euclid-preview-secondary"
+          style={{ color: palette.text, fontSize: 11, lineHeight: 1.35 }}
+        >
           {subtitle}
         </div>
       </div>
 
       {rows.length ? (
-        <div style={{ display: "grid", gap: 6 }}>
-          {rows.map((row, index) => (
+        <div
+          className="euclid-preview-leaders"
+          style={{ display: "grid", gap: 6 }}
+        >
+          {rows.slice(0, 3).map((row, index) => (
             <LeaderboardRow
               key={`${title}-${row.userId}-${index}`}
               row={row}
@@ -566,30 +578,37 @@ function LeaderboardBucket({
             lineHeight: 1.45,
           }}
         >
-          No entries yet. Be the first redditor to claim this board.
+          No entries yet.
+          <span className="euclid-preview-secondary">
+            {" "}
+            Be the first redditor to claim this board.
+          </span>
         </div>
       )}
     </div>
   );
 }
 
-function PreviewLeaderboard({
-  palette,
+export function PreviewLeaderboard({
+  theme,
   rankings,
   rankingsLoading,
   rankingsError,
   onInteract,
 }: {
-  palette: typeof previewPalette.dark;
-  rankings: PreviewRankings;
+  theme: ThemeMode;
+  rankings: LoadedRankings;
   rankingsLoading: boolean;
   rankingsError: string | null;
   onInteract: () => void;
 }) {
-  const hasRows = rankings.hvh.length > 0 || rankings.hva.length > 0;
+  const palette = previewPalette[theme];
+  const [bucket, setBucket] = useState<"hvh" | "hva">("hvh");
+  const hasRows = rankings[bucket].length > 0;
 
   return (
     <div
+      className="euclid-preview-standings"
       style={{
         display: "grid",
         gridTemplateRows: "auto minmax(0, 1fr)",
@@ -600,6 +619,7 @@ function PreviewLeaderboard({
     >
       <div style={{ display: "grid", gap: 6 }}>
         <div
+          className="euclid-preview-standings-eyebrow"
           style={{
             fontSize: 12,
             fontWeight: 800,
@@ -610,25 +630,30 @@ function PreviewLeaderboard({
         >
           Euclid Leaderboard
         </div>
-        <div style={{ fontSize: 30, fontWeight: 900, lineHeight: 1 }}>
-          Top Redditors Right Now
+        <div
+          className="euclid-preview-standings-title"
+          style={{ fontWeight: 900, lineHeight: 1 }}
+        >
+          Top Redditors
         </div>
-        <div style={{ color: palette.text, fontSize: 14, maxWidth: 520 }}>
-          Watch the splash cycle into live standings, then jump into the full
-          game whenever you’re ready.
+        <div
+          className="euclid-preview-secondary"
+          style={{ color: palette.text, fontSize: 14, maxWidth: 520 }}
+        >
+          A quick look at the leaders. Open the full leaderboard for all
+          standings.
         </div>
       </div>
 
       <div
+        className="euclid-preview-standings-panel"
         style={{
           borderRadius: 18,
           background: palette.panelBg,
           border: `1px solid ${palette.panelBorder}`,
-          padding: "12px 12px 10px",
           minHeight: 0,
           display: "grid",
           gridTemplateRows: "auto minmax(0, 1fr)",
-          gap: 10,
           overflow: "hidden",
         }}
       >
@@ -640,11 +665,30 @@ function PreviewLeaderboard({
             flexWrap: "wrap",
           }}
         >
-          <div style={{ color: palette.title, fontSize: 15, fontWeight: 900 }}>
-            Live standings
-          </div>
-          <div style={{ color: palette.text, fontSize: 12 }}>
-            Scroll to explore both boards.
+          <div
+            className="euclid-preview-rank-tabs"
+            role="group"
+            aria-label="Leaderboard mode"
+          >
+            {(["hvh", "hva"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={bucket === value}
+                onClick={() => {
+                  setBucket(value);
+                  onInteract();
+                }}
+                style={{
+                  color: palette.title,
+                  borderColor: palette.panelBorder,
+                  background:
+                    bucket === value ? palette.boardBg : "transparent",
+                }}
+              >
+                {value === "hvh" ? "vs Redditors" : "vs Euclid"}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -654,43 +698,40 @@ function PreviewLeaderboard({
           </div>
         ) : rankingsError && !hasRows ? (
           <div style={{ color: palette.text, fontSize: 13, lineHeight: 1.5 }}>
-            Unable to load the live leaderboard right now. Open the full game to
-            see the latest standings.
+            Unable to load standings.
+            <span className="euclid-preview-secondary">
+              {" "}
+              Open the full leaderboard to retry.
+            </span>
           </div>
         ) : (
           <div
-            onPointerDown={onInteract}
-            onTouchStart={onInteract}
-            onWheel={onInteract}
-            onScroll={onInteract}
             style={{
               minHeight: 0,
-              overflowY: "auto",
-              paddingRight: 4,
             }}
           >
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                gridTemplateColumns: "minmax(0, 1fr)",
                 gap: 10,
                 alignItems: "start",
               }}
             >
               <LeaderboardBucket
-                title="Redditor vs Redditor"
-                subtitle="Competitive matches between two human players."
-                rows={rankings.hvh}
-                palette={palette}
-              />
-              <LeaderboardBucket
-                title={`${HUMAN_VS_EUCLID_LABEL} — Ranked`}
-                subtitle={
-                  rankings.hvaRules
-                    ? `${rankings.hvaRules.rules.W}×${rankings.hvaRules.rules.H} Grid Footprint, first to ${rankings.hvaRules.rules.winScore}, ${EUCLID_LABEL} on Brutal.`
-                    : `8×8 Grid Footprint, first to 150, ${EUCLID_LABEL} on Brutal.`
+                title={
+                  bucket === "hvh"
+                    ? "Redditor vs Redditor"
+                    : `${HUMAN_VS_EUCLID_LABEL} — Ranked`
                 }
-                rows={rankings.hva}
+                subtitle={
+                  bucket === "hvh"
+                    ? "Competitive matches between two human players."
+                    : rankings.hvaRules
+                      ? `${rankings.hvaRules.rules.W}×${rankings.hvaRules.rules.H} Grid Footprint, first to ${rankings.hvaRules.rules.winScore}, ${EUCLID_LABEL} on Brutal.`
+                      : `8×8 Grid Footprint, first to 150, ${EUCLID_LABEL} on Brutal.`
+                }
+                rows={rankings[bucket]}
                 palette={palette}
               />
             </div>
@@ -701,10 +742,114 @@ function PreviewLeaderboard({
   );
 }
 
+export function PreviewActions({
+  theme,
+  surfaceMode,
+  expansionError,
+  onExpand,
+}: {
+  theme: ThemeMode;
+  surfaceMode: PreviewSurfaceMode;
+  expansionError: string | null;
+  onExpand: (
+    event: MouseEvent<HTMLButtonElement>,
+    entry: ExpandedEntry,
+  ) => void;
+}) {
+  const palette = previewPalette[theme];
+  const actions = [
+    {
+      entry: "game",
+      label: "Start Playing!",
+      className: "euclid-preview-start",
+    },
+    { entry: "watch", label: "Watch Live", className: "euclid-preview-watch" },
+    {
+      entry: "leaderboard",
+      label: "Full leaderboard",
+      className: "euclid-preview-more",
+    },
+  ] as const;
+
+  // This bar is outside the carousel, so its actions keep their focus and place.
+  return (
+    <div
+      className="euclid-preview-actions"
+      style={{
+        borderRadius: 16,
+        background: palette.panelBg,
+        border: `1px solid ${palette.panelBorder}`,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 10,
+      }}
+    >
+      <div
+        className="euclid-preview-action-copy"
+        style={{
+          color: palette.accent,
+          fontSize: 13,
+          fontWeight: 700,
+          flex: "1 1 320px",
+          minWidth: 0,
+        }}
+      >
+        Play, watch live games, and explore the full leaderboard.
+      </div>
+      <div className="euclid-preview-action-buttons">
+        {actions
+          .filter(
+            ({ entry }) =>
+              entry !== "leaderboard" || surfaceMode === "leaderboard",
+          )
+          .map(({ entry, label, className }) => (
+            <button
+              key={entry}
+              type="button"
+              className={className}
+              data-entry={entry}
+              onClick={(event) => onExpand(event, entry)}
+              style={
+                entry === "game"
+                  ? {
+                      border: "none",
+                      cursor: "pointer",
+                      borderRadius: 999,
+                      background:
+                        "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)",
+                      color: "#f8fafc",
+                      fontWeight: 800,
+                      boxShadow: "0 10px 24px rgba(22,163,74,.32)",
+                    }
+                  : {
+                      color: entry === "watch" ? palette.accent : palette.title,
+                      borderColor:
+                        entry === "watch"
+                          ? palette.accent
+                          : palette.panelBorder,
+                    }
+              }
+            >
+              {label}
+            </button>
+          ))}
+      </div>
+      {expansionError && (
+        <div className="euclid-preview-open-error" role="alert">
+          {expansionError}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export const PreviewApp = () => {
   const [theme, setTheme] = useState<ThemeMode>("dark");
   const [initState, setInitState] = useState<InitResponse | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
+  const [initAttempt, setInitAttempt] = useState(0);
+  const [expansionError, setExpansionError] = useState<string | null>(null);
   const [surfaceMode, setSurfaceMode] = useState<PreviewSurfaceMode>("intro");
   const [demoStepIndex, setDemoStepIndex] = useState(0);
   const [demoPhase, setDemoPhase] = useState<0 | 1 | 2>(0);
@@ -712,7 +857,7 @@ export const PreviewApp = () => {
     null,
   );
   const [demoTextVisible, setDemoTextVisible] = useState(true);
-  const [rankings, setRankings] = useState<PreviewRankings>({
+  const [rankings, setRankings] = useState<LoadedRankings>({
     hvh: [],
     hva: [],
   });
@@ -727,6 +872,9 @@ export const PreviewApp = () => {
       : document.visibilityState === "visible",
   );
   const rankingsLoadedAtRef = useRef(0);
+  const rankingsPendingRef = useRef(false);
+  const [rankingsRefresh, setRankingsRefresh] = useState(0);
+  const isPreviewActive = initState?.type === "init" && isDocumentVisible;
 
   useEffect(() => {
     return installThemeModeSync((nextTheme) => {
@@ -764,7 +912,7 @@ export const PreviewApp = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initAttempt]);
 
   useEffect(() => {
     const onVisibility = () =>
@@ -792,55 +940,64 @@ export const PreviewApp = () => {
   }, []);
 
   useEffect(() => {
-    if (!initState || initState.type === "share") return;
+    if (!isPreviewActive) return;
     let cancelled = false;
+    const controller = new AbortController();
+    rankingsPendingRef.current = true;
 
-    const loadRankings = async (showSpinner: boolean) => {
-      if (showSpinner) setRankingsLoading(true);
+    const loadRankings = async () => {
+      if (!rankingsLoadedAtRef.current) setRankingsLoading(true);
       try {
         setRankingsError(null);
-        const response = await fetch("/api/rankings");
-        const data = (await response.json()) as RankingsResponse & {
-          message?: string;
-        };
-        if (!response.ok)
-          throw new Error(data.message || "Unable to load the leaderboard.");
+        const data = await fetchRankings(controller.signal);
         if (cancelled) return;
-        setRankings({
-          hvh: Array.isArray(data.hvh) ? data.hvh : [],
-          hva: Array.isArray(data.hva) ? data.hva : [],
-          ...(data.hvaRules ? { hvaRules: data.hvaRules } : {}),
-        });
-        rankingsLoadedAtRef.current = Date.now();
+        setRankings(data);
       } catch (error: unknown) {
         if (!cancelled)
           setRankingsError(
             errorMessage(error, "Unable to load the leaderboard."),
           );
       } finally {
-        if (!cancelled) setRankingsLoading(false);
+        if (!cancelled) {
+          // Failed requests also back off until the next eligible preview cycle.
+          rankingsLoadedAtRef.current = Date.now();
+          rankingsPendingRef.current = false;
+          setRankingsLoading(false);
+        }
       }
     };
-
-    void loadRankings(true);
-
+    void loadRankings();
     return () => {
       cancelled = true;
+      controller.abort();
+      rankingsPendingRef.current = false;
     };
-  }, [initState]);
+  }, [isPreviewActive, rankingsRefresh]);
 
   useEffect(() => {
-    if (surfaceMode !== "intro" || !isDocumentVisible) return;
+    // Screen transitions may request fresh standings, but never cancel a request.
+    if (
+      isPreviewActive &&
+      surfaceMode === "leaderboard" &&
+      !rankingsPendingRef.current &&
+      rankingsLoadedAtRef.current &&
+      Date.now() - rankingsLoadedAtRef.current >= LEADERBOARD_REFRESH_MS
+    )
+      setRankingsRefresh((version) => version + 1);
+  }, [isPreviewActive, surfaceMode]);
+
+  useEffect(() => {
+    if (surfaceMode !== "intro" || !isPreviewActive) return;
     const timer = window.setTimeout(() => {
       setDemoStepIndex(0);
       setDemoPhase(0);
       setSurfaceMode("demo");
     }, DEMO_START_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [isDocumentVisible, surfaceMode]);
+  }, [isPreviewActive, surfaceMode]);
 
   useEffect(() => {
-    if (surfaceMode !== "demo" || !isDocumentVisible) return;
+    if (surfaceMode !== "demo" || !isPreviewActive) return;
     setDemoPhase(0);
     const moveTimer = window.setTimeout(
       () => setDemoPhase(1),
@@ -871,7 +1028,7 @@ export const PreviewApp = () => {
       window.clearTimeout(squareTimer);
       window.clearTimeout(nextTimer);
     };
-  }, [demoStepIndex, isDocumentVisible, surfaceMode]);
+  }, [demoStepIndex, isPreviewActive, surfaceMode]);
 
   const palette = previewPalette[theme];
   const demoStep =
@@ -880,7 +1037,7 @@ export const PreviewApp = () => {
   const sharedPost = initState?.type === "share" ? initState.share : null;
 
   useEffect(() => {
-    if (surfaceMode !== "demo") {
+    if (surfaceMode !== "demo" || !isPreviewActive) {
       setDisplayedDemoStep(null);
       setDemoTextVisible(true);
       return;
@@ -900,10 +1057,10 @@ export const PreviewApp = () => {
     }, DEMO_TEXT_FADE_MS);
 
     return () => window.clearTimeout(timer);
-  }, [demoStep, displayedDemoStep, reduceMotion, surfaceMode]);
+  }, [demoStep, displayedDemoStep, isPreviewActive, reduceMotion, surfaceMode]);
 
   useEffect(() => {
-    if (surfaceMode !== "leaderboard" || !isDocumentVisible) return;
+    if (surfaceMode !== "leaderboard" || !isPreviewActive) return;
     const timer = window.setTimeout(() => {
       setSurfaceMode("intro");
       setDemoStepIndex(0);
@@ -912,59 +1069,23 @@ export const PreviewApp = () => {
       setDemoTextVisible(true);
     }, LEADERBOARD_IDLE_MS);
     return () => window.clearTimeout(timer);
-  }, [isDocumentVisible, leaderboardActivityVersion, surfaceMode]);
-
-  useEffect(() => {
-    if (
-      surfaceMode !== "leaderboard" ||
-      rankingsLoading ||
-      !initState ||
-      initState.type === "share" ||
-      Date.now() - rankingsLoadedAtRef.current < LEADERBOARD_REFRESH_MS
-    ) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const refreshRankings = async () => {
-      try {
-        setRankingsError(null);
-        const response = await fetch("/api/rankings");
-        const data = (await response.json()) as RankingsResponse & {
-          message?: string;
-        };
-        if (!response.ok)
-          throw new Error(data.message || "Unable to load the leaderboard.");
-        if (cancelled) return;
-        setRankings({
-          hvh: Array.isArray(data.hvh) ? data.hvh : [],
-          hva: Array.isArray(data.hva) ? data.hva : [],
-          ...(data.hvaRules ? { hvaRules: data.hvaRules } : {}),
-        });
-        rankingsLoadedAtRef.current = Date.now();
-      } catch (error: unknown) {
-        if (!cancelled)
-          setRankingsError(
-            errorMessage(error, "Unable to load the leaderboard."),
-          );
-      }
-    };
-
-    void refreshRankings();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [initState, rankingsLoading, surfaceMode]);
+  }, [isPreviewActive, leaderboardActivityVersion, surfaceMode]);
 
   const noteLeaderboardInteraction = () => {
     if (surfaceMode !== "leaderboard") return;
     setLeaderboardActivityVersion((current) => current + 1);
   };
 
-  const openGame = (event: MouseEvent<HTMLButtonElement>) => {
-    requestExpandedMode(event.nativeEvent, "game");
+  const openExpanded = (
+    event: MouseEvent<HTMLButtonElement>,
+    entry: ExpandedEntry,
+  ) => {
+    try {
+      setExpansionError(null);
+      requestExpandedMode(event.nativeEvent, entry);
+    } catch {
+      setExpansionError("Could not open. Please try again.");
+    }
   };
 
   if (initError) {
@@ -973,6 +1094,7 @@ export const PreviewApp = () => {
         theme={theme}
         title="Unable to load Euclid"
         body={initError}
+        onRetry={() => setInitAttempt((attempt) => attempt + 1)}
       />
     );
   }
@@ -988,11 +1110,18 @@ export const PreviewApp = () => {
   }
 
   if (sharedPost) {
-    return <SharePreview share={sharedPost} theme={theme} />;
+    return (
+      <SharePreview
+        share={sharedPost}
+        theme={theme}
+        onExpand={(event) => requestExpandedMode(event.nativeEvent, "game")}
+      />
+    );
   }
 
   return (
     <div
+      className="euclid-preview"
       style={{
         background: palette.shellBg,
         color: palette.title,
@@ -1018,11 +1147,11 @@ export const PreviewApp = () => {
       `}</style>
 
       <div
+        className="euclid-preview-card"
         data-demo-steps={DEMO_STEPS.length}
         style={{
           width: "min(760px, 100%)",
-          alignSelf: "flex-start",
-          minHeight: "calc(100vh - 14px)",
+          height: "100%",
           borderRadius: 22,
           border: `1px solid ${palette.cardBorder}`,
           background: `${
@@ -1034,10 +1163,7 @@ export const PreviewApp = () => {
             theme === "dark"
               ? "0 28px 64px rgba(2,8,23,.38)"
               : "0 18px 44px rgba(15,23,42,.12)",
-          padding: "18px 14px 14px",
           display: "grid",
-          gridTemplateRows: "1fr auto auto",
-          gap: 10,
           overflow: "hidden",
           backdropFilter: "blur(10px)",
           boxSizing: "border-box",
@@ -1045,7 +1171,7 @@ export const PreviewApp = () => {
       >
         {surfaceMode === "leaderboard" ? (
           <PreviewLeaderboard
-            palette={palette}
+            theme={theme}
             rankings={rankings}
             rankingsLoading={rankingsLoading}
             rankingsError={rankingsError}
@@ -1053,27 +1179,24 @@ export const PreviewApp = () => {
           />
         ) : (
           <div
+            className="euclid-preview-content"
             style={{
-              display: "flex",
               alignItems: "stretch",
-              justifyContent: "space-between",
               gap: 10,
-              flexWrap: "wrap",
               minHeight: 0,
             }}
           >
             <div
+              className="euclid-preview-copy"
               style={{
                 display: "grid",
-                gridTemplateRows: "auto 1fr",
                 alignSelf: "stretch",
-                gap: 14,
-                flex: "1 1 280px",
                 minWidth: 0,
               }}
             >
               <div style={{ display: "grid", gap: 6 }}>
                 <div
+                  className="euclid-preview-eyebrow"
                   style={{
                     fontSize: 12,
                     fontWeight: 800,
@@ -1084,10 +1207,14 @@ export const PreviewApp = () => {
                 >
                   Reddit Strategy Game
                 </div>
-                <div style={{ fontSize: 34, fontWeight: 900, lineHeight: 1 }}>
+                <div
+                  className="euclid-preview-title"
+                  style={{ fontWeight: 900, lineHeight: 1 }}
+                >
                   Euclid
                 </div>
                 <div
+                  className="euclid-preview-tagline"
                   style={{ color: palette.text, fontSize: 14, maxWidth: 420 }}
                 >
                   Place dots. Complete squares. Rotated shapes count. Beat{" "}
@@ -1096,14 +1223,11 @@ export const PreviewApp = () => {
               </div>
 
               <div
+                className="euclid-preview-demo-copy"
                 style={{
                   borderRadius: 16,
                   background: palette.panelBg,
                   border: `1px solid ${palette.panelBorder}`,
-                  width: "calc(100% + 10px)",
-                  marginRight: -10,
-                  padding: "10px 12px",
-                  minHeight: 152,
                   color: palette.text,
                   fontSize: 13,
                   lineHeight: 1.5,
@@ -1113,6 +1237,7 @@ export const PreviewApp = () => {
                 }}
               >
                 <div
+                  className="euclid-preview-demo-label"
                   style={{
                     color: palette.accent,
                     fontSize: 12,
@@ -1124,51 +1249,33 @@ export const PreviewApp = () => {
                   <span
                     style={{
                       display: "inline-block",
-                      transform: "translateY(-10px)",
                     }}
                   >
                     {textStep ? "Quick Demo" : "First Time Here?"}
                   </span>
                 </div>
-                {textStep ? (
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: 6,
-                      opacity: demoTextVisible ? 1 : 0,
-                      transition: reduceMotion
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 6,
+                    opacity: demoTextVisible ? 1 : 0,
+                    transition:
+                      reduceMotion || !textStep
                         ? "none"
                         : `opacity ${DEMO_TEXT_FADE_MS}ms ease`,
-                    }}
+                  }}
+                >
+                  <div
+                    className="euclid-preview-demo-title"
+                    style={{ fontWeight: 800, color: palette.title }}
                   >
-                    <div
-                      style={{
-                        fontSize: 15,
-                        fontWeight: 800,
-                        color: palette.title,
-                      }}
-                    >
-                      {textStep.title}
-                    </div>
-                    <div>{textStep.body}</div>
+                    {textStep?.title ?? "8×8 Demo"}
                   </div>
-                ) : (
-                  <div style={{ display: "grid", gap: 6 }}>
-                    <div
-                      style={{
-                        fontSize: 15,
-                        fontWeight: 800,
-                        color: palette.title,
-                      }}
-                    >
-                      8×8 Demo
-                    </div>
-                    <div>
-                      Pause here for a few seconds and Euclid will replay a
-                      short 8×8 game sequence to explain the rules.
-                    </div>
+                  <div className="euclid-preview-demo-description">
+                    {textStep?.body ??
+                      "Pause here for a few seconds and Euclid will replay a short 8×8 game sequence to explain the rules."}
                   </div>
-                )}
+                </div>
               </div>
             </div>
 
@@ -1179,62 +1286,16 @@ export const PreviewApp = () => {
             />
           </div>
         )}
-        <div
-          style={{
-            borderRadius: 16,
-            background: palette.panelBg,
-            border: `1px solid ${palette.panelBorder}`,
-            padding: "10px 12px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 10,
-            flexWrap: "wrap",
-          }}
-        >
-          <div
-            style={{
-              color: palette.accent,
-              fontSize: 13,
-              fontWeight: 700,
-              flex: "1 1 320px",
-              minWidth: 0,
-            }}
-          >
-            Redditor vs Euclid, Redditor vs Redditor, Watch other redditor's
-            live games, Leaderboard, and much more live in the full game!
-          </div>
-          <div
-            style={{
-              flex: `0 0 ${PREVIEW_BOARD_LANE_WIDTH}px`,
-              maxWidth: "100%",
-              display: "flex",
-              justifyContent: "center",
-              transform: "translateX(10px)",
-            }}
-          >
-            <button
-              onClick={openGame}
-              style={{
-                border: "none",
-                cursor: "pointer",
-                borderRadius: 999,
-                background: "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)",
-                color: "#f8fafc",
-                padding: "11px 20px",
-                fontSize: 15,
-                fontWeight: 800,
-                boxShadow: "0 10px 24px rgba(22,163,74,.32)",
-              }}
-            >
-              Start Playing!
-            </button>
-          </div>
-        </div>
+        <PreviewActions
+          theme={theme}
+          surfaceMode={surfaceMode}
+          expansionError={expansionError}
+          onExpand={openExpanded}
+        />
 
         <div
+          className="euclid-preview-rules"
           style={{
-            display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
             gap: 6,
           }}
@@ -1264,9 +1325,3 @@ export const PreviewApp = () => {
     </div>
   );
 };
-
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <PreviewApp />
-  </StrictMode>,
-);

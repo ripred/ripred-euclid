@@ -6,9 +6,9 @@ Euclid is a turn-based Reddit strategy game about claiming grid points and compl
 
 ![Euclid game](Euclid-Game2.png)
 
-The current app version is `0.1.99` and the project is pinned to Devvit `0.14.2`.
+The local package is `0.1.101` and the project is pinned to Devvit `0.14.2`. The original game's inline-entry, scrolling, and Watch changes described below are installed on `r/EuclidTheGame`. Repository history remains local; deployment does not push Git history.
 
-The intended public-facing community is [r/EuclidTheGame](https://www.reddit.com/r/EuclidTheGame/), currently private for beta testing. Its installed release and the release in `r/ripred_euclid_dev` were verified as `0.1.99` on September 6, 2026. Its community icon and desktop/mobile banners match those of `r/ripred_euclid_dev`; the development playtest target remains unchanged.
+The intended public-facing community is [r/EuclidTheGame](https://www.reddit.com/r/EuclidTheGame/), currently private for beta testing. On September 6, 2026, the current original build was uploaded and installed there as `0.1.101`, then confirmed by a separate installation readback. The development subreddit was not changed and was last verified at `0.1.99`. The communities' matching icon and desktop/mobile banners were unchanged; the development playtest target remains `r/ripred_euclid_dev`. Installation verification is separate from the desktop and native-mobile gameplay checks below.
 
 ## Game rules
 
@@ -52,17 +52,20 @@ Home records, resume and queue status, and live scoring effects are projections 
 
 ## Application surfaces
 
-- The default inline post entrypoint is a self-running preview: intro, rules demo, then live leaderboards. Preview onboarding is complete only after the full demo finishes.
-- **Start Playing!** opens the full game entrypoint.
+- The default inline post entrypoint fits the post container without document or nested scrolling: intro, the existing rules-demo artwork, then compact live standings. Tap **vs Redditors** or **vs Euclid** to choose a standings bucket. Preview onboarding is complete only after the full demo finishes.
+- **Start Playing!** and **Watch Live** stay visible throughout the inline rotation. They open the expanded `game` and `watch` entrypoints respectively; Watch goes directly to the spectator lobby without joining a match. **Full leaderboard** opens the expanded `leaderboard` entrypoint, which reuses the full app in rankings mode. Expansion follows the user's button action.
 - Solo gameplay shortcuts require a fresh key press during the displayed human turn. Buffered keys, held-key repeats, and partial shortcut input do not carry into the next turn; gameplay keys are ignored while a move is pending or the game has ended. Chat typing is unaffected.
-- Solo, multiplayer, and spectator games share a viewport-bounded layout. Board sizing accounts for the actual title, scores, chat, and action controls as they resize or wrap. Unusually small frames retain scrolling rather than clipping controls or shrinking cells below their minimum size.
+- Expanded solo, multiplayer, and spectator games share a viewport-bounded layout. Board sizing accounts for the actual title, scores, chat, and action controls as they resize or wrap. Unusually small expanded frames retain scrolling rather than clipping controls or shrinking cells below their minimum size.
 - The expanded entrypoint opens on a responsive navy-and-vector-grid dashboard. **Play Euclid** is the primary action, **Play a Redditor** is secondary, separate solo and multiplayer ratings are shown, and saved solo games, active Redditor matches, and matchmaking state have explicit continue or cancel controls. Live games, Leaderboard, Options, and Rules remain quieter navigation.
 - Canonical scoring moves show `+N` and the completed-square count beside the move and scorecard, animate only the newly completed squares, and briefly show each new square's enclosing footprint in Grid Footprint mode. Players can hide accumulated square lines without hiding the active scoring event; True Area does not show a footprint overlay.
 - Live Redditor matches give participants a visible, touch-sized **Chat** control while retaining the `\` keyboard shortcut. The focus-contained composer has explicit Send and Cancel actions, and its chronological live log wraps long messages without trapping the board controls below the viewport. Spectators can read the existing shared log but cannot compose messages.
 - After a normally completed Redditor match, either participant can select **Rematch** while both players remain attached. The request is bound to the terminal revision, simultaneous requests converge on one canonical new round, and a player who already left is never silently restored. The server derives ongoing rematch availability from both participant mappings; if either player closes, the remaining client hides the action and stops terminal polling without changing the finished board. If terminal Close and an untouched rematch race, Close cancels that rematch without recording a forfeit. Finished-round sharing is bound to the immutable terminal revision, so a rematch cannot replace the result being shared.
-- Shared leaderboard and victory posts render dedicated previews and board replays. Victory posts use the same responsive result layout in both entrypoints, with compact final scores, a side-by-side replay on wider screens, and a keyboard-accessible viewport scroll area on smaller screens. Older solo replay payloads retain their player-one-first fallback.
+- Shared leaderboard and victory posts have compact inline summaries with an explicit expansion button. Inline leaderboard summaries retain the canonical row order and show only the leading rows that fit; the expanded snapshot retains every row. Inline victories show canonical final scores and outcome; the expanded result includes the full board replay and footer, with a side-by-side layout on wider screens and a keyboard-accessible scroll area on smaller screens. Older solo replay payloads retain their player-one-first fallback.
 - A moderator subreddit menu item creates a fresh Euclid post.
-- Spectators receive neutral result copy and a local-only **Stop Watching** action; they cannot mutate or leave on behalf of participants.
+- The Watch lobby pairs names and scores using canonical player order and shows board size, score target, and **Last activity**. Its list refreshes every 30 seconds while visible, never overlaps requests, and discards pending responses when the viewer leaves. Loading and retryable errors are distinct from an empty lobby; an empty or unavailable game offers an explicitly recorded **Watch demo** and **Play** path using the existing teaching sequence.
+- Spectators receive neutral result copy and a local-only **Stop Watching** action; they cannot mutate or leave on behalf of participants. Completed matches offer **Replay**, **Another live game**, and **Play**. Replay freezes the accepted terminal board and canonical outcome, including forfeits, so later rematches cannot replace it. Missing games do not fabricate a final replay. Result controls receive keyboard focus; the player tutorial does not interrupt watching.
+
+The five sibling edition worktrees - Prism, Lattice, Weave, Tide, and Relay - also separate inline and expanded entries. Their inline previews reuse existing board renderers as passive illustrations with a single **Open** action. They do not start or load a player session, poll spectators, expose point controls, or capture camera gestures. Gameplay, keyboard navigation, spectator controls, and Lattice's camera/layer interactions remain in the expanded game. These edition changes remain local and unshipped.
 
 ## Architecture
 
@@ -74,7 +77,18 @@ src/shared/
   types/api.ts         Contracts shared by the browser and server
 
 src/client/
-  preview.tsx          Inline preview, demo, leaderboards, and shared posts
+  preview-main.tsx     Inline-only bootstrap
+  preview.tsx          Bounded intro/demo, compact live standings, and share routing
+  preview.css          Inline-only post bounds and responsive fitting
+  leaderboard.html    Expanded rankings entry, using main.tsx and App
+  watch.html          Direct expanded spectator entry, using main.tsx and App
+  watch-view.tsx      Shared lobby, replay, unavailable state, and Watch controls
+  live-games.ts      Validated, cancellable, visibility-aware live-list requests
+  watch-recording.ts Frozen canonical result for the spectator replay
+  watch-demo.ts      Existing teaching recording replayed through shared rules
+  rankings-loader.ts  Shared validated rankings request
+  fetch-json.ts      Shared JSON transport and HTTP-error handling
+  share-preview.tsx   Compact inline share summaries and expanded result presentation
   App.tsx              Full-game orchestration, canonical state adoption, and board UI
   home-lifecycle.ts    Queue recovery and stale-request transition policy
   home-screen.tsx      Responsive home dashboard and transition/status surfaces
@@ -136,6 +150,7 @@ At the current lockfile, `npm audit --omit=dev` reports three moderate `qs` advi
 
 - inline `preview.html` as the default tall post entrypoint;
 - `index.html` as the expanded `game` entrypoint;
+- `leaderboard.html` as the expanded `leaderboard` entrypoint;
 - the server bundle at `dist/server/index.cjs`;
 - the moderator **Create Euclid Game Post** menu action;
 - `r/ripred_euclid_dev` as the playtest subreddit.
@@ -168,9 +183,9 @@ Before installing a release beyond the test subreddit:
 2. Complete Ranked win, loss, and tie paths; confirm one rating settlement and winner-only sharing.
 3. Complete custom Practice games across sizes, scoring modes, targets, and difficulty; verify live score feedback and the accumulated-line toggle, and confirm Ranked data is unchanged. Hold or rapidly press gameplay shortcut keys during a pending move: the next human turn must require a fresh press, and no gameplay key may place a dot after the result.
 4. Queue two accounts, reload both, verify local-response and polled-opponent score feedback, and test simultaneous/stale moves, pointer/touch and keyboard chat entry, leave/forfeit, and rematch.
-5. Spectate both winner sides and confirm neutral copy, no celebration, and local-only exit.
-6. Exercise preview onboarding, explicit tutorial dismissal, same-breakpoint resizing, height-only resizing, and orientation changes.
-7. Verify leaderboard shares render their canonical frozen snapshot and result shares render their exact terminal-revision replay rather than a generic fallback, including when a rematch has already begun. Check new and existing victory posts at desktop and mobile widths and increased browser zoom: final scores must be readable, and the entire replay and footer must remain reachable by scrolling.
+5. Open **Watch Live** from each inline phase. Exercise loading, retry, an empty lobby, and the recorded demo. Spectate both winner sides, a forfeit, and a tie; confirm neutral copy, no celebration, read-only input, and local-only exit. Check result focus and Tab wrapping, **Replay / Another live game / Play**, frozen replay after participant rematches, and unavailable-game fallback. Leaving during a pending request must not reopen the old route.
+6. Exercise preview onboarding, explicit tutorial dismissal, same-breakpoint resizing, height-only resizing, orientation changes, and increased zoom. In Reddit desktop card/compact views and the native mobile app, verify that inline intro, demo, standings, loading/error states, and edition previews fit without document or nested scrolling, leave the parent feed's wheel/touch scrolling available, and keep their action visible. Check pointer and keyboard activation of **Start Playing!**, **Full leaderboard**, and each edition's **Open** action; no preview should expand or start an edition session on its own. After expansion, verify full rankings access, normal gameplay scrolling and controls, and Lattice camera/layer gestures.
+7. Verify leaderboard shares render their canonical frozen snapshot and result shares retain their exact terminal-revision replay, including when a rematch has already begun. Inline summaries must fit without scrolling and keep their expansion action visible at desktop/mobile widths and increased zoom. After expansion, every snapshot row and the entire replay and footer must remain reachable, including by scrolling and keyboard navigation where needed.
 
 The full real-surface checklist still requires three distinct Reddit identities, simultaneous player sessions, a fresh browser-storage context, and a physical Reddit mobile-app session. Ranked win, loss, and tie outcomes also cannot be selected deterministically from the release surface; use naturally completed games unless an isolated, non-production QA fixture is designed and approved.
 
@@ -184,7 +199,8 @@ The full real-surface checklist still requires three distinct Reddit identities,
 
 ## Pending release work
 
-- Run the real-surface checklist above on the installed release in `r/EuclidTheGame`, including desktop card view, compact view, and the Reddit mobile app. Installation and asset verification do not replace gameplay and layout testing.
+- Run the real-surface checklist above against installed `0.1.101` on Reddit desktop card view, compact view, and the native mobile app. Local verification passed type-check, lint, 421 tests, client/server builds, 96 Watch-preview layout checks, and interactive spectator lifecycle checks. Their simulated Reddit host and canonical API fixtures do not establish native-platform behavior; the installation readback is not a gameplay check.
+- Keep the five unshipped edition branches separate from this installed original release.
 - After private-beta results are acceptable, decide whether the community remains private, becomes restricted, or opens publicly, and prepare any introductory or how-to-play post.
 
 ## License

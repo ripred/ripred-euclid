@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type {
   H2HLeaveRequest,
+  H2HLiveGameSummary,
   H2HMoveRequest,
   H2HRematchRequest,
   ShareChatItem,
@@ -153,14 +154,6 @@ export class H2HSettlementDataError extends Error {
 export type H2HChatCommit = {
   item: ShareChatItem;
   state: H2HCanonicalStateSnapshot;
-};
-
-export type H2HLiveGame = {
-  gameId: string;
-  names: Record<string, string>;
-  scores: [number, number];
-  lastSaved: number;
-  revision: number;
 };
 
 export type H2HCleanupResult = {
@@ -1466,13 +1459,13 @@ export class H2HStore {
     );
   }
 
-  async listLiveGames(): Promise<H2HLiveGame[]> {
+  async listLiveGames(): Promise<H2HLiveGameSummary[]> {
     const active = uniqueStrings(
       parseStringList(
         (await this.redis.get(H2H_STORE_KEYS.activeGames)) ?? undefined,
       ),
     );
-    const live: H2HLiveGame[] = [];
+    const live: H2HLiveGameSummary[] = [];
 
     for (const gameId of active) {
       let state: H2HCanonicalStateSnapshot | null = null;
@@ -1488,6 +1481,10 @@ export class H2HStore {
 
       live.push({
         gameId,
+        playerIds: [
+          state.board.m_players[0].userId,
+          state.board.m_players[1].userId,
+        ],
         names: { ...(state.board.playerNames ?? {}) },
         scores: [
           state.board.m_players[0].m_score,
@@ -1495,6 +1492,10 @@ export class H2HStore {
         ],
         lastSaved: state.board.lastSaved ?? 0,
         revision: state.revision,
+        width: state.board.W,
+        height: state.board.H,
+        scoring: state.board.scoring,
+        winScore: state.board.winScore,
       });
     }
 

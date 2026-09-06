@@ -81,6 +81,13 @@ const RECORDED_GAME: DemoMove[] = [
   { x: 5, y: 6, owner: 1 },
 ];
 
+// Both the splash tutorial and the spectator fallback use this same recording.
+export const DEMO_RECORDING = {
+  width: BOARD_W,
+  height: BOARD_H,
+  moves: RECORDED_GAME as readonly DemoMove[],
+};
+
 // Keys are one-based move numbers whose before/after frames become teaching
 // beats; moves between them establish the board context without extra slides.
 const CAPTURED_STEPS = new Map<number, CapturedStepMeta>([

@@ -1,0 +1,269 @@
+/* Only the inline entry owns these bounds. Expanded screens retain scrolling. */
+html.euclid-inline,
+.euclid-inline body,
+.euclid-inline #root {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  overflow: clip;
+  touch-action: auto;
+}
+
+.euclid-preview {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: clip;
+  font-family: system-ui, sans-serif;
+}
+
+.euclid-preview * {
+  box-sizing: border-box;
+  min-width: 0;
+}
+.euclid-preview-card {
+  position: relative;
+  min-height: 0;
+  padding: 14px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+.euclid-preview-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 218px);
+}
+.euclid-preview-copy {
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+}
+.euclid-preview-title {
+  font-size: 34px;
+}
+.euclid-preview-demo-copy {
+  min-height: 0;
+  padding: 10px 12px;
+}
+.euclid-preview-demo-title {
+  font-size: 15px;
+}
+.euclid-preview-board {
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.euclid-preview-actions {
+  position: relative;
+  padding: 10px 12px;
+}
+.euclid-preview-action-buttons {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 8px;
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+.euclid-preview-actions button {
+  min-height: 44px;
+  line-height: 1.2;
+}
+.euclid-preview-start {
+  padding: 11px 20px;
+  font-size: 15px;
+}
+.euclid-preview-more,
+.euclid-preview-watch {
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: transparent;
+  font-size: 13px;
+  cursor: pointer;
+}
+.euclid-preview-watch {
+  font-size: 15px;
+  font-weight: 800;
+}
+.euclid-preview-rules {
+  display: none;
+}
+.euclid-preview-standings {
+  align-content: start;
+}
+.euclid-preview-standings-panel {
+  padding: 12px 12px 10px;
+  gap: 10px;
+}
+.euclid-preview-standings-title {
+  font-size: 30px;
+}
+.euclid-preview-leader-row {
+  display: grid;
+}
+.euclid-preview-bucket {
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+}
+.euclid-preview-leader-record {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.euclid-preview-rank-tabs {
+  display: flex;
+  gap: 8px;
+}
+.euclid-preview-rank-tabs button {
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid;
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+.euclid-preview-rank-tabs button[aria-pressed="true"] {
+  font-weight: 800;
+}
+.euclid-preview-open-error {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  border-radius: 8px;
+  padding: 8px;
+  color: #fff;
+  background: #7f1d1d;
+  font-size: 13px;
+}
+.euclid-preview button:focus-visible {
+  outline: 3px solid #f59e0b;
+  outline-offset: 2px;
+}
+.euclid-preview-status-card {
+  max-height: 100%;
+  overflow: clip;
+  overflow-wrap: anywhere;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+.euclid-preview-status-message {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: clip;
+}
+.euclid-preview-status-card button {
+  min-height: 44px;
+}
+
+@media (min-width: 640px) and (min-height: 600px) {
+  .euclid-preview-card {
+    grid-template-rows: minmax(0, 1fr) auto auto;
+  }
+  .euclid-preview-rules {
+    display: grid;
+  }
+}
+@media (max-width: 620px) {
+  .euclid-preview-action-copy {
+    display: none;
+  }
+  .euclid-preview-action-buttons {
+    width: 100%;
+  }
+}
+@media (max-width: 560px) {
+  .euclid-preview-content {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .euclid-preview-copy {
+    grid-template-rows: auto auto;
+    gap: 6px;
+  }
+  .euclid-preview-tagline {
+    display: none;
+  }
+  .euclid-preview-bucket-heading .euclid-preview-secondary {
+    display: none;
+  }
+  .euclid-preview-demo-copy {
+    padding: 6px 8px;
+  }
+  .euclid-preview-title {
+    font-size: 28px;
+  }
+  .euclid-preview-standings-title {
+    font-size: 25px;
+  }
+}
+@media (max-height: 440px) {
+  .euclid-preview-card {
+    padding: 8px;
+    gap: 6px;
+  }
+  .euclid-preview-actions {
+    padding: 4px;
+  }
+  .euclid-preview-eyebrow,
+  .euclid-preview-secondary,
+  .euclid-preview-bucket-heading,
+  .euclid-preview-tagline,
+  .euclid-preview-board > div {
+    display: none !important;
+  }
+  .euclid-preview-board {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  /* Hidden headings must not leave an empty grid track above the actions. */
+  .euclid-preview-bucket {
+    grid-template-rows: minmax(0, 1fr);
+    gap: 0;
+  }
+  .euclid-preview-leaders > :nth-child(n + 2) {
+    display: none;
+  }
+  .euclid-preview-copy {
+    gap: 6px;
+  }
+}
+@media (min-height: 441px) and (max-height: 599px) {
+  .euclid-preview-leaders > :nth-child(n + 3) {
+    display: none;
+  }
+}
+
+/* Short or zoomed frames reserve room for the board and the expansion actions. */
+@media (max-height: 360px) {
+  .euclid-preview-content {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 140px);
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .euclid-preview-copy {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .euclid-preview-title,
+  .euclid-preview-standings-title {
+    font-size: 22px;
+  }
+  .euclid-preview-demo-title {
+    font-size: 13px;
+  }
+  .euclid-preview-demo-label,
+  .euclid-preview-demo-description,
+  .euclid-preview-standings-eyebrow {
+    display: none;
+  }
+  .euclid-preview-standings-panel {
+    padding: 6px;
+    gap: 6px;
+  }
+  .euclid-preview-actions button {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+}
