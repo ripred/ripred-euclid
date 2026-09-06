@@ -1,0 +1,2 @@
+# Preserve the upstream font notices, including their original line endings.
+src/client/public/fonts/*-LICENSE.txt -text whitespace=-blank-at-eol,cr-at-eol

@@ -1,113 +1,50 @@
-# Euclid
+# Lattice · Euclid
 
-Euclid is a turn-based Reddit strategy game about claiming grid points and completing squares. Play a fixed competitive match against Euclid, configure an unranked Practice game, challenge another Redditor, or watch a live human match.
+A three-dimensional, unranked edition of Euclid on branch `redesign/lattice`. Rotate the lattice, inspect its layers, and claim eight corners to complete a cube. This branch does not change the tagged release or either installed Reddit community.
 
-[Open the configured test community](https://www.reddit.com/r/ripred_euclid_dev/)
+## Play
 
-![Euclid game](Euclid-Game2.png)
+Choose a 3 × 3 × 3 or 4 × 4 × 4 lattice, then **Play Euclid** for a computer opponent or **Play together** for two players sharing one device.
 
-The current app version is `0.1.98` and the project is pinned to Devvit `0.14.2`.
+The default **Builder** computer focuses on constructing its own cubes, making it easier to learn the three-dimensional goal. **Tactician** also blocks your plans and creates threats. Deliberate defensive play can produce a scoreless draw: eight-corner structures are easier to disrupt than the original four-corner squares. Computer style does not change scoring or affect same-device players.
 
-The intended public-facing community is [r/EuclidTheGame](https://www.reddit.com/r/EuclidTheGame/), currently private for beta testing. Its installed release was verified as `0.1.98` on September 5, 2026. Its community icon and desktop/mobile banners match those of `r/ripred_euclid_dev`; the development playtest target remains unchanged.
+Players alternate claiming one empty point. A cube scores when all eight corners belong to one player. Edges must have equal length and follow the lattice axes. Interior points do not matter; rectangular boxes do not count. All sizes count, and one move can complete several cubes:
 
-## Game rules
+| Edge length | Volume / points         |
+| ----------- | ----------------------- |
+| 1           | 1                       |
+| 2           | 8                       |
+| 3           | 27, on the 4-wide board |
 
-Players alternate placing one dot on an empty grid position. A placement scores every new square whose four corners are dots owned by that player. Squares may be axis-aligned or rotated, and one move may complete several squares.
+Every cube scores once. When the lattice fills, the higher score wins; equal scores are a draw. There is no first-to target and no move after a terminal result.
 
-The game supports two scoring systems:
+**Foundation opening** gives each player four points on opposite faces of the lattice, but no completed cube or points. It makes the eight-corner goal easier to approach. **Empty lattice** starts without any claimed points. Both openings use identical scoring rules.
 
-- **Grid Footprint** counts the inclusive grid positions along the larger axis of the square's smallest axis-aligned enclosure, then squares that count. For corners with coordinate bounds `minX`, `maxX`, `minY`, and `maxY`, points are `max(maxX - minX + 1, maxY - minY + 1)²`. Corner order and mirrored or quarter-turned orientation do not change the result.
-- **True Area** scores the square's geometric area. On the integer grid this is the squared distance between adjacent corners, found as the smallest non-zero pairwise squared corner distance.
+## Inspecting depth
 
-The first player to reach the target wins. If the board fills first, the higher score wins; equal scores produce a tie. Practice target recommendations scale from the 8×8, first-to-150 baseline, stay above the smallest scoring event, and never exceed the board's theoretical total.
+- Drag to orbit; scroll or pinch to zoom. Isometric, Front, Top, Side, and Reset view restore useful camera positions.
+- Z is height. The **Layer inspector** shows an exact X/Y cross-section at the selected Z. It exposes every point, including those hidden behind another point in 3D.
+- Select a point in either view, check its X/Y/Z address, then choose **Place point**. Rotation, selection, and changing layers never place a point.
+- **Isolate selected layer** hides other layers. Completed cubes use edges, never opaque faces; their edges can also be hidden.
+- **Trace a possible cube** draws a dashed construction guide for a viable cube belonging to the current player. It is free to either player, not a collectible reward, and not a guaranteed winning strategy.
+- The layer inspector remains fully playable if WebGL is unavailable or the graphics context is interrupted.
 
-## Game modes
-
-| Mode                 | Rules                                                                                   | Rating          | Persistence and assistance                                                                     |
-| -------------------- | --------------------------------------------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------- |
-| Ranked vs Euclid     | 8×8, Grid Footprint, first to 150, human first, Brutal                                  | Ranked solo Elo | One active game per user; reload resumes it; assistance is disabled                            |
-| Practice vs Euclid   | Even dimensions from 4 through 16, either scoring mode, supported target and difficulty | Unrated         | Server-authoritative custom game; hints and local auto-move tools are allowed                  |
-| Redditor vs Redditor | 8×8, Grid Footprint, first to 150                                                       | Multiplayer Elo | Matchmaking, reload resume, leave/forfeit, rematch, participant chat, and read-only spectating |
-
-Canceling Ranked before the first human move is unrated. Abandoning after play begins records one loss. Ending Practice never changes Ranked Elo.
-
-Ranked solo Elo starts at 1200 and uses K=32 against Euclid's fixed 1600 reference rating.
-
-Euclid has nine difficulty levels. Brutal prioritizes its own immediate win, then prevents an opponent's immediate win, compares immediate offensive and defensive value, and finally pursues longer-term square construction.
-
-## Authority and integrity
-
-The browser is a presentation and intent layer, not a source of official results. Opening developer tools or changing client JavaScript cannot submit an official score, winner, AI move, or final board.
-
-- H2H clients submit a game ID, coordinate, and expected revision. The server verifies the participant, turn, revision, cell, score, completed squares, outcome, and persisted board.
-- Solo clients submit start rules or a coordinate intent with an expected revision and command ID. The server owns the session, private RNG seed, AI selection, complete move history, result, metrics, and Ranked settlement.
-- Repeated solo commands are idempotent. Reusing a command ID for different intent is rejected.
-- Redis compare-and-set transactions serialize competing mutations. H2H terminal results are archived immutably by game ID and terminal revision in the same transaction that ends the round; they enter a durable outbox and settle rating and metrics exactly once.
-- Solo result shares are prepared from canonical completed human victories and finalized through an idempotent receipt. Explicit submission failures are retryable, while unconfirmed in-flight receipts remain pending to avoid duplicate posts. Client-claimed result uploads are rejected.
-- Practice data never enters the versioned Ranked-solo namespace. Unverifiable legacy HVA ratings remain untouched but are excluded from current rankings.
-
-Pure rules are shared between client and server to keep behavior DRY. Server validation and persistence remain the trust boundary.
-
-Home records, resume and queue status, and live scoring effects are projections of server-owned state. Score feedback comes only from an accepted canonical move or a newly observed canonical move. Loading or resuming establishes a quiet baseline and does not replay or invent prior scoring events.
-
-## Application surfaces
-
-- The default inline post entrypoint is a self-running preview: intro, rules demo, then live leaderboards. Preview onboarding is complete only after the full demo finishes.
-- **Start Playing!** opens the full game entrypoint.
-- Solo gameplay shortcuts require a fresh key press during the displayed human turn. Buffered keys, held-key repeats, and partial shortcut input do not carry into the next turn; gameplay keys are ignored while a move is pending or the game has ended. Chat typing is unaffected.
-- The expanded entrypoint opens on a responsive navy-and-vector-grid dashboard. **Play Euclid** is the primary action, **Play a Redditor** is secondary, separate solo and multiplayer ratings are shown, and saved solo games, active Redditor matches, and matchmaking state have explicit continue or cancel controls. Live games, Leaderboard, Options, and Rules remain quieter navigation.
-- Canonical scoring moves show `+N` and the completed-square count beside the move and scorecard, animate only the newly completed squares, and briefly show each new square's enclosing footprint in Grid Footprint mode. Players can hide accumulated square lines without hiding the active scoring event; True Area does not show a footprint overlay.
-- Live Redditor matches give participants a visible, touch-sized **Chat** control while retaining the `\` keyboard shortcut. The focus-contained composer has explicit Send and Cancel actions, and its chronological live log wraps long messages without trapping the board controls below the viewport. Spectators can read the existing shared log but cannot compose messages.
-- After a normally completed Redditor match, either participant can select **Rematch** while both players remain attached. The request is bound to the terminal revision, simultaneous requests converge on one canonical new round, and a player who already left is never silently restored. The server derives ongoing rematch availability from both participant mappings; if either player closes, the remaining client hides the action and stops terminal polling without changing the finished board. If terminal Close and an untouched rematch race, Close cancels that rematch without recording a forfeit. Finished-round sharing is bound to the immutable terminal revision, so a rematch cannot replace the result being shared.
-- Shared leaderboard and victory posts render dedicated previews and board replays. Victory posts use the same responsive result layout in both entrypoints, with compact final scores, a side-by-side replay on wider screens, and a keyboard-accessible viewport scroll area on smaller screens. Older solo replay payloads retain their player-one-first fallback.
-- A moderator subreddit menu item creates a fresh Euclid post.
-- Spectators receive neutral result copy and a local-only **Stop Watching** action; they cannot mutate or leave on behalf of participants.
-
-## Architecture
-
-```text
-src/shared/
-  game/engine.ts       Pure board, scoring events, outcomes, and AI policy
-  game/rules.ts        Versioned Ranked rules and strict Practice validation
-  scoring.ts           Grid Footprint, True Area, totals, and target guidance
-  types/api.ts         Contracts shared by the browser and server
-
-src/client/
-  preview.tsx          Inline preview, demo, leaderboards, and shared posts
-  App.tsx              Full-game orchestration, canonical state adoption, and board UI
-  home-lifecycle.ts    Queue recovery and stale-request transition policy
-  home-screen.tsx      Responsive home dashboard and transition/status surfaces
-  home-ui.ts           Pure record, resume, and matchmaking presentation
-  h2h-controls.tsx     Accessible participant chat and rematch controls
-  score-feedback.ts    Canonical score-event normalization and display geometry
-  game-ui.ts           Result, spectator, and responsive-layout decisions
-  solo-ui.ts           Solo intents, reconciliation, assistance, and exit policy
-  share-replay*.ts(x)  Backward-compatible canonical replay rendering
-
-src/server/
-  index.ts             Devvit/Express routes, profiles, rankings, shares, metrics
-  h2h.ts               Canonical multiplayer domain rules and validation
-  h2h-store.ts         Atomic matchmaking, games, chat, leave, rematch, and terminal-round archives
-  h2h-presence.ts      Stable idle, queued, and active multiplayer presence resolution
-  h2h-settlement.ts    Durable exactly-once H2H Elo and metric settlement
-  solo.ts              Canonical solo domain, replay validation, and redaction
-  solo-store.ts        Atomic sessions, idempotency, Ranked Elo, metrics, shares
-  redis-cas.ts         Shared optimistic Redis transaction seam
-```
-
-Redis keys for canonical solo games and ratings are versioned independently from legacy data. Legacy H2H boards are normalized and fully replay-validated when read.
+Keyboard: Tab moves between controls; arrows move between points in the inspector; Enter or Space selects. Page Up / Down changes layers. Tab to Place point to confirm. With the 3D view focused, arrows rotate, + / − zoom, and R resets. Held-key repeats never confirm a second move. Reduced-motion settings disable the selection pulse. Teal uses circles and Vermilion uses diamonds in the inspector and legend.
 
 ## Local development
 
-Requirements:
-
-- Node.js 24 and npm (Devvit's supported local baseline is currently 24.18.0)
-- A Reddit account with Devvit access for playtest, upload, installation, or publication
-
-Install dependencies and run the local quality gate:
+The package remains at the preserved release baseline `0.1.98`, with Devvit `0.14.2`, React, Vite, TypeScript, and pinned Three.js `0.179.1`. New edition source is under `src/client/edition/`; `src/shared/edition-game.ts` owns the pure cube rules. Both HTML entrypoints launch Lattice on this branch.
 
 ```bash
 npm install
+npm run dev:vite -- --port 7482
+```
+
+Open `http://127.0.0.1:7482/`. The local Vite server implements the edition API and stores sessions in memory: reloading resumes the game while that server process is alive. Restarting the server resets local sessions. Restart it after changing engine or server code so the authoritative API loads the changes. Local games do not update Reddit ratings or leaderboards.
+
+The Devvit edition API uses authenticated Reddit identity and Redis persistence. The browser sends only move intent plus the expected game/revision; the server validates ownership, turns, coordinates and terminal state, calculates cube scores, and selects the computer reply. Revision checks and command receipts reject stale requests and prevent duplicate moves. The original game's unrelated code remains in the branch, but is not exposed by Lattice's interface.
+
+```bash
 npm run type-check
 npm run lint
 npx vitest run
@@ -115,77 +52,12 @@ npm run build
 git diff --check
 ```
 
-Useful commands:
+Cube tests verify unique enumeration, geometric corner distances, all volumes, multiple cubes in one move, occupied/out-of-bounds rejection, foundation symmetry, immutable input, blocking, complete deterministic games, ties, and terminal move rejection. Shared session tests exercise command authority and retry behavior.
 
-```bash
-npm run dev       # client/server watchers plus Devvit playtest
-npm run dev:vite  # browser-only Vite surface on port 7474
-npm run build     # production client and server bundles in dist/
-```
+## Rendering and assets
 
-Tests are colocated as `*.spec.{ts,tsx}` files. The suite covers scoring and AI priorities, canonical replay validation, forged state, stale revisions, command replay/conflicts, concurrent Redis mutations, settlement idempotency, spectator behavior, onboarding, victory effects, responsive layout, home record/resume/matchmaking presentation, H2H presence stabilization, participant-control eligibility and markup, rematch convergence and detachment, terminal-Close/rematch cancellation, immutable terminal-round archives, canonical score-feedback normalization, history-reset handling, footprint geometry, and legacy replay compatibility.
+The board is live WebGL geometry, not a bitmap. Custom vertex/fragment shaders shade the ceramic point nodes and selection rim. Cube edges, camera picking, resize handling, and graphics resource disposal are implemented in `lattice-scene.ts`. The two locally bundled variable fonts, DM Sans and Space Grotesk, include their original SIL Open Font License files under `src/client/public/fonts/`; the interface does not require an external font service.
 
-`npm run check` is intentionally mutating: it applies ESLint fixes and Prettier formatting. Use the explicit non-mutating gate above when reviewing a worktree.
+Three.js includes its original MIT notice in `src/client/public/three-license.txt`; the build copies this notice alongside the distributed renderer.
 
-At the current lockfile, `npm audit --omit=dev` reports three moderate `qs` advisories inherited through Express and body-parser, with no fix currently offered. The full audit reports 19 findings—2 low, 13 moderate, and 4 high—including the same production chain plus development-tool findings propagated through ESLint and the Devvit CLI's `image-size` and `tmp` chains; npm currently offers no fix for those paths. Do not run `npm audit fix --force` or add unsupported overrides. Reassess the direct Express dependency and the Devvit/ESLint toolchains when compatible releases become available. `@devvit/public-api` is pinned as a development-only packaging compatibility dependency because the 0.14.2 CLI resolves its generated template from the project root; Euclid remains a Devvit Web app and application source must not import that legacy API. `package.json` also pins the reviewed install-script approvals needed by the native build tools—run `npm install-scripts ls` after dependency changes.
-
-## Devvit operation
-
-`devvit.json` defines:
-
-- inline `preview.html` as the default tall post entrypoint;
-- `index.html` as the expanded `game` entrypoint;
-- the server bundle at `dist/server/index.cjs`;
-- the moderator **Create Euclid Game Post** menu action;
-- `r/ripred_euclid_dev` as the playtest subreddit.
-
-External-state commands should be run deliberately:
-
-```bash
-npx devvit login
-npx devvit playtest
-npm run deploy                         # build and upload a private version
-npx devvit install <subreddit> ripred-euclid@<version>
-npx devvit list installs <subreddit>
-npx devvit view ripred-euclid@<version>
-```
-
-`npm run launch` uploads and requests publication; it is not part of the normal verification gate. A successful local build does not prove that a version was uploaded or installed.
-
-## Assets
-
-- Preserve the established page artwork and icons, including the landing page, splash screen, and demo. Change them only when explicitly requested; functional UI work does not authorize artwork changes.
-- `Euclid-Game2.png` is the repository overview image.
-- `src/client/public/snoo.png` is the bundled splash background referenced by server-created posts.
-- `subreddit/images/` contains curated branding candidates and moderator upload assets. These are not runtime imports; keep purpose-named files needed for final selection or a distinct Reddit upload role.
-
-## Real-surface verification
-
-Before installing a release beyond the test subreddit:
-
-1. Verify dashboard idle, saved-solo, queued, and active-H2H states; resume an in-progress Ranked game after reload and verify cancel-versus-forfeit behavior.
-2. Complete Ranked win, loss, and tie paths; confirm one rating settlement and winner-only sharing.
-3. Complete custom Practice games across sizes, scoring modes, targets, and difficulty; verify live score feedback and the accumulated-line toggle, and confirm Ranked data is unchanged. Hold or rapidly press gameplay shortcut keys during a pending move: the next human turn must require a fresh press, and no gameplay key may place a dot after the result.
-4. Queue two accounts, reload both, verify local-response and polled-opponent score feedback, and test simultaneous/stale moves, pointer/touch and keyboard chat entry, leave/forfeit, and rematch.
-5. Spectate both winner sides and confirm neutral copy, no celebration, and local-only exit.
-6. Exercise preview onboarding, explicit tutorial dismissal, same-breakpoint resizing, height-only resizing, and orientation changes.
-7. Verify leaderboard shares render their canonical frozen snapshot and result shares render their exact terminal-revision replay rather than a generic fallback, including when a rematch has already begun. Check new and existing victory posts at desktop and mobile widths and increased browser zoom: final scores must be readable, and the entire replay and footer must remain reachable by scrolling.
-
-The full real-surface checklist still requires three distinct Reddit identities, simultaneous player sessions, a fresh browser-storage context, and a physical Reddit mobile-app session. Ranked win, loss, and tie outcomes also cannot be selected deterministically from the release surface; use naturally completed games unless an isolated, non-production QA fixture is designed and approved.
-
-## Optional enhancements
-
-- **Interactive first-score onboarding:** Add a guided lesson on the real board that asks the player to place a dot, reveals a one-move scoring opportunity, lets the player complete it, and then introduces rotated and larger squares.
-- **Accessibility and mobile completion:** Make board spots semantic keyboard-operable controls with coordinate and occupancy labels, arrow navigation, and Enter or Space placement. Add non-color ownership cues and accessible dialog focus behavior; complete dynamic-viewport, safe-area, and practical large-board touch-target support; verify Assist-mode touch behavior; and suppress the remaining celebration and assistance animations when reduced motion is requested.
-- **Balance and configuration:** Define Short, Standard, and Marathon targets from desired turn counts and playtesting, measure first-player performance, alternate the opening player in rematches, and simplify the nine AI choices into clearer player-facing tiers while retaining their personality labels where useful.
-- **Chat and spectator privacy:** Decide whether chat merits retention. If retained, disclose that spectators can read it and add appropriate mute, report, and moderation controls before wider public play. Remove or reframe AI echo chat unless it gains an intentional gameplay purpose.
-- **Independent rules verification:** Add an independent reference oracle, golden fixtures, and generated-board or property comparisons that do not reuse the production decision path, supplementing the existing replay-validation and tampering coverage.
-
-## Pending release work
-
-- Run the real-surface checklist above on the installed release in `r/EuclidTheGame`, including desktop card view, compact view, and the Reddit mobile app. Installation and asset verification do not replace gameplay and layout testing.
-- After private-beta results are acceptable, decide whether the community remains private, becomes restricted, or opens publicly, and prepare any introductory or how-to-play post.
-
-## License
-
-BSD 3-Clause. See [LICENSE](LICENSE).
+Project code is licensed under MIT, copyright 2025–2026 Trent M. Wyatt. Third-party notices retain their original authors and terms. Established release artwork remains unchanged. Building is local only; upload, installation, publication, and Git pushes must be requested separately.
