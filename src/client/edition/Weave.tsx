@@ -126,10 +126,10 @@ function Rules({ onClose }: { onClose: () => void }) {
 
 function Scoreboard({
   game,
-  mode,
+  ownerLabels,
 }: {
   game: WeaveState | null;
-  mode: PlayMode;
+  ownerLabels: [string, string];
 }) {
   return (
     <div className="scores" aria-label="Scores">
@@ -154,13 +154,7 @@ function Scoreboard({
                 style={{ width: `${Math.min(100, (score / TARGET) * 100)}%` }}
               />
             </div>
-            <span className="score-owner">
-              {mode === "duel"
-                ? `Player ${player}`
-                : player === 1
-                  ? "You"
-                  : "Euclid"}
-            </span>
+            <span className="score-owner">{ownerLabels[player - 1]}</span>
           </div>
         );
       })}
@@ -313,11 +307,17 @@ function Lattice({
 function LastStitch({
   game,
   mode,
+  humanStitchLabel,
+  ownerLabels,
 }: {
   game: WeaveState | null;
   mode: PlayMode;
+  humanStitchLabel: string;
+  ownerLabels: [string, string];
 }) {
   const last = game?.lastMove;
+  const name = (player: Player) =>
+    mode === "duel" ? playerName(player) : ownerLabels[player - 1];
   const humanStitch =
     mode === "solo" && last?.player === 2 && game?.previousMove?.player === 1
       ? game.previousMove
@@ -327,7 +327,7 @@ function LastStitch({
       <h3 id="stitch-title">The last stitch</h3>
       {humanStitch && humanStitch.points > 0 && (
         <p className="human-stitch">
-          Your stitch: {humanStitch.triangles.length}{" "}
+          {humanStitchLabel}: {humanStitch.triangles.length}{" "}
           {humanStitch.triangles.length === 1 ? "triangle" : "triangles"} +
           {humanStitch.area}
           {humanStitch.links > 0
@@ -357,13 +357,14 @@ function LastStitch({
               </>
             ) : (
               <>
-                {playerName(last.player)} claimed {POINTS[last.point]?.label}.
+                {name(last.player)} claimed {POINTS[last.point]?.label}.
               </>
             )}
           </p>
           {last.points > 0 && (
             <p className="quiet">
-              {playerName(last.player)} added {last.points} points.
+              {name(last.player)} added {last.points}{" "}
+              {last.points === 1 ? "point" : "points"}.
             </p>
           )}
         </>
@@ -371,22 +372,39 @@ function LastStitch({
         <p className="stitch-result">A single point starts a pattern.</p>
       )}
       <p>
-        A complete shared edge links two of your triangles. Each link scores
-        once.
+        A complete shared edge links two triangles belonging to the same player.
+        Each link scores once.
       </p>
     </section>
   );
 }
 
 export function Weave() {
-  const { game, mode, loading, busy, error, start, move, reload } =
-    useEdition<WeaveState>();
+  const {
+    game,
+    mode,
+    loading,
+    busy,
+    error,
+    start,
+    move,
+    reload,
+    watching,
+    hostName,
+  } = useEdition<WeaveState>();
   const [rulesOpen, setRulesOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const [chosenMode, setChosenMode] = useState<PlayMode>("solo");
   const active = game !== null && game.winner === null;
   const canPlay =
-    active && !busy && !loading && (mode === "duel" || game.turn === 1);
+    !watching &&
+    active &&
+    !busy &&
+    !loading &&
+    (mode === "duel" || game.turn === 1);
+  const humanName = watching ? (hostName ?? "Redditor") : "You";
+  const ownerLabels: [string, string] =
+    mode === "duel" ? ["Player 1", "Player 2"] : [humanName, "Euclid"];
   const outcome = game?.winner;
   const heading = loading
     ? "Gathering threads…"
@@ -399,25 +417,41 @@ export function Weave() {
           : outcome === 1
             ? mode === "duel"
               ? "Terracotta wins."
-              : "Your weave wins."
+              : watching
+                ? `${humanName}’s weave wins.`
+                : "Your weave wins."
             : outcome === 2
-              ? "Indigo wins."
+              ? mode === "duel"
+                ? "Indigo wins."
+                : "Euclid wins."
               : mode === "duel"
                 ? `${playerName(game.turn)}’s thread.`
                 : game.turn === 1
-                  ? "Your thread."
+                  ? watching
+                    ? `${humanName}’s thread.`
+                    : "Your thread."
                   : "Euclid’s thread.";
   const instructions = !game
     ? "Twenty-eight points. Three equal sides. A new way to see the possibilities."
     : outcome !== null
       ? outcome === 0
         ? "The lattice is full. Both weaves finish with the same score."
-        : `${playerName(outcome ?? 1)} ${Math.max(...game.scores) >= TARGET ? `reached ${TARGET}` : "leads on the full lattice"}. Every thread counted.`
-      : "Claim one empty point.";
+        : `${mode === "duel" ? playerName(outcome ?? 1) : ownerLabels[(outcome ?? 1) - 1]} ${Math.max(...game.scores) >= TARGET ? `reached ${TARGET}` : "finished ahead on the full lattice"}. Every thread counted.`
+      : watching
+        ? "Inspect the points and completed triangles."
+        : "Claim one empty point.";
 
   async function begin() {
+    if (watching) return;
     if (await start(undefined, chosenMode)) setSetupOpen(false);
   }
+
+  if (watching && !game)
+    return (
+      <main className="weave-app">
+        <p>Waiting for the broadcast…</p>
+      </main>
+    );
 
   return (
     <main className="weave-app">
@@ -429,10 +463,11 @@ export function Weave() {
           <button
             className="primary"
             onClick={() => {
+              if (watching) return;
               setChosenMode(mode === "duel" ? "duel" : "solo");
               setSetupOpen(true);
             }}
-            disabled={busy || loading}
+            disabled={watching || busy || loading}
           >
             New game
           </button>
@@ -444,7 +479,7 @@ export function Weave() {
             game={game}
             available={canPlay}
             onClaim={(point) => {
-              void move({ point });
+              if (!watching) void move({ point });
             }}
           />
           <div className="board-legend">
@@ -459,11 +494,13 @@ export function Weave() {
             </span>
           </div>
           <p className="board-caption">
-            Choose a point. Complete a triangle. Connect a weave.
+            {watching
+              ? "Read-only board · Arrow keys inspect points."
+              : "Choose a point. Complete a triangle. Connect a weave."}
           </p>
         </section>
         <aside className="game-rail">
-          <Scoreboard game={game} mode={mode} />
+          <Scoreboard game={game} ownerLabels={ownerLabels} />
           <section
             className="turn-status"
             aria-live="polite"
@@ -482,7 +519,7 @@ export function Weave() {
                 Begin a weave
               </button>
             )}
-            {game && game.winner !== null && (
+            {!watching && game && game.winner !== null && (
               <button
                 className="primary full-width"
                 disabled={busy}
@@ -505,7 +542,14 @@ export function Weave() {
               </button>
             </section>
           )}
-          <LastStitch game={game} mode={mode} />
+          <LastStitch
+            game={game}
+            mode={mode}
+            humanStitchLabel={
+              watching ? `${humanName}’s stitch` : "Your stitch"
+            }
+            ownerLabels={ownerLabels}
+          />
           <footer className="match-detail">
             <p>
               First to {TARGET} <span>·</span>{" "}
@@ -513,7 +557,9 @@ export function Weave() {
               {game ? "points left" : "points"}
             </p>
             <span className="quiet">
-              {mode === "duel" ? "Same-device two player" : "You versus Euclid"}{" "}
+              {mode === "duel"
+                ? "Same-device two player"
+                : `${humanName} versus Euclid`}{" "}
               · Unrated
             </span>
           </footer>
@@ -524,7 +570,7 @@ export function Weave() {
         <span>Equal sides. Unexpected connections.</span>
       </footer>
       {rulesOpen && <Rules onClose={() => setRulesOpen(false)} />}
-      {setupOpen && (
+      {!watching && setupOpen && (
         <Dialog
           title={
             active ? "Start a fresh weave?" : "Who holds the other thread?"
