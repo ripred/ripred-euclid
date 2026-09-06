@@ -1,3 +1,6 @@
+import type { CSSProperties } from "react";
+
+import "./share-preview.css";
 import type {
   SharedPostPayload,
   RankingsSharePayload,
@@ -199,7 +202,8 @@ function RankingsPreview({
   );
 }
 
-function ResultPreview({
+// Both entrypoints use this layout, including posts already created with "game".
+export function ResultShareView({
   share,
   theme,
 }: {
@@ -207,150 +211,67 @@ function ResultPreview({
   theme: ThemeMode;
 }) {
   const palette = surfacePalette[theme];
-  const score1 = share.board.m_players[0]?.m_score ?? 0;
-  const score2 = share.board.m_players[1]?.m_score ?? 0;
+  const players = [
+    { side: 1, name: share.p1Name, color: palette.red },
+    { side: 2, name: share.p2Name, color: palette.blue },
+  ];
 
   return (
-    <div
-      style={{
-        background: palette.shellBg,
-        color: palette.title,
-        display: "flex",
-        justifyContent: "center",
-        padding: "8px 12px 6px",
-      }}
+    <section
+      className="euclid-result-share"
+      aria-label="Shared game result"
+      tabIndex={0}
+      style={
+        {
+          background: palette.shellBg,
+          color: palette.title,
+          "--share-muted": palette.muted,
+          "--share-text": palette.text,
+          "--share-border": palette.cardBorder,
+          "--share-surface": palette.softBg,
+        } as CSSProperties
+      }
     >
-      <div
-        style={{
-          width: "min(760px, 100%)",
-          borderRadius: 22,
-          border: `1px solid ${palette.cardBorder}`,
-          background: palette.cardBg,
-          boxShadow:
-            theme === "dark"
-              ? "0 28px 64px rgba(2,8,23,.34)"
-              : "0 18px 44px rgba(15,23,42,.12)",
-          padding: "18px 16px 16px",
-          display: "grid",
-          gap: 10,
-          backdropFilter: "blur(10px)",
-        }}
+      <article
+        className="euclid-result-share__card"
+        style={{ background: palette.cardBg }}
       >
-        <div>
-          <div
-            style={{
-              color: palette.accent,
-              fontSize: 12,
-              fontWeight: 800,
-              letterSpacing: "0.14em",
-              textTransform: "uppercase",
-            }}
-          >
-            r/{share.subredditName}
-          </div>
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 32,
-              fontWeight: 900,
-              lineHeight: 1.02,
-            }}
-          >
-            {share.title}
-          </div>
-          <div style={{ marginTop: 8, color: palette.text, fontSize: 14 }}>
-            {share.subtitle}
-          </div>
-        </div>
+        <div className="euclid-result-share__summary">
+          <header>
+            <p className="euclid-result-share__eyebrow">Euclid · Shared game</p>
+            <h1>{share.headline}</h1>
+            <p className="euclid-result-share__rules">{share.subtitle}</p>
+          </header>
 
-        <div
-          style={{
-            borderRadius: 16,
-            border: `1px solid ${palette.softBorder}`,
-            background: palette.softBg,
-            padding: "12px 14px",
-            display: "grid",
-            gap: 6,
-          }}
-        >
-          <div style={{ color: palette.title, fontSize: 19, fontWeight: 900 }}>
-            {share.headline}
-          </div>
-          <div style={{ color: palette.text, fontSize: 14 }}>
-            {share.details}
-          </div>
+          <dl className="euclid-result-share__scores" aria-label="Final scores">
+            {players.map(({ side, name, color }) => (
+              <div className="euclid-result-share__player" key={side}>
+                <dt style={{ color }}>{name}</dt>
+                <dd>
+                  {share.board.m_players[side - 1]?.m_score ?? 0}
+                  <span className="euclid-result-share__outcome">
+                    {share.winnerSide === side ? "Winner" : "Opponent"}
+                  </span>
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <p className="euclid-result-share__detail">{share.details}</p>
+          <footer>
+            <p>{share.footer}</p>
+            <p>
+              r/{share.subredditName} ·{" "}
+              <time dateTime={share.sharedAt}>
+                {formatDisplayDate(share.sharedAt)}
+              </time>
+            </p>
+          </footer>
         </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-            gap: 8,
-          }}
-        >
-          <div
-            style={{
-              borderRadius: 16,
-              border: `1px solid ${palette.softBorder}`,
-              background: palette.softBg,
-              padding: "12px 14px",
-            }}
-          >
-            <div style={{ color: palette.red, fontSize: 14, fontWeight: 800 }}>
-              {share.p1Name}
-            </div>
-            <div
-              style={{
-                marginTop: 6,
-                color: palette.title,
-                fontSize: 30,
-                fontWeight: 900,
-              }}
-            >
-              {score1}
-            </div>
-          </div>
-          <div
-            style={{
-              borderRadius: 16,
-              border: `1px solid ${palette.softBorder}`,
-              background: palette.softBg,
-              padding: "12px 14px",
-            }}
-          >
-            <div style={{ color: palette.blue, fontSize: 14, fontWeight: 800 }}>
-              {share.p2Name}
-            </div>
-            <div
-              style={{
-                marginTop: 6,
-                color: palette.title,
-                fontSize: 30,
-                fontWeight: 900,
-              }}
-            >
-              {score2}
-            </div>
-          </div>
+        <div className="euclid-result-share__replay">
+          <ReplayBoardCard board={share.board} theme={theme} compact />
         </div>
-
-        <ReplayBoardCard board={share.board} theme={theme} compact />
-
-        <div
-          style={{
-            borderRadius: 16,
-            border: `1px solid ${palette.softBorder}`,
-            background: palette.softBg,
-            padding: "12px 14px",
-            color: palette.text,
-            fontSize: 14,
-            lineHeight: 1.5,
-          }}
-        >
-          {share.footer}
-        </div>
-      </div>
-    </div>
+      </article>
+    </section>
   );
 }
 
@@ -364,5 +285,5 @@ export function SharePreview({
   if (share.kind === "rankings") {
     return <RankingsPreview share={share} theme={theme} />;
   }
-  return <ResultPreview share={share} theme={theme} />;
+  return <ResultShareView share={share} theme={theme} />;
 }

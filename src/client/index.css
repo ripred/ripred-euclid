@@ -128,57 +128,6 @@
   gap: 0.875rem;
 }
 
-.euclid-home__brand-mark {
-  position: relative;
-  display: block;
-  width: 3.25rem;
-  height: 3.25rem;
-  flex: 0 0 auto;
-  border: 1px solid var(--home-border-strong);
-  border-radius: 0.8rem;
-  background: var(--home-surface);
-  box-shadow: var(--home-card-shadow);
-}
-
-.euclid-home__brand-mark::before {
-  position: absolute;
-  inset: 0.78rem;
-  border: 2px solid var(--home-accent);
-  content: "";
-  transform: rotate(45deg);
-}
-
-.euclid-home__brand-mark span {
-  position: absolute;
-  z-index: 1;
-  width: 0.42rem;
-  height: 0.42rem;
-  border: 2px solid var(--home-surface-raised);
-  border-radius: 50%;
-  background: var(--home-accent);
-  box-shadow: 0 0 0 1px var(--home-accent);
-}
-
-.euclid-home__brand-mark span:nth-child(1) {
-  top: 0.64rem;
-  left: calc(50% - 0.21rem);
-}
-
-.euclid-home__brand-mark span:nth-child(2) {
-  top: calc(50% - 0.21rem);
-  right: 0.64rem;
-}
-
-.euclid-home__brand-mark span:nth-child(3) {
-  bottom: 0.64rem;
-  left: calc(50% - 0.21rem);
-}
-
-.euclid-home__brand-mark span:nth-child(4) {
-  top: calc(50% - 0.21rem);
-  left: 0.64rem;
-}
-
 .euclid-home__eyebrow,
 .euclid-home__state-label,
 .euclid-home__primary-kicker {
@@ -897,31 +846,6 @@ body[data-color-scheme="light"] .euclid-home {
 }
 
 @media (max-width: 470px) {
-  .euclid-home__brand-mark {
-    width: 2.75rem;
-    height: 2.75rem;
-  }
-
-  .euclid-home__brand-mark::before {
-    inset: 0.68rem;
-  }
-
-  .euclid-home__brand-mark span:nth-child(1) {
-    top: 0.52rem;
-  }
-
-  .euclid-home__brand-mark span:nth-child(2) {
-    right: 0.52rem;
-  }
-
-  .euclid-home__brand-mark span:nth-child(3) {
-    bottom: 0.52rem;
-  }
-
-  .euclid-home__brand-mark span:nth-child(4) {
-    left: 0.52rem;
-  }
-
   .euclid-home__eyebrow {
     font-size: 0.62rem;
   }
