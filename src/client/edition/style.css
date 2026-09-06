@@ -210,8 +210,18 @@ button:focus-visible {
   pointer-events: none;
 }
 .board-point:focus-visible .coordinate-label,
+.hint-point .coordinate-label,
 .selected-point .coordinate-label {
   opacity: 1;
+}
+.hint-square {
+  fill: none;
+  stroke: var(--yellow);
+  stroke-width: 2.5;
+  stroke-dasharray: 9 7;
+  stroke-linejoin: round;
+  opacity: 0.8;
+  pointer-events: none;
 }
 .square {
   fill: #b1a6cc08;
@@ -271,10 +281,15 @@ button:focus-visible {
   font-weight: 400;
   margin: 0 0 15px;
 }
-.puzzle-story > p:not(.puzzle-number) {
+.puzzle-goal {
   font-size: 20px;
   line-height: 1.55;
   margin: 0;
+}
+.puzzle-story > p.puzzle-description {
+  font-size: 14px;
+  color: var(--muted);
+  margin-top: 9px;
 }
 .puzzle-metrics {
   display: grid;
@@ -317,21 +332,73 @@ button:focus-visible {
   min-height: 58px;
 }
 .move-feedback {
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.55;
   color: var(--muted);
-  min-height: 38px;
-  padding-top: 14px;
+  min-height: 75px;
+  margin-bottom: 14px;
+  scroll-margin-block: 20px;
+}
+.move-feedback p {
+  margin: 0;
+}
+.move-feedback p + p {
+  margin-top: 8px;
+}
+.hint-guidance {
+  border-left: 3px solid var(--yellow);
+  padding: 10px 12px;
+  background: #f4c65a0b;
+  color: var(--ivory);
+}
+.selection-feedback {
+  color: var(--ivory);
+}
+.hint-legend {
+  font-size: 12px;
+  color: var(--muted);
 }
 .move-feedback.success {
   color: var(--yellow);
 }
-.level-chooser {
+.puzzle-navigation {
   border-top: 1px solid var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px 24px;
+  padding-top: 18px;
+  margin-top: 10px;
+}
+.intro-collection {
+  min-width: 0;
+}
+.intro-collection[open] {
+  flex-basis: 100%;
+}
+.intro-collection summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 15px;
+  padding: 12px 8px;
+  min-height: 44px;
+}
+.intro-collection summary:focus-visible {
+  outline: 2px solid var(--yellow);
+  outline-offset: 3px;
+}
+.intro-progress {
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 16px 0 0;
+}
+.level-chooser {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
-  padding: 22px 25px 0;
-  margin-top: 10px;
+  padding: 12px 25px 0;
 }
 .level-chooser button {
   position: relative;
@@ -348,6 +415,51 @@ button:focus-visible {
 }
 .level-chooser button.current-level {
   color: var(--yellow);
+}
+.new-puzzle {
+  padding: 9px 24px;
+  min-height: 44px;
+  font-size: 16px;
+}
+.puzzle-seed {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 10px 0 0;
+}
+.generator-form fieldset {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.generator-form label {
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+}
+.generator-seed {
+  grid-column: 1 / -1;
+}
+.generator-form select,
+.generator-form input {
+  min-width: 0;
+  min-height: 44px;
+  width: 100%;
+  padding: 10px;
+  font: inherit;
+  color: var(--ivory);
+  background: var(--plum);
+  border: 1px solid var(--muted);
+  border-radius: 4px;
+}
+.generator-form select:focus-visible,
+.generator-form input:focus-visible {
+  outline: 2px solid var(--yellow);
+  outline-offset: 3px;
 }
 .level-chooser button.current-level::after {
   content: "";
@@ -376,11 +488,6 @@ button:focus-visible {
   line-height: 1.5;
   letter-spacing: 0.06em;
   margin: 8px 0 12px;
-}
-.relay-footer > span {
-  font-size: 11px;
-  letter-spacing: 0.045em;
-  color: var(--muted);
 }
 .relay-dialog {
   width: min(620px, calc(100vw - 32px));
@@ -511,7 +618,7 @@ button:focus-visible {
     font-size: 16px;
     padding-inline: 12px;
   }
-  .puzzle-story > p:not(.puzzle-number) {
+  .puzzle-goal {
     font-size: 18px;
   }
   .puzzle-metrics span {
@@ -580,7 +687,7 @@ button:focus-visible {
     font-size: 28px;
     margin-bottom: 10px;
   }
-  .puzzle-story > p:not(.puzzle-number) {
+  .puzzle-goal {
     font-size: 16px;
   }
   .puzzle-story > p.puzzle-description {
@@ -644,12 +751,11 @@ button:focus-visible {
     font-size: 24px;
   }
   .move-feedback {
-    font-size: 12px;
-    min-height: 32px;
+    font-size: 14px;
+    min-height: 65px;
   }
   .level-chooser {
-    padding: 20px 0 0;
-    margin-top: 18px;
+    padding: 12px 0 0;
     grid-template-columns: repeat(4, 1fr);
     row-gap: 16px;
   }

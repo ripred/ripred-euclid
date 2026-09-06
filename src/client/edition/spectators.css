@@ -1,0 +1,107 @@
+/* Common spectator controls inherit each edition's typography and palette. */
+.edition-spectators {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 12px 24px;
+  font-size: 14px;
+  border-bottom: 1px solid currentColor;
+}
+.edition-spectator-bar,
+.edition-sharing-control,
+.edition-live-heading,
+.edition-spectator-error {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.edition-spectator-bar {
+  justify-content: space-between;
+}
+.edition-spectators button,
+.edition-spectators summary {
+  font: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+  line-height: 1.35;
+  min-height: 44px;
+  padding: 10px 14px;
+}
+.edition-spectators button:focus-visible,
+.edition-spectators summary:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+.edition-sharing-control > span,
+.edition-spectator-status > span,
+.edition-live-list li span {
+  opacity: 0.75;
+}
+.edition-spectator-status {
+  display: grid;
+  gap: 4px;
+}
+.edition-spectators details {
+  margin-left: auto;
+}
+.edition-spectators details[open] {
+  width: 100%;
+}
+.edition-spectators summary {
+  cursor: pointer;
+  width: fit-content;
+}
+.edition-live-list {
+  padding: 12px 0;
+}
+.edition-live-heading {
+  justify-content: space-between;
+}
+.edition-live-list p {
+  margin: 10px 0;
+  max-width: 65ch;
+}
+.edition-live-list ul {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 12px;
+}
+.edition-live-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  padding: 12px;
+}
+.edition-live-list li > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+.edition-live-list li > button {
+  flex-shrink: 0;
+}
+.edition-spectator-error {
+  margin-top: 10px;
+}
+.edition-spectator-error > span {
+  flex: 1 1 240px;
+}
+@media (max-width: 600px) {
+  .edition-spectators {
+    padding: 10px 14px;
+  }
+  .edition-sharing-control {
+    flex: 1 1 200px;
+    gap: 8px;
+  }
+  .edition-sharing-control > span {
+    flex: 1 1 150px;
+  }
+}
