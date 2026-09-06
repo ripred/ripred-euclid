@@ -1,0 +1,2 @@
+# Preserve the upstream font notices without rewriting their original formatting.
+src/client/public/fonts/*-OFL.txt -text whitespace=-blank-at-eol,cr-at-eol

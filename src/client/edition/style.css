@@ -1,0 +1,703 @@
+@font-face {
+  font-family: "Antonio";
+  src: url("/fonts/Antonio.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: swap;
+}
+:root {
+  color-scheme: dark;
+  --plum: #17142c;
+  --ivory: #f4ede0;
+  --yellow: #f4c65a;
+  --muted: #b1a6cc;
+  --line: #655c7a;
+  --display: "Antonio", "Avenir Next Condensed", "Arial Narrow", sans-serif;
+  font-family: "Avenir Next", Arial, sans-serif;
+  color: var(--ivory);
+  background: var(--plum);
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: 1px solid var(--muted);
+  background: transparent;
+  border-radius: 4px;
+  min-height: 44px;
+  padding: 10px 20px;
+  transition:
+    background-color 0.2s,
+    border-color 0.2s;
+  color: var(--ivory);
+}
+button:hover:not(:disabled) {
+  background: #f4ede00b;
+  border-color: var(--ivory);
+}
+button:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+button:focus-visible {
+  outline: 3px solid var(--yellow);
+  outline-offset: 4px;
+}
+.primary {
+  background: var(--yellow);
+  border-color: var(--yellow);
+  color: #201d32;
+  font-family: var(--display);
+  font-size: 34px;
+  font-weight: 400;
+  padding: 13px 20px;
+  letter-spacing: 0.015em;
+}
+.primary:hover:not(:disabled) {
+  background: #ffda83;
+  border-color: #ffda83;
+}
+.muted {
+  color: var(--muted);
+}
+.relay-app {
+  max-width: 1500px;
+  margin: auto;
+  min-height: 100svh;
+  padding: 20px 32px max(20px, env(safe-area-inset-bottom));
+}
+.relay-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+}
+.brand-lockup {
+  display: flex;
+  align-items: flex-end;
+  gap: 30px;
+}
+.relay-wordmark {
+  font-family: var(--display);
+  font-size: clamp(90px, 12vw, 165px);
+  font-weight: 200;
+  line-height: 1.03;
+  letter-spacing: -0.04em;
+}
+.brand-lockup > span {
+  font-size: 18px;
+  margin-bottom: 25px;
+}
+.relay-header nav {
+  display: flex;
+  gap: 25px;
+  margin-top: 13px;
+}
+.relay-header nav button {
+  border-color: transparent;
+  font-size: 19px;
+  letter-spacing: 0.025em;
+}
+.relay-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2.1fr) minmax(350px, 1fr);
+  gap: 28px;
+  margin-top: -20px;
+}
+.board-region {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding: 10px 20px 15px;
+}
+.puzzle-board {
+  position: relative;
+  aspect-ratio: 1;
+  width: 100%;
+  max-width: 650px;
+  margin: auto;
+}
+.board-art {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.board-grid {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.board-point {
+  position: absolute;
+  width: clamp(44px, 5.5vw, 66px);
+  height: clamp(44px, 5.5vw, 66px);
+  min-height: 44px;
+  transform: translate(-50%, -50%);
+  padding: 0;
+  border: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  touch-action: manipulation;
+}
+.board-point:hover:not(:disabled) {
+  background: none;
+}
+.board-point[aria-disabled="true"] {
+  cursor: default;
+}
+.point-core {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition:
+    transform 0.18s,
+    box-shadow 0.18s,
+    background-color 0.18s;
+}
+.occupied .point-core {
+  width: 24px;
+  height: 24px;
+  background: var(--ivory);
+  box-shadow: 0 1px 3px #0007;
+}
+.placed .point-core {
+  background: var(--yellow);
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--yellow);
+  box-shadow: 0 0 13px #f4c65a66;
+}
+.board-point.empty[aria-disabled="false"]:hover .point-core {
+  transform: scale(1.6);
+  background: var(--ivory);
+}
+.selected-point .point-core {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--yellow);
+  background: var(--plum);
+  box-shadow: 0 0 0 5px #f4c65a15;
+}
+.hint-point .point-core {
+  outline: 2px dashed var(--yellow);
+  outline-offset: 7px;
+}
+.last-point .point-core {
+  outline: 1px solid var(--yellow);
+  outline-offset: 4px;
+}
+.coordinate-label {
+  position: absolute;
+  top: calc(50% + 18px);
+  font:
+    11px Arial,
+    sans-serif;
+  background: var(--plum);
+  padding: 2px 4px;
+  opacity: 0;
+  pointer-events: none;
+}
+.board-point:focus-visible .coordinate-label,
+.selected-point .coordinate-label {
+  opacity: 1;
+}
+.square {
+  fill: #b1a6cc08;
+  stroke: #b1a6cc;
+  stroke-opacity: 0.35;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+.latest-square {
+  stroke: var(--yellow);
+  stroke-opacity: 1;
+  stroke-width: 2.7;
+  fill: #f4c65a06;
+  filter: drop-shadow(0 0 4px #f4c65a99);
+  animation: connect 0.65s ease-out;
+}
+.connection-rays {
+  stroke: var(--yellow);
+  stroke-width: 0.6;
+  opacity: 0.45;
+  animation: rays 0.8s ease-out;
+}
+.board-instruction {
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  text-align: center;
+  margin: 4px 0 0;
+}
+.puzzle-rail {
+  border-left: 1px solid var(--muted);
+  padding: 18px 0 18px 40px;
+}
+.puzzle-rail h1 {
+  font-family: var(--display);
+  font-size: clamp(32px, 3.45vw, 49px);
+  font-weight: 200;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  margin: 0;
+  padding: 0 0 25px;
+  border-bottom: 1px solid var(--muted);
+}
+.puzzle-story {
+  padding: 20px 0 23px;
+}
+.puzzle-number {
+  color: var(--muted);
+  font-size: 21px;
+  margin: 0 0 14px;
+  letter-spacing: 0.035em;
+}
+.puzzle-story h2 {
+  font-size: clamp(28px, 2.8vw, 39px);
+  line-height: 1.12;
+  letter-spacing: -0.035em;
+  font-weight: 400;
+  margin: 0 0 15px;
+}
+.puzzle-story > p:not(.puzzle-number) {
+  font-size: 20px;
+  line-height: 1.55;
+  margin: 0;
+}
+.puzzle-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 20px 0;
+  border-block: 1px solid var(--muted);
+  text-align: center;
+}
+.puzzle-metrics > div + div {
+  border-left: 1px solid var(--muted);
+}
+.puzzle-metrics span {
+  font-size: 17px;
+  color: var(--muted);
+}
+.puzzle-metrics strong {
+  display: block;
+  font-family: var(--display);
+  font-size: 53px;
+  font-weight: 400;
+  color: var(--yellow);
+  line-height: 1.25;
+}
+.puzzle-actions {
+  padding-top: 18px;
+}
+.puzzle-actions > .primary {
+  width: 100%;
+}
+.secondary-actions {
+  display: flex;
+  gap: 16px;
+  margin-top: 14px;
+}
+.secondary-actions > button {
+  flex: 1;
+  font-family: var(--display);
+  font-size: 25px;
+  color: var(--muted);
+  min-height: 58px;
+}
+.move-feedback {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+  min-height: 38px;
+  padding-top: 14px;
+}
+.move-feedback.success {
+  color: var(--yellow);
+}
+.level-chooser {
+  border-top: 1px solid var(--muted);
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  padding: 22px 25px 0;
+  margin-top: 10px;
+}
+.level-chooser button {
+  position: relative;
+  border: 0;
+  border-radius: 0;
+  font-family: var(--display);
+  font-size: 45px;
+  color: var(--muted);
+  padding: 0 10px 9px;
+  line-height: 1.2;
+}
+.level-chooser button + button {
+  border-left: 1px solid var(--line);
+}
+.level-chooser button.current-level {
+  color: var(--yellow);
+}
+.level-chooser button.current-level::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 18%;
+  right: 18%;
+  height: 2px;
+  background: var(--yellow);
+}
+.solved-mark {
+  position: absolute;
+  font:
+    13px Arial,
+    sans-serif;
+  color: var(--yellow);
+  right: 20%;
+  top: 1px;
+}
+.relay-footer {
+  text-align: center;
+  padding: 18px 12px 0;
+}
+.relay-footer p {
+  font-size: 25px;
+  line-height: 1.5;
+  letter-spacing: 0.06em;
+  margin: 8px 0 12px;
+}
+.relay-footer > span {
+  font-size: 11px;
+  letter-spacing: 0.045em;
+  color: var(--muted);
+}
+.relay-dialog {
+  width: min(620px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  background: var(--plum);
+  color: var(--ivory);
+  border: 1px solid var(--muted);
+  border-radius: 7px;
+  box-shadow: 0 25px 80px #0008;
+  padding: 28px;
+}
+.relay-dialog::backdrop {
+  background: #0f0b21bb;
+  backdrop-filter: blur(4px);
+}
+.dialog-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+}
+.dialog-header h2 {
+  font-family: var(--display);
+  font-size: 34px;
+  font-weight: 400;
+  flex: 1;
+  line-height: 1.1;
+  margin: 0;
+}
+.dialog-header button {
+  font-size: 13px;
+  padding: 10px 14px;
+}
+.relay-dialog p,
+.relay-dialog li {
+  font-size: 15px;
+  line-height: 1.75;
+}
+.relay-dialog p {
+  margin: 23px 0;
+}
+.relay-dialog ol {
+  padding-left: 24px;
+}
+.relay-dialog li {
+  padding-left: 4px;
+  margin: 15px 0;
+}
+.relay-dialog .primary {
+  font-size: 26px;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 15px;
+  margin-top: 24px;
+}
+.error-message {
+  border: 1px solid #df938f;
+  color: #ffd2c7;
+  border-radius: 4px;
+  padding: 12px 14px;
+  margin-top: 15px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.error-message p {
+  margin: 0 0 10px;
+}
+.error-message button {
+  font-size: 13px;
+  padding: 7px 12px;
+}
+@keyframes connect {
+  from {
+    stroke-opacity: 0.2;
+    fill-opacity: 0;
+  }
+  to {
+    stroke-opacity: 1;
+    fill-opacity: 1;
+  }
+}
+@keyframes rays {
+  from {
+    opacity: 0;
+    stroke-dasharray: 1 7;
+  }
+  to {
+    opacity: 0.45;
+    stroke-dasharray: none;
+  }
+}
+@media (min-width: 1101px) {
+  .puzzle-board {
+    /* Keep the board, collection, and status together on laptop-height screens. */
+    max-width: min(650px, max(480px, calc(100svh - 430px)));
+  }
+}
+@media (max-width: 1100px) {
+  .relay-app {
+    padding-inline: 24px;
+  }
+  .relay-layout {
+    grid-template-columns: minmax(0, 1.7fr) minmax(300px, 1fr);
+    gap: 15px;
+    margin-top: 0;
+  }
+  .puzzle-rail {
+    padding-left: 25px;
+  }
+  .board-region {
+    padding-inline: 0;
+  }
+  .relay-wordmark {
+    font-size: 126px;
+  }
+  .brand-lockup {
+    gap: 20px;
+  }
+  .brand-lockup > span {
+    font-size: 15px;
+  }
+  .relay-header nav {
+    gap: 8px;
+  }
+  .relay-header nav button {
+    font-size: 16px;
+    padding-inline: 12px;
+  }
+  .puzzle-story > p:not(.puzzle-number) {
+    font-size: 18px;
+  }
+  .puzzle-metrics span {
+    font-size: 15px;
+  }
+  .primary {
+    font-size: 29px;
+  }
+}
+@media (max-width: 740px) {
+  .relay-app {
+    padding: 18px 18px 24px;
+  }
+  .relay-header {
+    align-items: center;
+    gap: 15px;
+    flex-wrap: wrap;
+  }
+  .brand-lockup {
+    gap: 20px;
+    align-items: center;
+  }
+  .brand-lockup > span {
+    margin: 30px 0 0;
+    font-size: 15px;
+  }
+  .relay-wordmark {
+    font-size: 98px;
+  }
+  .relay-header nav {
+    width: 100%;
+    margin: 0;
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--line);
+    padding: 3px 0 12px;
+  }
+  .relay-header nav button {
+    padding-inline: 5px;
+    font-size: 15px;
+  }
+  .relay-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-top: 20px;
+  }
+  .puzzle-rail {
+    display: contents;
+  }
+  .puzzle-rail h1 {
+    order: -4;
+    font-size: 34px;
+    border: 0;
+    padding: 0 0 20px;
+  }
+  .puzzle-story {
+    order: -3;
+    padding: 0 0 18px;
+  }
+  .puzzle-number {
+    font-size: 14px;
+    margin-bottom: 10px;
+  }
+  .puzzle-story h2 {
+    font-size: 28px;
+    margin-bottom: 10px;
+  }
+  .puzzle-story > p:not(.puzzle-number) {
+    font-size: 16px;
+  }
+  .puzzle-story > p.puzzle-description {
+    font-size: 12px;
+    margin-top: 9px;
+  }
+  .puzzle-metrics {
+    order: -2;
+    padding: 13px 0;
+  }
+  .puzzle-metrics span {
+    font-size: 14px;
+  }
+  .puzzle-metrics strong {
+    font-size: 38px;
+    display: inline;
+    padding-left: 15px;
+    vertical-align: middle;
+  }
+  .board-region {
+    order: -1;
+    padding: 12px 0 0;
+  }
+  .board-instruction {
+    font-size: 11px;
+    margin: 8px 0 5px;
+  }
+  .occupied .point-core {
+    width: 18px;
+    height: 18px;
+  }
+  .placed .point-core {
+    width: 16px;
+    height: 16px;
+  }
+  .point-core {
+    width: 7px;
+    height: 7px;
+  }
+  .selected-point .point-core {
+    width: 20px;
+    height: 20px;
+  }
+  .board-grid {
+    stroke-width: 1.3;
+  }
+  .puzzle-actions {
+    padding-top: 16px;
+  }
+  .puzzle-actions > .primary {
+    font-size: 29px;
+    min-height: 55px;
+    padding: 8px 15px;
+  }
+  .secondary-actions {
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .secondary-actions button {
+    min-height: 48px;
+    font-size: 24px;
+  }
+  .move-feedback {
+    font-size: 12px;
+    min-height: 32px;
+  }
+  .level-chooser {
+    padding: 20px 0 0;
+    margin-top: 18px;
+    grid-template-columns: repeat(4, 1fr);
+    row-gap: 16px;
+  }
+  .level-chooser button {
+    font-size: 32px;
+    min-height: 44px;
+  }
+  .level-chooser button:nth-child(5) {
+    border-left: 0;
+  }
+  .solved-mark {
+    font-size: 11px;
+    right: 18%;
+    top: 0;
+  }
+  .relay-footer {
+    padding: 15px 0 0;
+  }
+  .relay-footer p {
+    font-size: 18px;
+    letter-spacing: 0.02em;
+  }
+  .relay-footer > span {
+    font-size: 10px;
+  }
+  .relay-dialog {
+    padding: 22px;
+  }
+  .dialog-header h2 {
+    font-size: 30px;
+  }
+  .dialog-actions {
+    flex-wrap: wrap;
+  }
+  .relay-dialog p,
+  .relay-dialog li {
+    font-size: 14px;
+  }
+  .relay-dialog .primary {
+    font-size: 25px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
