@@ -6,9 +6,9 @@ Euclid is a turn-based Reddit strategy game about claiming grid points and compl
 
 ![Euclid game](Euclid-Game2.png)
 
-The local package is `0.1.108` and the project is pinned to Devvit `0.14.2`. The original game's inline-entry, scrolling, Watch, display-copy, Practice difficulty, and request-limit changes are installed on `r/EuclidTheGame`. Deployment and Git pushes are separate operations.
+The local package is `0.1.109` and the project is pinned to Devvit `0.14.2`. Deployment and Git pushes are separate operations.
 
-The intended public-facing community is [r/EuclidTheGame](https://www.reddit.com/r/EuclidTheGame/), currently private for beta testing. On September 6, 2026, the current original build was uploaded and installed there as `0.1.108`, then confirmed by a separate installation readback. The development subreddit was not changed and was last verified at `0.1.99`. The communities' matching icon and desktop/mobile banners were unchanged; the development playtest target remains `r/ripred_euclid_dev`. Installation verification is separate from the desktop and native-mobile gameplay checks below.
+The intended public-facing community is [r/EuclidTheGame](https://www.reddit.com/r/EuclidTheGame/), currently private for beta testing. The current original build is installed there as `0.1.109`, confirmed by a separate installation readback on September 7, 2026. The development subreddit was not changed and was last verified at `0.1.99`. The communities' matching icon and desktop/mobile banners were unchanged; the development playtest target remains `r/ripred_euclid_dev`. Installation verification is separate from the desktop and native-mobile gameplay checks below.
 
 ## Game rules
 
@@ -43,10 +43,14 @@ The browser is a presentation and intent layer, not a source of official results
 
 - H2H clients submit a game ID, coordinate, and expected revision. The server verifies the participant, turn, revision, cell, score, completed squares, outcome, and persisted board.
 - Solo clients submit start rules or a coordinate intent with an expected revision and command ID. The server owns the session, private RNG seed, AI selection, complete move history, result, metrics, and Ranked settlement.
-- New solo command receipts retain exact retry responses for 24 hours. While a receipt exists, reusing its command ID for different intent is rejected. Each user can allocate up to 4,096 receipts or 32 MiB of serialized receipts per 24-hour budget window; retries of existing receipts do not consume the budget. Limits return HTTP 429 with retry guidance. Receipt expiration does not expire canonical games, results, ratings, or share records, and canonical revision and terminal checks still apply after expiration. Older receipts retain their existing retention behavior.
+- New solo command receipts retain exact retry responses for 24 hours. While a receipt exists, reusing its command ID for different intent is rejected. Each user can allocate up to 4,096 receipts or 32 MiB of serialized receipts per 24-hour budget window; retries of existing receipts do not consume this allocation budget. Canonical revision and terminal checks still apply after receipt expiration.
+- Solo starts, state reads, moves, and abandonment share a 120-request-per-minute allowance per user, checked before replay validation, including receipt retries. Request and allocation limits return HTTP 429 with retry guidance.
+- Practice games and unshared results expire 48 hours after a new command receipt, outliving every associated 24-hour receipt. Reads and receipt replays do not renew retention. Ranked history, ratings, and prepared or published shares remain durable. Untouched older Practice records and receipts retain their existing lifetime until rewritten; there is no deletion sweep.
+- H2H pairing and rematches atomically charge both players against an allowance of 100 new rounds per 24-hour window. Resuming costs nothing, and exhausted queue entries do not block eligible players. These per-account limits bound allocation rates, not total historical storage or traffic from multiple accounts.
+- A started H2H game's ten-minute turn timeout records a forfeit against the player whose turn expired. Only an accepted move starts a fresh turn clock; chat and spectator activity cannot extend it. Expiration is settled on subsequent game access or cleanup, preserving the terminal board and exactly-once rating settlement. Unplayed expired pairings cancel without affecting ratings.
 - Leaderboard and H2H sharing reserve their existing per-user, per-kind cooldown atomically before submitting a post, so simultaneous requests cannot bypass it.
 - Redis compare-and-set transactions serialize competing mutations. H2H terminal results are archived immutably by game ID and terminal revision in the same transaction that ends the round; they enter a durable outbox and settle rating and metrics exactly once.
-- Solo result shares are prepared from canonical completed human victories and finalized through an idempotent receipt. Explicit submission failures are retryable, while unconfirmed in-flight receipts remain pending to avoid duplicate posts. Client-claimed result uploads are rejected.
+- Solo result shares are prepared from canonical completed human victories and finalized through an idempotent receipt. New submissions and explicit failure retries reserve a ten-second per-user cooldown across games; prepared and posted duplicates do not resubmit. Unconfirmed in-flight receipts remain pending to avoid duplicate posts. Client-claimed result uploads are rejected.
 - Practice data never enters the versioned Ranked-solo namespace. Unverifiable legacy HVA ratings remain untouched but are excluded from current rankings.
 
 Pure rules are shared between client and server to keep behavior DRY. Server validation and persistence remain the trust boundary.
@@ -203,7 +207,7 @@ The full real-surface checklist still requires three distinct Reddit identities,
 
 ## Pending release work
 
-- Run the real-surface checklist above against installed `0.1.108` on Reddit desktop card view, compact view, and the native mobile app. The current release passed type-check, lint, all 427 tests across 32 files, and client/server builds. Automated fixtures do not establish native-platform behavior; the installation readback is not a gameplay check.
+- Run the real-surface checklist above against installed `0.1.109` on Reddit desktop card view, compact view, and the native mobile app. The current release passed type-check, lint, all 451 tests across 32 files, and client/server builds. Automated fixtures do not establish native-platform behavior; the installation readback is not a gameplay check.
 - Keep the five unshipped edition branches separate from this installed original release.
 - After private-beta results are acceptable, decide whether the community remains private, becomes restricted, or opens publicly, and prepare any introductory or how-to-play post.
 

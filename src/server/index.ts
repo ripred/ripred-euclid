@@ -270,6 +270,7 @@ async function enrichH2HProfiles<T extends H2HStateWithBoard>(
 }
 
 function h2hErrorStatus(error: unknown): number {
+  if (error instanceof RequestLimitError) return 429;
   if (error instanceof H2HDomainError) {
     switch (error.code) {
       case "invalid_request":
@@ -330,7 +331,9 @@ async function sendH2HError(
   console.error(`[H2H] ${operation} error`, error);
   const status = h2hErrorStatus(error);
   const retryAfterMs =
-    error instanceof H2HStoreError ? error.retryAfterMs : undefined;
+    error instanceof H2HStoreError || error instanceof RequestLimitError
+      ? error.retryAfterMs
+      : undefined;
   if (retryAfterMs !== undefined) {
     res.setHeader("Retry-After", String(Math.ceil(retryAfterMs / 1_000)));
   }

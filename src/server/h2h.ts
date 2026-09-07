@@ -32,6 +32,8 @@ export const H2H_CHAT_MAX_ITEMS = 100;
 
 export type H2HBoardSnapshot = CanonicalBoardSnapshot & {
   schemaVersion: number;
+  /** Server turn clock; chat and spectator activity must not renew it. */
+  turnStartedAt?: number;
 };
 
 export type H2HCanonicalStateSnapshot = Omit<H2HCanonicalState, "board"> & {
@@ -645,6 +647,22 @@ export function normalizeH2HBoard(source: unknown): H2HBoardSnapshot {
   if (createdAt !== null && lastSaved !== null && lastSaved < createdAt) {
     return invalidBoard("lastSaved cannot precede createdAt.");
   }
+  const turnStartedAt =
+    source.turnStartedAt === undefined
+      ? (lastSaved ?? createdAt)
+      : nonNegativeInteger(source.turnStartedAt);
+  if (source.turnStartedAt !== undefined && turnStartedAt === null) {
+    return invalidBoard("turnStartedAt must be a non-negative safe integer.");
+  }
+  if (
+    turnStartedAt !== null &&
+    ((createdAt !== null && turnStartedAt < createdAt) ||
+      (lastSaved !== null && turnStartedAt > lastSaved))
+  ) {
+    return invalidBoard(
+      "turnStartedAt must be within the persisted timestamps.",
+    );
+  }
 
   if (
     source.m_displayed_game_over !== undefined &&
@@ -685,6 +703,7 @@ export function normalizeH2HBoard(source: unknown): H2HBoardSnapshot {
     schemaVersion: H2H_SCHEMA_VERSION,
     ...(createdAt !== null ? { createdAt } : {}),
     ...(lastSaved !== null ? { lastSaved } : {}),
+    ...(turnStartedAt !== null ? { turnStartedAt } : {}),
     ended: end.ended,
     ...(end.endedReason ? { endedReason: end.endedReason } : {}),
     ...(end.endedBy ? { endedBy: end.endedBy } : {}),
@@ -734,6 +753,7 @@ export function createInitialH2HBoard(
     schemaVersion: H2H_SCHEMA_VERSION,
     createdAt: now,
     lastSaved: now,
+    turnStartedAt: now,
     ended: false,
   });
 }
@@ -907,6 +927,7 @@ export function applyH2HMove(
     schemaVersion: H2H_SCHEMA_VERSION,
     ...mutationTimestamps(state.board, now),
     ended: end.ended,
+    turnStartedAt: now,
     endedReason: end.endedReason,
     endedBy: undefined,
   });
@@ -989,6 +1010,7 @@ export function appendH2HChat(
   const nextState = createH2HCanonicalState(gameId, {
     ...state.board,
     chat: { seq: item.id, items },
+    turnStartedAt: state.board.turnStartedAt ?? now,
     revision: nextRevision(state.revision),
     ...mutationTimestamps(state.board, now),
   });

@@ -1,10 +1,12 @@
 import { Buffer } from "node:buffer";
 import {
-  redisCas,
+  redisMultiCas,
+  commitRedisCasWrites,
   setRedisCasWrite,
   type RedisCasClient,
   type RedisCasSnapshot,
   type RedisCasWrite,
+  type RedisCasOptions,
 } from "./redis-cas";
 
 export class RequestLimitError extends Error {
@@ -22,6 +24,109 @@ export const SOLO_RECEIPT_LIMITS = {
   count: 4_096,
   bytes: 32 * 1_024 * 1_024,
 } as const;
+
+export const SOLO_WORK_LIMITS = { count: 120, windowMs: 60_000 } as const;
+// Two days outlive every 24-hour receipt. Only new commands renew retention.
+export const SOLO_PRACTICE_RETENTION_MS = 48 * 60 * 60 * 1_000;
+export const SOLO_SHARE_COOLDOWN_MS = 10_000;
+export const soloWorkBudgetKey = (userId: string): string =>
+  `euclid:solo:v1:work-budget:${userId}`;
+export const soloShareCooldownKey = (userId: string): string =>
+  `euclid:solo:v1:share-cooldown:${userId}`;
+
+/** Charge an allocation together with its writes; callers must watch key. */
+export function writeWindowBudget(
+  snapshot: RedisCasSnapshot,
+  writes: Map<string, RedisCasWrite>,
+  key: string,
+  limit: number,
+  windowMs: number,
+  now: number,
+): void {
+  const raw = snapshot.get(key);
+  let count = 0;
+  let resetAt = now + windowMs;
+  if (raw !== undefined) {
+    const stored = JSON.parse(raw) as {
+      count?: unknown;
+      resetAt?: unknown;
+    } | null;
+    if (
+      !stored ||
+      typeof stored.count !== "number" ||
+      !Number.isSafeInteger(stored.count) ||
+      stored.count < 0 ||
+      typeof stored.resetAt !== "number" ||
+      !Number.isSafeInteger(stored.resetAt)
+    ) {
+      throw new Error("Invalid request budget.");
+    }
+    if (stored.resetAt > now) {
+      count = stored.count;
+      resetAt = stored.resetAt;
+    }
+  }
+  if (count >= limit) {
+    throw new RequestLimitError(
+      "Too many requests. Please try again later.",
+      resetAt - now,
+    );
+  }
+  setRedisCasWrite(
+    writes,
+    key,
+    JSON.stringify({ count: count + 1, resetAt }),
+    new Date(resetAt),
+  );
+}
+
+/** Admit once before expensive work, including reads and idempotent retries. */
+export async function reserveWindowBudget(
+  redis: RedisCasClient,
+  key: string,
+  limit: number,
+  windowMs: number,
+  now = Date.now(),
+  options: RedisCasOptions = {},
+): Promise<void> {
+  await redisMultiCas(
+    redis,
+    [key],
+    (snapshot) => {
+      const writes = new Map<string, RedisCasWrite>();
+      writeWindowBudget(snapshot, writes, key, limit, windowMs, now);
+      return commitRedisCasWrites(writes, undefined);
+    },
+    options,
+  );
+}
+
+/** Reserve only when the same transaction will authorize a submission. */
+export function writeShareCooldown(
+  snapshot: RedisCasSnapshot,
+  writes: Map<string, RedisCasWrite>,
+  key: string,
+  cooldownMs: number,
+  now: number,
+): void {
+  const raw = snapshot.get(key);
+  const last = raw === undefined ? undefined : Number(raw);
+  if (last !== undefined && !Number.isSafeInteger(last)) {
+    throw new Error("Invalid share cooldown.");
+  }
+  if (last !== undefined && now - last < cooldownMs) {
+    throw new RequestLimitError(
+      "Please wait a few seconds before sharing again.",
+      cooldownMs - (now - last),
+    );
+  }
+  setRedisCasWrite(
+    writes,
+    key,
+    String(now),
+    new Date(now + Math.max(60_000, cooldownMs)),
+  );
+}
 
 export const soloReceiptBudgetKey = (userId: string): string =>
   `euclid:solo:v1:receipt-budget:${userId}`;
@@ -108,22 +213,9 @@ export async function reserveShareCooldown(
   cooldownMs: number,
   now = Date.now(),
 ): Promise<void> {
-  await redisCas(redis, key, (raw) => {
-    const last = raw === undefined ? undefined : Number(raw);
-    if (last !== undefined && !Number.isSafeInteger(last)) {
-      throw new Error("Invalid share cooldown.");
-    }
-    if (last !== undefined && now - last < cooldownMs) {
-      throw new RequestLimitError(
-        "Please wait a few seconds before sharing again.",
-        cooldownMs - (now - last),
-      );
-    }
-    return {
-      action: "set",
-      value: String(now),
-      expiration: new Date(now + Math.max(60_000, cooldownMs)),
-      result: undefined,
-    };
+  await redisMultiCas(redis, [key], (snapshot) => {
+    const writes = new Map<string, RedisCasWrite>();
+    writeShareCooldown(snapshot, writes, key, cooldownMs, now);
+    return commitRedisCasWrites(writes, undefined);
   });
 }
