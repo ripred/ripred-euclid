@@ -11,6 +11,7 @@ import {
 } from "./h2h";
 import {
   H2H_CHAT_RATE_LIMIT_MS,
+  H2H_CREATION_LIMITS,
   H2HStore,
   H2HStoreError,
   H2H_STORE_KEYS,
@@ -162,7 +163,7 @@ function createFixture(options: H2HStoreOptions = {}): {
   const store = new H2HStore(redis, {
     now: () => timestamp,
     createGameId: () => `game-${++sequence}`,
-    maxIdleMs: 100,
+    maxIdleMs: 10 * 60 * 1_000,
     cas: { maxAttempts: 12 },
     ...options,
   });
@@ -306,6 +307,8 @@ describe("H2H queue and mappings", () => {
     expect(new Set(pairingCommit?.map((write) => write.key))).toEqual(
       new Set([
         H2H_STORE_KEYS.queue,
+        H2H_STORE_KEYS.creationBudget("p1"),
+        H2H_STORE_KEYS.creationBudget("p2"),
         H2H_STORE_KEYS.activeGames,
         H2H_STORE_KEYS.game(paired.gameId),
         H2H_STORE_KEYS.userGame("p1"),
@@ -1214,7 +1217,7 @@ describe("H2H live listing and stale cleanup", () => {
   });
 
   it("cleans stale games and deletes only mappings that still match", async () => {
-    const { redis, store, setNow } = createFixture();
+    const { redis, store, setNow } = createFixture({ maxIdleMs: 100 });
     const gameId = await pair(store);
     redis.externalSet(H2H_STORE_KEYS.userGame("p1"), "other-game");
     setNow(1_101);
@@ -1233,7 +1236,7 @@ describe("H2H live listing and stale cleanup", () => {
   });
 
   it("lists fresh games and race-safely removes stale active entries", async () => {
-    const { redis, store, setNow } = createFixture();
+    const { redis, store, setNow } = createFixture({ maxIdleMs: 100 });
     const staleId = await pair(store, "old-1", "old-2");
     setNow(1_050);
     const freshId = await pair(store, "new-1", "new-2");
@@ -1247,7 +1250,7 @@ describe("H2H live listing and stale cleanup", () => {
   });
 
   it("queueing cleans a caller's stale game before re-enqueueing", async () => {
-    const { redis, store, setNow } = createFixture();
+    const { redis, store, setNow } = createFixture({ maxIdleMs: 100 });
     const gameId = await pair(store);
     setNow(1_101);
 
@@ -1258,5 +1261,238 @@ describe("H2H live listing and stale cleanup", () => {
     expect(redis.value(H2H_STORE_KEYS.userGame("p1"))).toBeUndefined();
     expect(redis.value(H2H_STORE_KEYS.userGame("p2"))).toBeUndefined();
     expect(redis.json(H2H_STORE_KEYS.queue)).toEqual(["p1"]);
+  });
+
+  it.each([1, 2])(
+    "records a timed-out started turn after %i moves exactly once",
+    async (moves) => {
+      const { redis, store, setNow } = createFixture({ maxIdleMs: 100 });
+      const gameId = await pair(store);
+      for (let index = 0; index < moves; index++) {
+        await store.applyMove(
+          index === 0 ? "p1" : "p2",
+          move(gameId, index, 0, index),
+        );
+      }
+      const loser = moves === 1 ? "p2" : "p1";
+      setNow(1_100);
+      await Promise.all([
+        store.cleanupStaleGame(gameId),
+        store.cleanupStaleGame(gameId),
+      ]);
+      const state = await store.getState(gameId);
+      expect(state).toMatchObject({
+        ended: true,
+        endedBy: loser,
+        endedReason: "player_left",
+        revision: moves + 1,
+      });
+      expect(await store.getTerminalState(gameId, moves + 1)).toEqual(state);
+      expect(
+        parseH2HSettlementEvents(
+          redis.value(H2H_STORE_KEYS.pendingSettlements),
+        ),
+      ).toHaveLength(1);
+      expect(redis.value(H2H_STORE_KEYS.userGame("p1"))).toBe(gameId);
+      expect(redis.value(H2H_STORE_KEYS.userGame("p2"))).toBe(gameId);
+      expect(await store.listLiveGames()).toEqual([]);
+    },
+  );
+
+  it.each(["move", "chat", "queue", "leave"])(
+    "enforces timeout through direct %s without prior polling",
+    async (operation) => {
+      const { store, setNow } = createFixture({ maxIdleMs: 100 });
+      const gameId = await pair(store);
+      await store.applyMove("p1", move(gameId, 0, 0, 0));
+      setNow(1_100);
+      if (operation === "queue") await store.queueOrResume("p2");
+      else {
+        const attempt =
+          operation === "move"
+            ? store.applyMove("p2", move(gameId, 1, 0, 1))
+            : operation === "chat"
+              ? store.appendChat("p2", gameId, "still here")
+              : store.leave("p1", { gameId, expectedRevision: 1 });
+        await expect(attempt).rejects.toBeInstanceOf(H2HDomainError);
+      }
+      expect(await store.getState(gameId)).toMatchObject({
+        ended: true,
+        endedBy: "p2",
+        board: { m_history: [{ x: 0, y: 0 }] },
+      });
+    },
+  );
+
+  it("chat cannot renew a turn, including legacy boards without a turn clock", async () => {
+    const { store, redis, setNow } = createFixture({ maxIdleMs: 100 });
+    const gameId = await pair(store);
+    const moved = await store.applyMove("p1", move(gameId, 0, 0, 0));
+    const legacy = { ...moved.response.board };
+    delete legacy.turnStartedAt;
+    redis.externalSet(H2H_STORE_KEYS.game(gameId), JSON.stringify(legacy));
+    setNow(1_090);
+    await store.appendChat("p2", gameId, "hello");
+    expect((await store.getState(gameId))?.board).toMatchObject({
+      lastSaved: 1_090,
+      turnStartedAt: 1_000,
+    });
+    setNow(1_100);
+    await store.cleanupStaleGame(gameId);
+    expect(await store.getState(gameId)).toMatchObject({
+      ended: true,
+      endedBy: "p2",
+    });
+  });
+
+  it("a timely move renews the turn and wins a conflicting cleanup snapshot", async () => {
+    const { store, redis, setNow } = createFixture({ maxIdleMs: 100 });
+    const gameId = await pair(store);
+    const moved = await store.applyMove("p1", move(gameId, 0, 0, 0));
+    setNow(1_100);
+    redis.beforeExec = () => {
+      redis.beforeExec = undefined;
+      const timely = applyH2HMove(
+        moved.response.board,
+        "p2",
+        move(gameId, 1, 0, 1),
+        1_099,
+      );
+      redis.externalSet(
+        H2H_STORE_KEYS.game(gameId),
+        JSON.stringify(timely.board),
+      );
+    };
+    await store.cleanupStaleGame(gameId);
+    expect(await store.getState(gameId)).toMatchObject({
+      ended: false,
+      revision: 2,
+      board: { turnStartedAt: 1_099 },
+    });
+    expect(redis.value(H2H_STORE_KEYS.pendingSettlements)).toBeUndefined();
+  });
+});
+
+describe("H2H round allocation budget", () => {
+  function seedBudget(
+    redis: MemoryRedis,
+    userId: string,
+    count: number,
+    resetAt = 86_401_000,
+  ) {
+    redis.seed(
+      H2H_STORE_KEYS.creationBudget(userId),
+      JSON.stringify({ count, resetAt }),
+    );
+  }
+
+  it("charges both participants only on allocation and permits resume at the limit", async () => {
+    const { redis, store } = createFixture();
+    seedBudget(redis, "p1", H2H_CREATION_LIMITS.count - 1);
+    await store.queueOrResume("p1");
+    expect(redis.json(H2H_STORE_KEYS.creationBudget("p1"))).toMatchObject({
+      count: 99,
+    });
+    const paired = await store.queueOrResume("p2");
+    expect(paired.status).toBe("paired");
+    expect(redis.json(H2H_STORE_KEYS.creationBudget("p1"))).toMatchObject({
+      count: 100,
+    });
+    expect(redis.json(H2H_STORE_KEYS.creationBudget("p2"))).toMatchObject({
+      count: 1,
+    });
+    expect((await store.queueOrResume("p1")).status).toBe("resumed");
+    expect(redis.json(H2H_STORE_KEYS.creationBudget("p1"))).toMatchObject({
+      count: 100,
+    });
+  });
+
+  it("rejects repeated zero-move forfeits at the cap without erasing results", async () => {
+    const { redis, store } = createFixture();
+    seedBudget(redis, "p1", 99);
+    const gameId = await pair(store);
+    await store.leave("p1", { gameId, expectedRevision: 0 });
+    await expect(store.queueOrResume("p1")).rejects.toMatchObject({
+      name: "RequestLimitError",
+    });
+    expect(redis.json(H2H_STORE_KEYS.queue)).toEqual([]);
+    expect(await store.getTerminalState(gameId, 1)).toMatchObject({
+      endedBy: "p1",
+    });
+    expect(
+      parseH2HSettlementEvents(redis.value(H2H_STORE_KEYS.pendingSettlements)),
+    ).toHaveLength(1);
+  });
+
+  it("skips an exhausted queue head and pairs eligible players", async () => {
+    const { redis, store } = createFixture();
+    redis.seed(H2H_STORE_KEYS.queue, JSON.stringify(["blocked", "p1"]));
+    seedBudget(redis, "blocked", 100);
+    expect(await store.queueOrResume("p2")).toMatchObject({
+      status: "paired",
+      createdPair: { playerIds: ["p1", "p2"] },
+    });
+    expect(redis.json(H2H_STORE_KEYS.queue)).toEqual([]);
+  });
+
+  it.each([false, true])(
+    "rediscovers a former opponent's budget when they join during discovery (exhausted: %s)",
+    async (exhausted) => {
+      const { redis, store } = createFixture();
+      const gameId = await pair(store);
+      await store.leave("p2", { gameId, expectedRevision: 0 });
+      redis.afterGet = async (key) => {
+        if (key !== H2H_STORE_KEYS.game(gameId)) return;
+        redis.afterGet = undefined;
+        await store.queueOrResume("p2");
+        if (exhausted) seedBudget(redis, "p2", 100);
+      };
+
+      const result = await store.queueOrResume("p1");
+      expect(result.status).toBe(exhausted ? "queued" : "paired");
+      expect(redis.json(H2H_STORE_KEYS.creationBudget("p2"))).toMatchObject({
+        count: exhausted ? 100 : 2,
+      });
+      expect(redis.json(H2H_STORE_KEYS.queue)).toEqual(exhausted ? ["p1"] : []);
+    },
+  );
+
+  it("removes an exhausted caller from the queue and allows the next window", async () => {
+    const { redis, store, setNow } = createFixture();
+    redis.seed(H2H_STORE_KEYS.queue, JSON.stringify(["p1"]));
+    seedBudget(redis, "p1", 100, 1_100);
+    await expect(store.queueOrResume("p1")).rejects.toMatchObject({
+      retryAfterMs: 100,
+    });
+    expect(redis.json(H2H_STORE_KEYS.queue)).toEqual([]);
+    setNow(1_100);
+    await pair(store);
+    expect(redis.json(H2H_STORE_KEYS.creationBudget("p1"))).toMatchObject({
+      count: 1,
+    });
+  });
+
+  it("does not double-charge concurrent final-slot pairing requests", async () => {
+    const { redis, store } = createFixture();
+    seedBudget(redis, "p1", 99);
+    await store.queueOrResume("p1");
+    await Promise.all([store.queueOrResume("p2"), store.queueOrResume("p3")]);
+    expect(redis.json(H2H_STORE_KEYS.creationBudget("p1"))).toMatchObject({
+      count: 100,
+    });
+    expect(redis.json<string[]>(H2H_STORE_KEYS.activeGames)).toHaveLength(1);
+  });
+
+  it("rejects a rematch atomically if either player has exhausted their budget", async () => {
+    const { redis, store } = createFixture();
+    const gameId = await pair(store);
+    const ended = await completeSeededGame(redis, store, gameId);
+    seedBudget(redis, "p2", 100);
+    const commits = redis.commits.length;
+    await expect(
+      store.rematch("p1", { gameId, expectedRevision: ended.revision }),
+    ).rejects.toMatchObject({ name: "RequestLimitError" });
+    expect(redis.commits).toHaveLength(commits);
+    expect((await store.getState(gameId))?.board).toEqual(ended.board);
   });
 });

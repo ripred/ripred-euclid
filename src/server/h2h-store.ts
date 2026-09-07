@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { RequestLimitError, writeWindowBudget } from "./request-limits";
 
 import type {
   H2HLeaveRequest,
@@ -41,7 +42,13 @@ export const H2H_STORE_KEYS = Object.freeze({
     `euclid:h2h:result:${gameId}:${terminalRevision}`,
   userGame: (userId: string) => `euclid:user:${userId}:game`,
   chatLast: (userId: string) => `euclid:chat:last:${userId}`,
+  creationBudget: (userId: string) => `euclid:h2h:creation-budget:${userId}`,
 });
+
+export const H2H_CREATION_LIMITS = {
+  count: 100,
+  windowMs: 24 * 60 * 60 * 1_000,
+} as const;
 
 export const H2H_CHAT_RATE_LIMIT_MS = 1_000;
 export const H2H_SETTLEMENT_EVENT_VERSION = 1;
@@ -165,6 +172,7 @@ export type H2HCleanupResult = {
 
 type QueueAttemptResult =
   | { status: "retry" }
+  | { status: "limited"; error: RequestLimitError }
   | { status: "done"; value: H2HQueueResult };
 
 type DynamicAttemptResult<TResult> =
@@ -595,8 +603,49 @@ function isStale(
   now: number,
   maxIdleMs: number,
 ): boolean {
-  const timestamp = state.board.lastSaved ?? state.board.createdAt;
-  return timestamp !== undefined && now - timestamp > maxIdleMs;
+  const timestamp = state.board.turnStartedAt;
+  return timestamp !== undefined && now - timestamp >= maxIdleMs;
+}
+
+class TurnExpired extends Error {
+  constructor(readonly gameId: string) {
+    super("The canonical turn deadline has expired.");
+  }
+}
+
+/** Archive, remove from live discovery, and enqueue settlement in one commit. */
+function writeTerminalResult(
+  snapshot: RedisCasSnapshot,
+  writes: Map<string, RedisCasWrite>,
+  state: H2HCanonicalStateSnapshot,
+): H2HSettlementEvent {
+  const event = createH2HSettlementEvent(state);
+  setWrite(
+    writes,
+    H2H_STORE_KEYS.game(state.gameId),
+    JSON.stringify(state.board),
+  );
+  archiveTerminalBoard(
+    writes,
+    snapshot,
+    state.gameId,
+    state.revision,
+    state.board,
+  );
+  const active = uniqueStrings(
+    parseStringList(snapshot.get(H2H_STORE_KEYS.activeGames)),
+  );
+  const removed = removeActiveGame(active, state.gameId);
+  if (removed.removed) {
+    setWrite(writes, H2H_STORE_KEYS.activeGames, serializeList(removed.next));
+  }
+  const outbox = appendSettlementEvent(
+    snapshot.get(H2H_STORE_KEYS.pendingSettlements),
+    event,
+  );
+  if (outbox !== null)
+    setWrite(writes, H2H_STORE_KEYS.pendingSettlements, outbox);
+  return event;
 }
 
 function sameList(left: readonly string[], right: readonly string[]): boolean {
@@ -615,6 +664,25 @@ function addActiveGame(active: string[], gameId: string): string[] {
   return [gameId, ...active.filter((candidate) => candidate !== gameId)];
 }
 
+/** Shared by pairing and rematch; only commit these charges with a new round. */
+function chargeRoundCreation(
+  snapshot: RedisCasSnapshot,
+  writes: Map<string, RedisCasWrite>,
+  playerIds: readonly string[],
+  now: number,
+): void {
+  for (const userId of playerIds) {
+    writeWindowBudget(
+      snapshot,
+      writes,
+      H2H_STORE_KEYS.creationBudget(userId),
+      H2H_CREATION_LIMITS.count,
+      H2H_CREATION_LIMITS.windowMs,
+      now,
+    );
+  }
+}
+
 /**
  * Redis-backed H2H persistence. Every mutation is a watched transaction; the
  * only ordinary Redis reads are discovery and read-only endpoint operations.
@@ -625,6 +693,32 @@ export class H2HStore {
   private readonly maxIdleMs: number;
   private readonly maxDynamicAttempts: number;
   private readonly casOptions: RedisCasOptions;
+
+  private requireUnexpiredTurn(state: H2HCanonicalStateSnapshot): void {
+    if (!state.ended && isStale(state, this.now(), this.maxIdleMs)) {
+      throw new TurnExpired(state.gameId);
+    }
+  }
+
+  // Expiry aborts the original CAS without writes. Cleanup then settles the
+  // fresh canonical turn atomically, and the operation rechecks its own intent.
+  private async withTurnDeadline<T>(
+    keys: readonly string[],
+    decide: (snapshot: RedisCasSnapshot) => RedisMultiCasDecision<T>,
+  ): Promise<T> {
+    for (let attempt = 0; attempt < this.maxDynamicAttempts; attempt++) {
+      try {
+        return await redisMultiCas(this.redis, keys, decide, this.casOptions);
+      } catch (error) {
+        if (!(error instanceof TurnExpired)) throw error;
+        await this.cleanupStaleGame(error.gameId);
+      }
+    }
+    throw new H2HStoreError(
+      "dynamic_conflict",
+      "The turn changed too frequently to settle safely.",
+    );
+  }
 
   constructor(
     private readonly redis: RedisCasClient,
@@ -654,14 +748,12 @@ export class H2HStore {
     requireIdentifier(userId, "userId");
 
     for (let attempt = 0; attempt < this.maxDynamicAttempts; attempt++) {
-      const now = this.now();
       const discovery = await this.discoverQueueKeys(userId);
-      const result = await redisMultiCas(
-        this.redis,
+      const result = await this.withTurnDeadline(
         discovery.watchKeys,
-        (snapshot) => this.decideQueue(snapshot, discovery, userId, now),
-        this.casOptions,
+        (snapshot) => this.decideQueue(snapshot, discovery, userId, this.now()),
       );
+      if (result.status === "limited") throw result.error;
       if (result.status === "done") return result.value;
     }
 
@@ -829,8 +921,7 @@ export class H2HStore {
     );
     const now = this.now();
 
-    return redisMultiCas(
-      this.redis,
+    return this.withTurnDeadline(
       [
         gameKey,
         mappingKey,
@@ -850,47 +941,29 @@ export class H2HStore {
           throw new H2HStoreError("game_not_found", "Game not found.");
         }
 
-        const response = applyH2HMove(parseJson(raw), userId, request, now);
-        const active = uniqueStrings(
-          parseStringList(snapshot.get(H2H_STORE_KEYS.activeGames)),
+        const current = createH2HCanonicalState(request.gameId, parseJson(raw));
+        if (
+          current.board.m_players.some((player) => player.userId === userId)
+        ) {
+          this.requireUnexpiredTurn(current);
+        }
+        const response = applyH2HMove(
+          current.board,
+          userId,
+          request,
+          Math.max(now, this.now()),
         );
         const writes = new Map<string, RedisCasWrite>();
         setWrite(writes, gameKey, JSON.stringify(response.board));
         const settlementEvent = response.ended
-          ? createH2HSettlementEvent(response)
+          ? writeTerminalResult(snapshot, writes, response)
           : null;
-
-        if (settlementEvent) {
-          archiveTerminalBoard(
-            writes,
-            snapshot,
-            request.gameId,
-            request.expectedRevision + 1,
-            response.board,
-          );
-          const removed = removeActiveGame(active, request.gameId);
-          if (removed.removed) {
-            setWrite(
-              writes,
-              H2H_STORE_KEYS.activeGames,
-              serializeList(removed.next),
-            );
-          }
-          const nextOutbox = appendSettlementEvent(
-            snapshot.get(H2H_STORE_KEYS.pendingSettlements),
-            settlementEvent,
-          );
-          if (nextOutbox !== null) {
-            setWrite(writes, H2H_STORE_KEYS.pendingSettlements, nextOutbox);
-          }
-        }
 
         return decision(writes, {
           response,
           settlementEvent,
         });
       },
-      this.casOptions,
     );
   }
 
@@ -925,8 +998,7 @@ export class H2HStore {
     );
     const now = this.now();
 
-    return redisMultiCas<H2HLeaveCommit>(
-      this.redis,
+    return this.withTurnDeadline<H2HLeaveCommit>(
       [
         ...participantMappingKeys,
         gameKey,
@@ -983,6 +1055,7 @@ export class H2HStore {
           });
         }
 
+        this.requireUnexpiredTurn(state);
         if (state.revision !== request.expectedRevision) {
           const actualMappingKeys = currentPlayerIds.map(
             H2H_STORE_KEYS.userGame,
@@ -1079,33 +1152,11 @@ export class H2HStore {
           request.gameId,
           now,
         );
-        setWrite(writes, gameKey, JSON.stringify(endedState.board));
-        const active = uniqueStrings(
-          parseStringList(snapshot.get(H2H_STORE_KEYS.activeGames)),
-        );
-        const removed = removeActiveGame(active, request.gameId);
-        if (removed.removed) {
-          setWrite(
-            writes,
-            H2H_STORE_KEYS.activeGames,
-            serializeList(removed.next),
-          );
-        }
-        const settlementEvent = createH2HSettlementEvent(endedState);
-        archiveTerminalBoard(
-          writes,
+        const settlementEvent = writeTerminalResult(
           snapshot,
-          request.gameId,
-          request.expectedRevision + 1,
-          endedState.board,
+          writes,
+          endedState,
         );
-        const nextOutbox = appendSettlementEvent(
-          snapshot.get(H2H_STORE_KEYS.pendingSettlements),
-          settlementEvent,
-        );
-        if (nextOutbox !== null) {
-          setWrite(writes, H2H_STORE_KEYS.pendingSettlements, nextOutbox);
-        }
         return decision(writes, {
           gameId: request.gameId,
           state: endedState,
@@ -1113,7 +1164,6 @@ export class H2HStore {
           settlementEvent,
         });
       },
-      this.casOptions,
     );
   }
 
@@ -1141,7 +1191,13 @@ export class H2HStore {
       const now = this.now();
       const result = await redisMultiCas(
         this.redis,
-        [gameKey, resultKey, H2H_STORE_KEYS.activeGames, ...mappingKeys],
+        [
+          gameKey,
+          resultKey,
+          H2H_STORE_KEYS.activeGames,
+          ...mappingKeys,
+          ...discoveredPlayers.map(H2H_STORE_KEYS.creationBudget),
+        ],
         (
           snapshot,
         ): RedisMultiCasDecision<
@@ -1216,6 +1272,7 @@ export class H2HStore {
             now,
           );
           const writes = new Map<string, RedisCasWrite>();
+          chargeRoundCreation(snapshot, writes, actualPlayers, this.now());
           archiveTerminalBoard(
             writes,
             snapshot,
@@ -1260,71 +1317,69 @@ export class H2HStore {
     const rateKey = H2H_STORE_KEYS.chatLast(userId);
     const now = this.now();
 
-    return redisMultiCas(
-      this.redis,
-      [gameKey, mappingKey, rateKey],
-      (snapshot) => {
-        const mappedGameId = snapshot.get(mappingKey);
-        if (mappedGameId === undefined) {
+    return this.withTurnDeadline([gameKey, mappingKey, rateKey], (snapshot) => {
+      const mappedGameId = snapshot.get(mappingKey);
+      if (mappedGameId === undefined) {
+        throw new H2HStoreError(
+          "not_mapped",
+          "The caller is not mapped to a game.",
+        );
+      }
+      if (mappedGameId !== gameId) {
+        throw new H2HStoreError(
+          "mapping_conflict",
+          "The caller is mapped to a different game.",
+        );
+      }
+
+      const raw = snapshot.get(gameKey);
+      if (!raw) {
+        throw new H2HStoreError("game_not_found", "Game not found.");
+      }
+      const lastChatAt = parseTimestamp(snapshot.get(rateKey));
+      if (lastChatAt !== null) {
+        const elapsed = Math.max(0, now - lastChatAt);
+        if (elapsed < H2H_CHAT_RATE_LIMIT_MS) {
           throw new H2HStoreError(
-            "not_mapped",
-            "The caller is not mapped to a game.",
+            "chat_rate_limited",
+            "Chat messages must be at least one second apart.",
+            H2H_CHAT_RATE_LIMIT_MS - elapsed,
           );
         }
-        if (mappedGameId !== gameId) {
-          throw new H2HStoreError(
-            "mapping_conflict",
-            "The caller is mapped to a different game.",
-          );
-        }
+      }
 
-        const raw = snapshot.get(gameKey);
-        if (!raw) {
-          throw new H2HStoreError("game_not_found", "Game not found.");
-        }
-        const lastChatAt = parseTimestamp(snapshot.get(rateKey));
-        if (lastChatAt !== null) {
-          const elapsed = Math.max(0, now - lastChatAt);
-          if (elapsed < H2H_CHAT_RATE_LIMIT_MS) {
-            throw new H2HStoreError(
-              "chat_rate_limited",
-              "Chat messages must be at least one second apart.",
-              H2H_CHAT_RATE_LIMIT_MS - elapsed,
-            );
-          }
-        }
-
-        const state = createH2HCanonicalState(gameId, parseJson(raw));
-        const effectiveTimestamp = monotonicTimestamp(
-          now,
-          state.board.lastSaved ?? state.board.createdAt,
-        );
-        const result = appendH2HChat(
-          state.board,
-          userId,
-          gameId,
-          text,
-          effectiveTimestamp,
-        );
-        return {
-          action: "commit",
-          writes: [
-            {
-              action: "set",
-              key: gameKey,
-              value: JSON.stringify(result.state.board),
-            },
-            {
-              action: "set",
-              key: rateKey,
-              value: String(effectiveTimestamp),
-            },
-          ],
-          result,
-        };
-      },
-      this.casOptions,
-    );
+      const state = createH2HCanonicalState(gameId, parseJson(raw));
+      if (state.board.m_players.some((player) => player.userId === userId)) {
+        this.requireUnexpiredTurn(state);
+      }
+      const effectiveTimestamp = monotonicTimestamp(
+        now,
+        state.board.lastSaved ?? state.board.createdAt,
+      );
+      const result = appendH2HChat(
+        state.board,
+        userId,
+        gameId,
+        text,
+        effectiveTimestamp,
+      );
+      return {
+        action: "commit",
+        writes: [
+          {
+            action: "set",
+            key: gameKey,
+            value: JSON.stringify(result.state.board),
+          },
+          {
+            action: "set",
+            key: rateKey,
+            value: String(effectiveTimestamp),
+          },
+        ],
+        result,
+      };
+    });
   }
 
   async cleanupStaleGame(gameId: string): Promise<H2HCleanupResult> {
@@ -1335,10 +1390,25 @@ export class H2HStore {
       const discoveredRaw = await this.redis.get(gameKey);
       const playerIds = playerIdsFromRaw(discoveredRaw ?? undefined);
       const mappingKeys = playerIds.map(H2H_STORE_KEYS.userGame);
-      const now = this.now();
+      let discoveredState: H2HCanonicalStateSnapshot | null = null;
+      try {
+        discoveredState = stateFromRaw(gameId, discoveredRaw ?? undefined);
+      } catch (error) {
+        if (!(error instanceof H2HDomainError)) throw error;
+      }
+      const resultKey =
+        discoveredState && !discoveredState.ended
+          ? H2H_STORE_KEYS.result(gameId, discoveredState.revision + 1)
+          : null;
       const result = await redisMultiCas(
         this.redis,
-        [gameKey, H2H_STORE_KEYS.activeGames, ...mappingKeys],
+        [
+          gameKey,
+          H2H_STORE_KEYS.activeGames,
+          H2H_STORE_KEYS.pendingSettlements,
+          ...mappingKeys,
+          ...(resultKey ? [resultKey] : []),
+        ],
         (
           snapshot,
         ): RedisMultiCasDecision<DynamicAttemptResult<H2HCleanupResult>> => {
@@ -1387,6 +1457,7 @@ export class H2HStore {
           } catch (error) {
             if (!(error instanceof H2HDomainError)) throw error;
           }
+          const now = this.now();
           const stale = state ? isStale(state, now, this.maxIdleMs) : true;
           if (state && !state.ended && !stale) {
             return {
@@ -1422,6 +1493,31 @@ export class H2HStore {
             });
           }
 
+          // Unplayed pairings still cancel without a rating. Once a move has
+          // been made, expiry is the current player's forfeit, never deletion.
+          if (state && state.board.m_history.length > 0) {
+            if (
+              resultKey !== H2H_STORE_KEYS.result(gameId, state.revision + 1)
+            ) {
+              return { action: "no-change", result: { status: "retry" } };
+            }
+            const ended = endH2HByDeparture(
+              state.board,
+              state.board.m_players[state.board.m_turn].userId,
+              gameId,
+              Math.max(now, state.board.lastSaved ?? now),
+            );
+            writeTerminalResult(snapshot, writes, ended);
+            return decision(writes, {
+              status: "done" as const,
+              value: {
+                gameId,
+                deletedGame: false,
+                removedFromActive: removed.removed,
+                deletedMappings: [],
+              },
+            });
+          }
           deleteWrite(writes, gameKey);
           if (removed.removed) {
             setWrite(
@@ -1538,6 +1634,7 @@ export class H2HStore {
       watchKeys: uniqueStrings([
         H2H_STORE_KEYS.queue,
         H2H_STORE_KEYS.activeGames,
+        ...userIds.map(H2H_STORE_KEYS.creationBudget),
         ...watchedMappingKeys,
         ...watchedGameKeys,
       ]),
@@ -1558,7 +1655,14 @@ export class H2HStore {
     if (
       queue.some(
         (candidate) =>
-          !discovery.watchedMappingKeys.has(H2H_STORE_KEYS.userGame(candidate)),
+          !discovery.watchedMappingKeys.has(
+            H2H_STORE_KEYS.userGame(candidate),
+          ) ||
+          // A former opponent's mapping may already be watched even when their
+          // newly queued budget was absent from the initial discovery snapshot.
+          !discovery.watchKeys.includes(
+            H2H_STORE_KEYS.creationBudget(candidate),
+          ),
       )
     ) {
       return { action: "no-change", result: { status: "retry" } };
@@ -1604,6 +1708,7 @@ export class H2HStore {
       const participant =
         state?.board.m_players.some((player) => player.userId === userId) ??
         false;
+      if (state && participant) this.requireUnexpiredTurn(state);
       if (
         state &&
         participant &&
@@ -1617,25 +1722,36 @@ export class H2HStore {
         const removed = removeActiveGame(active, callerGameId);
         active = removed.next;
 
-        if (state && !state.ended && isStale(state, now, this.maxIdleMs)) {
-          deleteWrite(writes, gameKey);
-          for (const participantId of participantIds) {
-            const mappingKey = H2H_STORE_KEYS.userGame(participantId);
-            if (snapshot.get(mappingKey) === callerGameId) {
-              deleteWrite(writes, mappingKey);
-            }
-          }
-        } else if (!state && raw) {
+        if (!state && raw) {
           deleteWrite(writes, gameKey);
         }
       }
     }
 
-    const nextQueue = queue.filter((candidate) => {
+    let nextQueue = queue.filter((candidate) => {
       if (candidate === userId) return callerEligible && !resumedState;
       return snapshot.get(H2H_STORE_KEYS.userGame(candidate)) === undefined;
     });
     if (!resumedState && !nextQueue.includes(userId)) nextQueue.push(userId);
+
+    // An exhausted queue entry must not block unrelated players. Probe the
+    // same budget helper used at allocation, but commit charges only on pairing.
+    let callerLimit: RequestLimitError | undefined;
+    nextQueue = nextQueue.filter((candidate) => {
+      try {
+        chargeRoundCreation(snapshot, new Map(), [candidate], now);
+        return true;
+      } catch (error) {
+        if (!(error instanceof RequestLimitError)) throw error;
+        if (candidate === userId) callerLimit = error;
+        return false;
+      }
+    });
+    if (callerLimit) {
+      setWrite(writes, H2H_STORE_KEYS.queue, serializeList(nextQueue));
+      setWrite(writes, H2H_STORE_KEYS.activeGames, serializeList(active));
+      return decision(writes, { status: "limited", error: callerLimit });
+    }
 
     let createdPair: H2HCreatedPair | undefined;
     if (!resumedState && nextQueue.length >= 2) {
@@ -1652,6 +1768,7 @@ export class H2HStore {
         return { action: "no-change", result: { status: "retry" } };
       }
       const board = createInitialH2HBoard(playerOneId, playerTwoId, { now });
+      chargeRoundCreation(snapshot, writes, [playerOneId, playerTwoId], now);
       const state = createH2HCanonicalState(discovery.proposedGameId, board);
       createdPair = {
         gameId: discovery.proposedGameId,

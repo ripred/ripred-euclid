@@ -3,6 +3,10 @@ import {
   SOLO_RECEIPT_LIMITS,
   soloReceiptBudgetKey,
   reserveShareCooldown,
+  reserveWindowBudget,
+  SOLO_WORK_LIMITS,
+  SOLO_PRACTICE_RETENTION_MS,
+  soloWorkBudgetKey,
 } from "./request-limits";
 
 import type {
@@ -32,7 +36,9 @@ class MemoryRedis implements RedisCasClient {
   readonly commits: RedisCasWrite[][] = [];
   readonly reads: string[] = [];
   readonly watches: string[][] = [];
-  beforeExec: (() => void | Promise<void>) | undefined;
+  beforeExec:
+    | ((writes: readonly RedisCasWrite[]) => void | Promise<void>)
+    | undefined;
 
   private readonly values = new Map<string, string>();
   private readonly versions = new Map<string, number>();
@@ -157,7 +163,7 @@ class MemoryTransaction implements RedisCasTransaction {
 
   async exec(): Promise<readonly unknown[] | null> {
     this.assertQueueing();
-    await this.redis.beforeExec?.();
+    await this.redis.beforeExec?.(this.writes);
     if (this.redis.hasConflict(this.watched)) {
       this.closed = true;
       return null;
@@ -261,6 +267,262 @@ function moveRequest(
 }
 
 describe("request allocation protections", () => {
+  it("atomically shares admission across endpoints and resets at the exact boundary", async () => {
+    const { redis, store, setNow } = createFixture();
+    const started = await startPractice(store);
+    const resetAt = Date.UTC(2026, 8, 1, 12, 1);
+    const key = soloWorkBudgetKey("owner");
+    redis.seed(
+      key,
+      JSON.stringify({ resetAt, count: SOLO_WORK_LIMITS.count - 1 }),
+    );
+    const responses = await Promise.allSettled([
+      store.getState("owner", started.snapshot.gameId),
+      startPractice(store),
+    ]);
+    expect(
+      responses.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      responses.find((result) => result.status === "rejected"),
+    ).toMatchObject({
+      reason: { name: "RequestLimitError", retryAfterMs: 60_000 },
+    });
+    await expect(
+      store.start("other", { mode: "ranked", commandId: "start" }),
+    ).resolves.toMatchObject({ ok: true });
+    setNow(resetAt - 1);
+    await expect(
+      store.getState("owner", started.snapshot.gameId),
+    ).rejects.toMatchObject({ retryAfterMs: 1 });
+    setNow(resetAt);
+    await expect(startPractice(store)).resolves.toMatchObject({
+      replayed: true,
+    });
+    expect(redis.json(key)).toEqual({
+      resetAt: resetAt + SOLO_WORK_LIMITS.windowMs,
+      count: 1,
+    });
+  });
+
+  it("fails closed on corrupt request budgets and charges only committed reservations", async () => {
+    const redis = new MemoryRedis(() => 100_000);
+    for (const value of [
+      "null",
+      "{}",
+      '{"count":-1,"resetAt":200000}',
+      '{"count":1.5,"resetAt":200000}',
+      '{"count":1,"resetAt":"200000"}',
+    ]) {
+      redis.seed("budget", value);
+      await expect(
+        reserveWindowBudget(redis, "budget", 1, 60_000, 100_000),
+      ).rejects.toThrow("Invalid request budget");
+      expect(redis.value("budget")).toBe(value);
+    }
+    redis.seed("budget", JSON.stringify({ count: 1, resetAt: 100_000 }));
+    await reserveWindowBudget(redis, "budget", 1, 60_000, 100_000);
+    expect(redis.json("budget")).toEqual({ count: 1, resetAt: 160_000 });
+    expect(redis.commits.at(-1)?.[0]).toMatchObject({
+      expiration: new Date(160_000),
+    });
+  });
+
+  it("rejects exhausted work budgets before loading a game, including retries", async () => {
+    const { redis, store } = createFixture();
+    const rules = { ...PRACTICE_RULES, W: 16, H: 16 };
+    const started = await startPractice(store, "practice-start", rules);
+    const move = moveRequest(started.snapshot, "initial-move");
+    await store.move("owner", move);
+    redis.seed(
+      "euclid:solo:v1:work-budget:owner",
+      JSON.stringify({
+        resetAt: Date.UTC(2026, 8, 1, 12, 1),
+        count: 120,
+      }),
+    );
+    for (const request of [
+      () => store.getState("owner", started.snapshot.gameId),
+      () => store.getActiveRanked("owner"),
+      () => startPractice(store, "practice-start", rules),
+      () => store.move("owner", move),
+      () =>
+        store.abandon("owner", {
+          gameId: started.snapshot.gameId,
+          expectedRevision: 0,
+          commandId: "stop",
+        }),
+    ]) {
+      redis.clearAccessLog();
+      await expect(request()).rejects.toMatchObject({
+        name: "RequestLimitError",
+      });
+      expect(redis.reads).toEqual(["euclid:solo:v1:work-budget:owner"]);
+    }
+  });
+
+  it("expires unused and abandoned Practice sessions across daily receipt windows", async () => {
+    const { redis, store, setNow } = createFixture();
+    const unused = await startPractice(store, "unused");
+    const abandoned = await startPractice(store, "abandoned");
+    await store.abandon("owner", {
+      gameId: abandoned.snapshot.gameId,
+      expectedRevision: 0,
+      commandId: "stop",
+    });
+    setNow(Date.UTC(2026, 8, 3, 12));
+    expect(
+      redis.value(SOLO_STORE_KEYS.game(unused.snapshot.gameId)),
+    ).toBeUndefined();
+    expect(
+      redis.value(SOLO_STORE_KEYS.game(abandoned.snapshot.gameId)),
+    ).toBeUndefined();
+    expect(
+      redis.value(SOLO_STORE_KEYS.result(abandoned.snapshot.gameId)),
+    ).toBeUndefined();
+  });
+
+  it("keeps late receipts usable while reads and replays do not extend Practice retention", async () => {
+    const { redis, store, setNow } = createFixture();
+    const initial = Date.UTC(2026, 8, 1, 12);
+    const started = await startPractice(store);
+    const readOnly = await startPractice(store, "read-only");
+    setNow(initial + SOLO_PRACTICE_RETENTION_MS - 1);
+    await store.getState("owner", readOnly.snapshot.gameId);
+    const rejectedRequest = {
+      ...moveRequest(started.snapshot, "late-rejection"),
+      expectedRevision: 999,
+    };
+    const rejected = await store.move("owner", rejectedRequest);
+    expect(rejected.accepted).toBe(false);
+    setNow(initial + SOLO_PRACTICE_RETENTION_MS);
+    expect(
+      redis.value(SOLO_STORE_KEYS.game(readOnly.snapshot.gameId)),
+    ).toBeUndefined();
+    await expect(
+      store.getState("owner", readOnly.snapshot.gameId),
+    ).rejects.toMatchObject({ code: "game_not_found" });
+    await expect(store.move("owner", rejectedRequest)).resolves.toEqual({
+      ...rejected,
+      replayed: true,
+    });
+    setNow(initial + 2 * SOLO_PRACTICE_RETENTION_MS - 1);
+    expect(
+      redis.value(SOLO_STORE_KEYS.game(started.snapshot.gameId)),
+    ).toBeUndefined();
+  });
+
+  it("renews active Practice moves and terminal receipts while retaining shared results", async () => {
+    const { redis, store, setNow } = createFixture();
+    const initial = Date.UTC(2026, 8, 1, 12);
+    const start = await startPractice(store);
+    setNow(initial + SOLO_PRACTICE_RETENTION_MS - 1);
+    const moved = await store.move(
+      "owner",
+      moveRequest(start.snapshot, "renew"),
+    );
+    expect(moved.accepted).toBe(true);
+    setNow(initial + SOLO_PRACTICE_RETENTION_MS);
+    await expect(
+      store.getState("owner", start.snapshot.gameId),
+    ).resolves.toMatchObject({ revision: moved.snapshot.revision });
+    const win = await findPracticeHumanWin(store);
+    const input = {
+      gameId: win.start.snapshot.gameId,
+      commandId: "share",
+      subredditName: "euclid_test",
+      humanName: "Owner",
+    };
+    const prepared = await store.prepareShare("owner", input);
+    const posted = await store.finalizeShare("owner", {
+      gameId: input.gameId,
+      shareId: prepared.receipt.shareId,
+      postId: "post",
+      permalink: "/post",
+      runAs: "APP",
+    });
+    await store.move("owner", {
+      ...win.finalRequest,
+      commandId: "late-terminal-command",
+    });
+    setNow(initial + 3 * SOLO_PRACTICE_RETENTION_MS);
+    expect(redis.value(SOLO_STORE_KEYS.game(input.gameId))).toBeUndefined();
+    await expect(store.getResult("owner", input.gameId)).resolves.toMatchObject(
+      { resultForHuman: 1 },
+    );
+    await expect(store.prepareShare("owner", input)).resolves.toEqual({
+      receipt: posted,
+      shouldSubmit: false,
+    });
+    expect(
+      redis.json(SOLO_STORE_KEYS.sharedPost(prepared.receipt.shareId)),
+    ).toEqual(prepared.receipt.payload);
+  });
+
+  it("admits one simultaneous share across different games and leaves the denied game untouched", async () => {
+    const { redis, store, setNow } = createFixture();
+    const first = await findPracticeHumanWin(store, "first");
+    const second = await findPracticeHumanWin(store, "second");
+    const inputs = [first, second].map((win) => ({
+      gameId: win.start.snapshot.gameId,
+      commandId: "share",
+      subredditName: "euclid_test",
+      humanName: "Owner",
+    }));
+    const responses = await Promise.allSettled(
+      inputs.map((input) => store.prepareShare("owner", input)),
+    );
+    expect(
+      responses.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    const deniedIndex = responses.findIndex(
+      (result) => result.status === "rejected",
+    );
+    expect(responses[deniedIndex]).toMatchObject({
+      reason: { name: "RequestLimitError" },
+    });
+    expect(
+      redis.value(SOLO_STORE_KEYS.share(inputs[deniedIndex]!.gameId)),
+    ).toBeUndefined();
+    expect(
+      redis.keys().filter((key) => key.startsWith("euclid:share:post:")),
+    ).toHaveLength(1);
+    setNow(Date.UTC(2026, 8, 1, 12, 0, 10));
+    await expect(
+      store.prepareShare("owner", inputs[deniedIndex]!),
+    ).resolves.toMatchObject({ shouldSubmit: true });
+  });
+
+  it("limits failed share retries without charging prepared or posted retries", async () => {
+    const { redis, store, setNow } = createFixture();
+    const win = await findPracticeHumanWin(store);
+    const input = {
+      gameId: win.start.snapshot.gameId,
+      commandId: "share",
+      subredditName: "euclid_test",
+      humanName: "Owner",
+    };
+    const prepared = await store.prepareShare("owner", input);
+    await expect(store.prepareShare("owner", input)).resolves.toMatchObject({
+      shouldSubmit: false,
+    });
+    await store.failShare("owner", {
+      gameId: input.gameId,
+      shareId: prepared.receipt.shareId,
+      failureMessage: "Try again",
+    });
+    const before = redis.value(SOLO_STORE_KEYS.share(input.gameId));
+    await expect(store.prepareShare("owner", input)).rejects.toMatchObject({
+      name: "RequestLimitError",
+      retryAfterMs: 10_000,
+    });
+    expect(redis.value(SOLO_STORE_KEYS.share(input.gameId))).toBe(before);
+    setNow(Date.UTC(2026, 8, 1, 12, 0, 10));
+    await expect(store.prepareShare("owner", input)).resolves.toMatchObject({
+      shouldSubmit: true,
+    });
+  });
+
   it("admits only one simultaneous share and preserves the cooldown boundary", async () => {
     const redis = new MemoryRedis(() => 100_000);
     const results = await Promise.allSettled(
@@ -406,7 +668,10 @@ function strongestAvailableMove(snapshot: SoloSessionSnapshot): {
   return best;
 }
 
-async function findPracticeHumanWin(store: SoloStore): Promise<{
+async function findPracticeHumanWin(
+  store: SoloStore,
+  prefix = "winning",
+): Promise<{
   start: SoloStartResponse;
   finalRequest: SoloMoveRequest;
   finalSnapshot: SoloSessionSnapshot;
@@ -417,13 +682,13 @@ async function findPracticeHumanWin(store: SoloStore): Promise<{
     firstPlayer: 1,
   };
   for (let game = 0; game < 24; game++) {
-    const start = await startPractice(store, `winning-start-${game}`, rules);
+    const start = await startPractice(store, `${prefix}-start-${game}`, rules);
     let snapshot = start.snapshot;
     let finalRequest: SoloMoveRequest | null = null;
     while (snapshot.status === "active") {
       finalRequest = moveRequest(
         snapshot,
-        `winning-move-${game}-${snapshot.revision}`,
+        `${prefix}-move-${game}-${snapshot.revision}`,
         strongestAvailableMove(snapshot),
       );
       const response = await store.move("owner", finalRequest);
@@ -634,7 +899,14 @@ describe("SoloStore move commands", () => {
     let committed: SoloMoveResponse | undefined;
 
     setNow(startedAt + 100);
-    redis.beforeExec = async () => {
+    redis.beforeExec = async (writes) => {
+      if (
+        !writes.some(
+          (write) =>
+            write.key === SOLO_STORE_KEYS.game(started.snapshot.gameId),
+        )
+      )
+        return;
       redis.beforeExec = undefined;
       setNow(startedAt + 200);
       committed = await store.move("owner", {
@@ -673,7 +945,14 @@ describe("SoloStore move commands", () => {
     const expected = await control.store.move("owner", request);
 
     let injected = false;
-    conflicted.redis.beforeExec = () => {
+    conflicted.redis.beforeExec = (writes) => {
+      if (
+        !writes.some(
+          (write) =>
+            write.key === SOLO_STORE_KEYS.game(conflictStart.snapshot.gameId),
+        )
+      )
+        return;
       if (injected) return;
       injected = true;
       conflicted.redis.externalSet(SOLO_STORE_KEYS.aiFirstCount, "0");
@@ -738,7 +1017,14 @@ describe("SoloStore Ranked settlement and abandonment", () => {
     const startedAt = Date.parse(started.snapshot.updatedAt);
 
     setNow(startedAt + 100);
-    redis.beforeExec = async () => {
+    redis.beforeExec = async (writes) => {
+      if (
+        !writes.some(
+          (write) =>
+            write.key === SOLO_STORE_KEYS.game(started.snapshot.gameId),
+        )
+      )
+        return;
       redis.beforeExec = undefined;
       setNow(startedAt + 200);
       await store.abandon("owner", {

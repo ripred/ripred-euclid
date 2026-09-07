@@ -44,7 +44,17 @@ import {
   type RedisCasSnapshot,
   type RedisCasWrite,
 } from "./redis-cas";
-import { soloReceiptBudgetKey, writeSoloReceipt } from "./request-limits";
+import {
+  SOLO_WORK_LIMITS,
+  SOLO_PRACTICE_RETENTION_MS,
+  SOLO_SHARE_COOLDOWN_MS,
+  soloWorkBudgetKey,
+  soloShareCooldownKey,
+  reserveWindowBudget,
+  soloReceiptBudgetKey,
+  writeSoloReceipt,
+  writeShareCooldown,
+} from "./request-limits";
 
 export const SOLO_STORE_SCHEMA_VERSION = 1 as const;
 export const SOLO_RATING_SCHEMA_VERSION = 1 as const;
@@ -844,6 +854,7 @@ export class SoloStore {
   async start(userId: string, input: unknown): Promise<SoloStartResponse> {
     requireIdentifier(userId, "userId");
     const { request, rules } = validateSoloStartRequest(input);
+    await this.admitWork(userId);
     const commandHash = hashSoloCommandId(request.commandId);
     const fingerprint = startFingerprint(rules);
     const candidateGameId = requireIdentifier(this.createGameId(), "gameId");
@@ -1010,7 +1021,7 @@ export class SoloStore {
             response,
           };
           const writes = new Map<string, RedisCasWrite>();
-          setWrite(writes, candidateGameKey, serialize(created.record));
+          this.writeGame(snapshot, writes, created.record, timestamp);
           writeSoloReceipt(
             snapshot,
             writes,
@@ -1044,6 +1055,7 @@ export class SoloStore {
 
   async getActiveRanked(userId: string): Promise<SoloSessionSnapshot | null> {
     requireIdentifier(userId, "userId");
+    await this.admitWork(userId);
     const activeKey = SOLO_STORE_KEYS.activeRanked(userId);
     for (let attempt = 0; attempt < 2; attempt++) {
       const gameId = await this.redis.get(activeKey);
@@ -1078,6 +1090,7 @@ export class SoloStore {
   async getState(userId: string, gameId: string): Promise<SoloSessionSnapshot> {
     requireIdentifier(userId, "userId");
     requireIdentifier(gameId, "gameId");
+    await this.admitWork(userId);
     const raw = await this.redis.get(SOLO_STORE_KEYS.game(gameId));
     if (!raw)
       throw new SoloStoreError("game_not_found", "Solo game not found.");
@@ -1094,6 +1107,7 @@ export class SoloStore {
     requireIdentifier(request?.gameId, "gameId");
     const commandHash = hashSoloCommandId(request?.commandId);
     const fingerprint = moveFingerprint(request);
+    await this.admitWork(userId);
     const gameKey = SOLO_STORE_KEYS.game(request.gameId);
     const receiptKey = SOLO_STORE_KEYS.move(request.gameId, commandHash);
     const timestamp = this.now();
@@ -1176,7 +1190,9 @@ export class SoloStore {
               nextRecord = settlement.record;
               response = addRatingToMoveResponse(response, settlement.rating);
             }
-            setWrite(writes, gameKey, serialize(nextRecord));
+          }
+          if (response.accepted || nextRecord.rules.mode === "practice") {
+            this.writeGame(snapshot, writes, nextRecord, timestamp);
           }
           const commandReceipt: SoloCommandReceipt<SoloMoveResponse> = {
             schemaVersion: SOLO_STORE_SCHEMA_VERSION,
@@ -1218,6 +1234,7 @@ export class SoloStore {
     requireIdentifier(request?.gameId, "gameId");
     const commandHash = hashSoloCommandId(request?.commandId);
     const fingerprint = abandonFingerprint(request);
+    await this.admitWork(userId);
     const gameKey = SOLO_STORE_KEYS.game(request.gameId);
     const receiptKey = SOLO_STORE_KEYS.abandon(request.gameId, commandHash);
     const timestamp = this.now();
@@ -1290,7 +1307,9 @@ export class SoloStore {
             );
             nextRecord = settlement.record;
             response = addRatingToAbandonResponse(response, settlement.rating);
-            setWrite(writes, gameKey, serialize(nextRecord));
+          }
+          if (response.abandoned || nextRecord.rules.mode === "practice") {
+            this.writeGame(snapshot, writes, nextRecord, timestamp);
           }
           const commandReceipt: SoloCommandReceipt<SoloAbandonResponse> = {
             schemaVersion: SOLO_STORE_SCHEMA_VERSION,
@@ -1446,6 +1465,7 @@ export class SoloStore {
     }
     const resultKey = SOLO_STORE_KEYS.result(input.gameId);
     const shareKey = SOLO_STORE_KEYS.share(input.gameId);
+    const cooldownKey = soloShareCooldownKey(userId);
     const candidateShareId = requireIdentifier(this.createShareId(), "shareId");
     const candidatePostKey = SOLO_STORE_KEYS.sharedPost(candidateShareId);
     const timestamp = this.now();
@@ -1456,7 +1476,7 @@ export class SoloStore {
         (await this.redis.get(shareKey)) ?? undefined,
         input.gameId,
       );
-      const watchKeys = [resultKey, shareKey, candidatePostKey];
+      const watchKeys = [resultKey, shareKey, candidatePostKey, cooldownKey];
       if (discoveredReceipt) {
         watchKeys.push(SOLO_STORE_KEYS.sharedPost(discoveredReceipt.shareId));
       }
@@ -1519,20 +1539,20 @@ export class SoloStore {
                 commandHash,
                 preparedAt: sharedAt,
               };
-              return {
-                action: "commit" as const,
-                writes: [
-                  {
-                    action: "set" as const,
-                    key: shareKey,
-                    value: serialize(reclaimed),
-                  },
-                ],
-                result: {
-                  status: "done" as const,
-                  value: { receipt: reclaimed, shouldSubmit: true },
-                },
-              };
+              const writes = new Map<string, RedisCasWrite>();
+              writeShareCooldown(
+                snapshot,
+                writes,
+                cooldownKey,
+                SOLO_SHARE_COOLDOWN_MS,
+                timestamp,
+              );
+              setWrite(writes, shareKey, serialize(reclaimed));
+              setWrite(writes, resultKey, serialize(canonicalResult));
+              return commitDecision(writes, {
+                status: "done" as const,
+                value: { receipt: reclaimed, shouldSubmit: true },
+              });
             }
             return {
               action: "no-change" as const,
@@ -1567,25 +1587,22 @@ export class SoloStore {
             payload,
             preparedAt: sharedAt,
           };
-          return {
-            action: "commit" as const,
-            writes: [
-              {
-                action: "set" as const,
-                key: shareKey,
-                value: serialize(receipt),
-              },
-              {
-                action: "set" as const,
-                key: candidatePostKey,
-                value: serialize(payload),
-              },
-            ],
-            result: {
-              status: "done" as const,
-              value: { receipt, shouldSubmit: true },
-            },
-          };
+          const writes = new Map<string, RedisCasWrite>();
+          writeShareCooldown(
+            snapshot,
+            writes,
+            cooldownKey,
+            SOLO_SHARE_COOLDOWN_MS,
+            timestamp,
+          );
+          setWrite(writes, shareKey, serialize(receipt));
+          setWrite(writes, candidatePostKey, serialize(payload));
+          // Published payloads and their canonical source remain durable.
+          setWrite(writes, resultKey, serialize(canonicalResult));
+          return commitDecision(writes, {
+            status: "done" as const,
+            value: { receipt, shouldSubmit: true },
+          });
         },
         this.casOptions,
       );
@@ -1722,6 +1739,54 @@ export class SoloStore {
     );
   }
 
+  private async admitWork(userId: string): Promise<void> {
+    await reserveWindowBudget(
+      this.redis,
+      soloWorkBudgetKey(userId),
+      SOLO_WORK_LIMITS.count,
+      SOLO_WORK_LIMITS.windowMs,
+      this.now(),
+      this.casOptions,
+    );
+  }
+
+  /** New receipts renew Practice retention so their canonical source outlives them.
+   * Reads and receipt replays never renew it. Ranked and shared results are durable.
+   */
+  private writeGame(
+    snapshot: RedisCasSnapshot,
+    writes: Map<string, RedisCasWrite>,
+    record: SoloSessionRecord,
+    timestamp: number,
+  ): void {
+    const expiration =
+      record.rules.mode === "practice"
+        ? new Date(timestamp + SOLO_PRACTICE_RETENTION_MS)
+        : undefined;
+    setWrite(
+      writes,
+      SOLO_STORE_KEYS.game(record.gameId),
+      serialize(record),
+      expiration,
+    );
+    if (expiration && record.status !== "active") {
+      const resultKey = SOLO_STORE_KEYS.result(record.gameId);
+      const pending = writes.get(resultKey);
+      const result =
+        pending?.action === "set" ? pending.value : snapshot.get(resultKey);
+      if (result !== undefined) {
+        setWrite(
+          writes,
+          resultKey,
+          result,
+          snapshot.get(SOLO_STORE_KEYS.share(record.gameId)) === undefined
+            ? expiration
+            : undefined,
+        );
+      }
+    }
+  }
+
   private async discoverStart(
     userId: string,
     mode: SoloRules["mode"],
@@ -1807,6 +1872,7 @@ export class SoloStore {
       gameKey,
       receiptKey,
       SOLO_STORE_KEYS.result(gameId),
+      SOLO_STORE_KEYS.share(gameId),
       soloReceiptBudgetKey(userId),
     ];
 
