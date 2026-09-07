@@ -44,6 +44,7 @@ import {
   type RedisCasSnapshot,
   type RedisCasWrite,
 } from "./redis-cas";
+import { soloReceiptBudgetKey, writeSoloReceipt } from "./request-limits";
 
 export const SOLO_STORE_SCHEMA_VERSION = 1 as const;
 export const SOLO_RATING_SCHEMA_VERSION = 1 as const;
@@ -954,17 +955,19 @@ export class SoloStore {
                   gameId: activeGameId,
                   response,
                 };
-                return {
-                  action: "commit" as const,
-                  writes: [
-                    {
-                      action: "set" as const,
-                      key: receiptKey,
-                      value: serialize(receipt),
-                    },
-                  ],
-                  result: { status: "done" as const, value: response },
-                };
+                const writes = new Map<string, RedisCasWrite>();
+                writeSoloReceipt(
+                  snapshot,
+                  writes,
+                  userId,
+                  receiptKey,
+                  serialize(receipt),
+                  timestamp,
+                );
+                return commitDecision(writes, {
+                  status: "done" as const,
+                  value: response,
+                });
               }
               if (!activeResult || activeResult.ownerId !== userId) {
                 throw new SoloStoreError(
@@ -1008,7 +1011,14 @@ export class SoloStore {
           };
           const writes = new Map<string, RedisCasWrite>();
           setWrite(writes, candidateGameKey, serialize(created.record));
-          setWrite(writes, receiptKey, serialize(receipt));
+          writeSoloReceipt(
+            snapshot,
+            writes,
+            userId,
+            receiptKey,
+            serialize(receipt),
+            timestamp,
+          );
           if (rules.mode === "ranked") {
             setWrite(
               writes,
@@ -1176,7 +1186,14 @@ export class SoloStore {
             fingerprint,
             response,
           };
-          setWrite(writes, receiptKey, serialize(commandReceipt));
+          writeSoloReceipt(
+            snapshot,
+            writes,
+            userId,
+            receiptKey,
+            serialize(commandReceipt),
+            timestamp,
+          );
           return commitDecision(writes, {
             status: "done" as const,
             value: response,
@@ -1283,7 +1300,14 @@ export class SoloStore {
             fingerprint,
             response,
           };
-          setWrite(writes, receiptKey, serialize(commandReceipt));
+          writeSoloReceipt(
+            snapshot,
+            writes,
+            userId,
+            receiptKey,
+            serialize(commandReceipt),
+            timestamp,
+          );
           return commitDecision(writes, {
             status: "done" as const,
             value: response,
@@ -1712,7 +1736,11 @@ export class SoloStore {
     const activeGameId = activeKey
       ? await this.redis.get(activeKey)
       : undefined;
-    const watchKeys = [receiptKey, candidateGameKey];
+    const watchKeys = [
+      receiptKey,
+      candidateGameKey,
+      soloReceiptBudgetKey(userId),
+    ];
     if (activeKey) watchKeys.push(activeKey);
     if (receipt?.gameId) watchKeys.push(SOLO_STORE_KEYS.game(receipt.gameId));
     if (activeGameId) {
@@ -1775,7 +1803,12 @@ export class SoloStore {
       throw new SoloStoreError("game_not_found", "Solo game not found.");
     const record = normalizeSoloSessionRecord(parseJson(raw), gameId);
     assertOwner(record, userId);
-    const watchKeys = [gameKey, receiptKey, SOLO_STORE_KEYS.result(gameId)];
+    const watchKeys = [
+      gameKey,
+      receiptKey,
+      SOLO_STORE_KEYS.result(gameId),
+      soloReceiptBudgetKey(userId),
+    ];
 
     if (includeMoveMetrics) {
       if (record.humanMoveCount === 0) {

@@ -32,9 +32,7 @@ const rows: RankingsShareRow[] = Array.from({ length: 8 }, (_, index) => ({
 describe("inline preview", () => {
   it("loads without mounting a game or requesting expansion", () => {
     const html = renderToStaticMarkup(<PreviewApp />);
-    expect(html).toContain("Loading Euclid");
-    expect(html).toContain('class="euclid-preview euclid-preview-status"');
-    expect(html).not.toContain("button");
+    expect(html).toBe("");
   });
 
   it.each(["dark", "light"] as const)(

@@ -213,11 +213,11 @@ describe("Play Euclid presentation", () => {
   });
 
   it("describes the rating consequence of each path", () => {
-    expect(getPlayEuclidSubtitle("ranked")).toBe(
-      "Ranked · 8 × 8 Grid Footprint · rating on the line",
+    expect(getPlayEuclidSubtitle("ranked", "beginner")).toBe(
+      "Ranked · Brutal · fixed rules · rating on the line",
     );
-    expect(getPlayEuclidSubtitle("practice")).toBe(
-      "Practice · custom rules · no rating changes",
+    expect(getPlayEuclidSubtitle("practice", "casual")).toBe(
+      "Practice · Casual · no rating changes",
     );
   });
 

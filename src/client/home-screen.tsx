@@ -218,7 +218,6 @@ function EuclidBrand({ titleId }: { titleId: string }) {
   return (
     <div className="euclid-home__brand">
       <div>
-        <p className="euclid-home__eyebrow">A game of completed squares</p>
         <h1 id={titleId}>Euclid</h1>
       </div>
     </div>
@@ -400,36 +399,50 @@ export function HomeScreen({
 
         <section className="euclid-home__dashboard" aria-label="Choose a game">
           <div className="euclid-home__play-column">
-            <button
-              type="button"
-              className="euclid-home__primary-action"
-              disabled={
-                actionPending || matchmaking || loading.presence || loading.solo
-              }
-              aria-busy={
-                busyAction === "solo" ||
-                loading.presence ||
-                loading.solo ||
-                undefined
-              }
-              aria-describedby={
-                loading.presence || loading.solo
-                  ? "euclid-home-loading-description"
-                  : lockDescriptionId
-              }
-              onClick={onPlayEuclid}
-            >
-              <span className="euclid-home__primary-kicker">Solo play</span>
-              <span className="euclid-home__primary-title">
-                {busyAction === "solo" ? "Opening game…" : "Play Euclid"}
-              </span>
-              <span className="euclid-home__primary-detail">
-                {playEuclidSubtitle}
-              </span>
-              <span className="euclid-home__primary-arrow" aria-hidden="true">
-                →
-              </span>
-            </button>
+            <div className="euclid-home__solo-choice">
+              <button
+                type="button"
+                className="euclid-home__primary-action"
+                disabled={
+                  actionPending ||
+                  matchmaking ||
+                  loading.presence ||
+                  loading.solo
+                }
+                aria-busy={
+                  busyAction === "solo" ||
+                  loading.presence ||
+                  loading.solo ||
+                  undefined
+                }
+                aria-describedby={
+                  loading.presence || loading.solo
+                    ? "euclid-home-loading-description"
+                    : lockDescriptionId
+                }
+                onClick={onPlayEuclid}
+              >
+                <span className="euclid-home__primary-kicker">Solo play</span>
+                <span className="euclid-home__primary-title">
+                  {busyAction === "solo" ? "Opening game…" : "Play Euclid"}
+                </span>
+                <span className="euclid-home__primary-detail">
+                  {playEuclidSubtitle}
+                </span>
+                <span className="euclid-home__primary-arrow" aria-hidden="true">
+                  →
+                </span>
+              </button>
+              <HomeActionButton
+                label="Change difficulty"
+                busyLabel="Change difficulty"
+                disabled={navigationLocked || loading.presence || loading.solo}
+                busy={false}
+                className="euclid-home__secondary-button"
+                describedBy={lockDescriptionId}
+                onClick={onOptions}
+              />
+            </div>
 
             <RedditorMatchCard
               h2h={h2h}

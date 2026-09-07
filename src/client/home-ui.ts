@@ -1,4 +1,9 @@
-import type { SoloMode } from "../shared/game/rules";
+import {
+  AI_DIFFICULTY_LABELS,
+  RANKED_SOLO_RULES,
+  type AiDifficulty,
+  type SoloMode,
+} from "../shared/game/rules";
 import type {
   H2HMappingResponse,
   RatingRecord,
@@ -108,10 +113,13 @@ export function getHomeRecordPresentations(
 }
 
 /** Summarizes the currently selected path without implying that Practice is rated. */
-export function getPlayEuclidSubtitle(mode: SoloMode): string {
+export function getPlayEuclidSubtitle(
+  mode: SoloMode,
+  difficulty: AiDifficulty,
+): string {
   return mode === "ranked"
-    ? "Ranked · 8 × 8 Grid Footprint · rating on the line"
-    : "Practice · custom rules · no rating changes";
+    ? `Ranked · ${AI_DIFFICULTY_LABELS[RANKED_SOLO_RULES.difficulty]} · fixed rules · rating on the line`
+    : `Practice · ${AI_DIFFICULTY_LABELS[difficulty]} · no rating changes`;
 }
 
 function scoringLabel(

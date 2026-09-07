@@ -6,9 +6,9 @@ Euclid is a turn-based Reddit strategy game about claiming grid points and compl
 
 ![Euclid game](Euclid-Game2.png)
 
-The local package is `0.1.101` and the project is pinned to Devvit `0.14.2`. The original game's inline-entry, scrolling, and Watch changes described below are installed on `r/EuclidTheGame`. Repository history remains local; deployment does not push Git history.
+The local package is `0.1.108` and the project is pinned to Devvit `0.14.2`. The original game's inline-entry, scrolling, Watch, display-copy, Practice difficulty, and request-limit changes are installed on `r/EuclidTheGame`. Deployment and Git pushes are separate operations.
 
-The intended public-facing community is [r/EuclidTheGame](https://www.reddit.com/r/EuclidTheGame/), currently private for beta testing. On September 6, 2026, the current original build was uploaded and installed there as `0.1.101`, then confirmed by a separate installation readback. The development subreddit was not changed and was last verified at `0.1.99`. The communities' matching icon and desktop/mobile banners were unchanged; the development playtest target remains `r/ripred_euclid_dev`. Installation verification is separate from the desktop and native-mobile gameplay checks below.
+The intended public-facing community is [r/EuclidTheGame](https://www.reddit.com/r/EuclidTheGame/), currently private for beta testing. On September 6, 2026, the current original build was uploaded and installed there as `0.1.108`, then confirmed by a separate installation readback. The development subreddit was not changed and was last verified at `0.1.99`. The communities' matching icon and desktop/mobile banners were unchanged; the development playtest target remains `r/ripred_euclid_dev`. Installation verification is separate from the desktop and native-mobile gameplay checks below.
 
 ## Game rules
 
@@ -35,13 +35,16 @@ Ranked solo Elo starts at 1200 and uses K=32 against Euclid's fixed 1600 referen
 
 Euclid has nine difficulty levels. Brutal prioritizes its own immediate win, then prevents an opponent's immediate win, compares immediate offensive and defensive value, and finally pursues longer-term square construction.
 
+The home screen shows the selected difficulty beside **Play Euclid** and offers **Change difficulty**. Practice remembers a valid selection in browser storage, falling back to Beginner when storage is unavailable. Ranked and resumed games retain their server-owned rules.
+
 ## Authority and integrity
 
 The browser is a presentation and intent layer, not a source of official results. Opening developer tools or changing client JavaScript cannot submit an official score, winner, AI move, or final board.
 
 - H2H clients submit a game ID, coordinate, and expected revision. The server verifies the participant, turn, revision, cell, score, completed squares, outcome, and persisted board.
 - Solo clients submit start rules or a coordinate intent with an expected revision and command ID. The server owns the session, private RNG seed, AI selection, complete move history, result, metrics, and Ranked settlement.
-- Repeated solo commands are idempotent. Reusing a command ID for different intent is rejected.
+- New solo command receipts retain exact retry responses for 24 hours. While a receipt exists, reusing its command ID for different intent is rejected. Each user can allocate up to 4,096 receipts or 32 MiB of serialized receipts per 24-hour budget window; retries of existing receipts do not consume the budget. Limits return HTTP 429 with retry guidance. Receipt expiration does not expire canonical games, results, ratings, or share records, and canonical revision and terminal checks still apply after expiration. Older receipts retain their existing retention behavior.
+- Leaderboard and H2H sharing reserve their existing per-user, per-kind cooldown atomically before submitting a post, so simultaneous requests cannot bypass it.
 - Redis compare-and-set transactions serialize competing mutations. H2H terminal results are archived immutably by game ID and terminal revision in the same transaction that ends the round; they enter a durable outbox and settle rating and metrics exactly once.
 - Solo result shares are prepared from canonical completed human victories and finalized through an idempotent receipt. Explicit submission failures are retryable, while unconfirmed in-flight receipts remain pending to avoid duplicate posts. Client-claimed result uploads are rejected.
 - Practice data never enters the versioned Ranked-solo namespace. Unverifiable legacy HVA ratings remain untouched but are excluded from current rankings.
@@ -107,6 +110,7 @@ src/server/
   h2h-settlement.ts    Durable exactly-once H2H Elo and metric settlement
   solo.ts              Canonical solo domain, replay validation, and redaction
   solo-store.ts        Atomic sessions, idempotency, Ranked Elo, metrics, shares
+  request-limits.ts    Shared receipt budgets, retention, and share cooldown reservations
   redis-cas.ts         Shared optimistic Redis transaction seam
 ```
 
@@ -142,7 +146,7 @@ Tests are colocated as `*.spec.{ts,tsx}` files. The suite covers scoring and AI 
 
 `npm run check` is intentionally mutating: it applies ESLint fixes and Prettier formatting. Use the explicit non-mutating gate above when reviewing a worktree.
 
-At the current lockfile, `npm audit --omit=dev` reports three moderate `qs` advisories inherited through Express and body-parser, with no fix currently offered. The full audit reports 19 findings—2 low, 13 moderate, and 4 high—including the same production chain plus development-tool findings propagated through ESLint and the Devvit CLI's `image-size` and `tmp` chains; npm currently offers no fix for those paths. Do not run `npm audit fix --force` or add unsupported overrides. Reassess the direct Express dependency and the Devvit/ESLint toolchains when compatible releases become available. `@devvit/public-api` is pinned as a development-only packaging compatibility dependency because the 0.14.2 CLI resolves its generated template from the project root; Euclid remains a Devvit Web app and application source must not import that legacy API. `package.json` also pins the reviewed install-script approvals needed by the native build tools—run `npm install-scripts ls` after dependency changes.
+At the current lockfile, the September 6, 2026 `npm audit --omit=dev` check reports no production dependency vulnerabilities. The full audit reports six affected development packages—four high and two low—in the Devvit CLI's `image-size` and `tmp` dependency chains; npm currently offers no fix for those paths. Do not run `npm audit fix --force` or add unsupported overrides. Reassess the Devvit toolchain when compatible releases become available. `@devvit/public-api` is pinned as a development-only packaging compatibility dependency because the 0.14.2 CLI resolves its generated template from the project root; Euclid remains a Devvit Web app and application source must not import that legacy API. `package.json` also pins the reviewed install-script approvals needed by the native build tools—run `npm install-scripts ls` after dependency changes.
 
 ## Devvit operation
 
@@ -199,7 +203,7 @@ The full real-surface checklist still requires three distinct Reddit identities,
 
 ## Pending release work
 
-- Run the real-surface checklist above against installed `0.1.101` on Reddit desktop card view, compact view, and the native mobile app. Local verification passed type-check, lint, 421 tests, client/server builds, 96 Watch-preview layout checks, and interactive spectator lifecycle checks. Their simulated Reddit host and canonical API fixtures do not establish native-platform behavior; the installation readback is not a gameplay check.
+- Run the real-surface checklist above against installed `0.1.108` on Reddit desktop card view, compact view, and the native mobile app. The current release passed type-check, lint, all 427 tests across 32 files, and client/server builds. Automated fixtures do not establish native-platform behavior; the installation readback is not a gameplay check.
 - Keep the five unshipped edition branches separate from this installed original release.
 - After private-beta results are acceptable, decide whether the community remains private, becomes restricted, or opens publicly, and prepare any introductory or how-to-play post.
 
