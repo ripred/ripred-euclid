@@ -162,17 +162,6 @@ export function PreviewStatus({
           backdropFilter: "blur(10px)",
         }}
       >
-        <div
-          style={{
-            color: palette.accent,
-            fontSize: 12,
-            fontWeight: 800,
-            letterSpacing: "0.14em",
-            textTransform: "uppercase",
-          }}
-        >
-          Euclid
-        </div>
         <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.04 }}>
           {title}
         </div>
@@ -508,7 +497,6 @@ function LeaderboardRow({
           style={{
             color: palette.text,
             fontSize: 10,
-            textTransform: "uppercase",
             letterSpacing: "0.08em",
           }}
         >
@@ -624,7 +612,6 @@ export function PreviewLeaderboard({
             fontSize: 12,
             fontWeight: 800,
             letterSpacing: "0.16em",
-            textTransform: "uppercase",
             color: palette.accent,
           }}
         >
@@ -1100,13 +1087,7 @@ export const PreviewApp = () => {
   }
 
   if (!initState) {
-    return (
-      <PreviewStatus
-        theme={theme}
-        title="Loading Euclid"
-        body="Preparing this post…"
-      />
-    );
+    return null;
   }
 
   if (sharedPost) {
@@ -1196,18 +1177,6 @@ export const PreviewApp = () => {
             >
               <div style={{ display: "grid", gap: 6 }}>
                 <div
-                  className="euclid-preview-eyebrow"
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 800,
-                    letterSpacing: "0.16em",
-                    textTransform: "uppercase",
-                    color: palette.accent,
-                  }}
-                >
-                  Reddit Strategy Game
-                </div>
-                <div
                   className="euclid-preview-title"
                   style={{ fontWeight: 900, lineHeight: 1 }}
                 >
@@ -1243,7 +1212,6 @@ export const PreviewApp = () => {
                     fontSize: 12,
                     fontWeight: 800,
                     letterSpacing: "0.12em",
-                    textTransform: "uppercase",
                   }}
                 >
                   <span

@@ -1,6 +1,10 @@
 export interface RedisCasTransaction {
   multi(): Promise<void>;
-  set(key: string, value: string): Promise<unknown>;
+  set(
+    key: string,
+    value: string,
+    options?: { expiration: Date },
+  ): Promise<unknown>;
   del(...keys: string[]): Promise<unknown>;
   exec(): Promise<readonly unknown[] | null | undefined>;
   discard(): Promise<void>;
@@ -19,12 +23,12 @@ export interface RedisCasOptions {
 }
 
 export type RedisCasDecision<TResult> =
-  | { action: "set"; value: string; result: TResult }
+  | { action: "set"; value: string; expiration?: Date; result: TResult }
   | { action: "delete"; result: TResult }
   | { action: "no-change"; result: TResult };
 
 export type RedisCasWrite =
-  | { action: "set"; key: string; value: string }
+  | { action: "set"; key: string; value: string; expiration?: Date }
   | { action: "delete"; key: string };
 
 export type RedisMultiCasDecision<TResult> =
@@ -40,8 +44,14 @@ export function setRedisCasWrite(
   writes: Map<string, RedisCasWrite>,
   key: string,
   value: string,
+  expiration?: Date,
 ): void {
-  writes.set(key, { action: "set", key, value });
+  writes.set(key, {
+    action: "set",
+    key,
+    value,
+    ...(expiration ? { expiration } : {}),
+  });
 }
 
 /** Adds or replaces a deletion in a Redis multi-key CAS write map. */
@@ -105,7 +115,16 @@ export async function redisCas<TResult>(
         case "set":
           return {
             action: "commit",
-            writes: [{ action: "set", key, value: decision.value }],
+            writes: [
+              {
+                action: "set",
+                key,
+                value: decision.value,
+                ...(decision.expiration
+                  ? { expiration: decision.expiration }
+                  : {}),
+              },
+            ],
             result: decision.result,
           };
         case "delete":
@@ -178,7 +197,14 @@ async function runAttempt<TResult>(
     phase = "multi";
     for (const write of decision.writes) {
       if (write.action === "set") {
-        await transaction.set(write.key, write.value);
+        // Expiration belongs to SET itself, so a committed value cannot lose its TTL.
+        if (write.expiration) {
+          await transaction.set(write.key, write.value, {
+            expiration: write.expiration,
+          });
+        } else {
+          await transaction.set(write.key, write.value);
+        }
       } else {
         await transaction.del(write.key);
       }

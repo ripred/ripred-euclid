@@ -40,6 +40,7 @@ import { H2HSettlementService } from "./h2h-settlement";
 import { RedisCasConflictExhaustedError } from "./redis-cas";
 import { SoloDomainError, rankedSoloSessionMetadata } from "./solo";
 import { SoloStore, SoloStoreError } from "./solo-store";
+import { RequestLimitError, reserveShareCooldown } from "./request-limits";
 
 const app = express();
 app.use(express.json({ limit: "15mb" }));
@@ -363,6 +364,7 @@ async function sendH2HError(
 }
 
 function soloErrorStatus(error: unknown): number {
+  if (error instanceof RequestLimitError) return 429;
   if (error instanceof SoloDomainError) {
     return error.code === "invalid_request" ? 400 : 410;
   }
@@ -397,8 +399,14 @@ function sendSoloError(
 ): Response {
   console.error(`[SOLO] ${operation} error`, error);
   const status = soloErrorStatus(error);
+  if (error instanceof RequestLimitError) {
+    res.setHeader("Retry-After", Math.ceil(error.retryAfterMs / 1_000));
+  }
   return res.status(status).json({
     ok: false,
+    ...(error instanceof RequestLimitError
+      ? { retryAfter: error.retryAfterMs }
+      : {}),
     message:
       status === 500
         ? "The solo request could not be completed."
@@ -616,19 +624,7 @@ async function createCustomSharePost(
 }
 
 async function enforceShareRateLimit(uid: string, kind: string) {
-  const key = SHARE_RATE(uid, kind);
-  const now = Date.now();
-  const last = parseInt((await redis.get(key)) || "0", 10);
-  if (last && now - last < SHARE_RATE_MS) {
-    const retryAfterMs = SHARE_RATE_MS - (now - last);
-    const error: ShareError = new Error(
-      "Please wait a few seconds before sharing again.",
-    );
-    error.retryAfterMs = retryAfterMs;
-    throw error;
-  }
-  await redis.set(key, String(now));
-  await redis.expire(key, 60);
+  await reserveShareCooldown(redis, SHARE_RATE(uid, kind), SHARE_RATE_MS);
 }
 
 function normalizeShareError(error: unknown): ShareError {

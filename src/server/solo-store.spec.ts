@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import {
+  SOLO_RECEIPT_LIMITS,
+  soloReceiptBudgetKey,
+  reserveShareCooldown,
+} from "./request-limits";
 
 import type {
   SoloMoveRequest,
@@ -31,8 +36,11 @@ class MemoryRedis implements RedisCasClient {
 
   private readonly values = new Map<string, string>();
   private readonly versions = new Map<string, number>();
+  private readonly expirations = new Map<string, number>();
+  constructor(private readonly now: () => number = Date.now) {}
 
   seed(key: string, value: string): void {
+    this.expirations.delete(key);
     this.values.set(key, value);
     this.bump(key);
   }
@@ -47,6 +55,7 @@ class MemoryRedis implements RedisCasClient {
   }
 
   value(key: string): string | undefined {
+    this.expire(key);
     return this.values.get(key);
   }
 
@@ -65,7 +74,17 @@ class MemoryRedis implements RedisCasClient {
   }
 
   version(key: string): number {
+    this.expire(key);
     return this.versions.get(key) ?? 0;
+  }
+
+  private expire(key: string): void {
+    const expiration = this.expirations.get(key);
+    if (expiration !== undefined && expiration <= this.now()) {
+      this.expirations.delete(key);
+      this.values.delete(key);
+      this.bump(key);
+    }
   }
 
   async get(key: string): Promise<string | undefined> {
@@ -84,8 +103,12 @@ class MemoryRedis implements RedisCasClient {
 
   commit(writes: readonly RedisCasWrite[]): void {
     for (const write of writes) {
+      this.expirations.delete(write.key);
       if (write.action === "set") this.values.set(write.key, write.value);
       else this.values.delete(write.key);
+      if (write.action === "set" && write.expiration) {
+        this.expirations.set(write.key, write.expiration.getTime());
+      }
     }
     for (const write of writes) this.bump(write.key);
     this.commits.push(writes.map((write) => ({ ...write })));
@@ -114,9 +137,13 @@ class MemoryTransaction implements RedisCasTransaction {
     this.inMulti = true;
   }
 
-  async set(key: string, value: string): Promise<unknown> {
+  async set(
+    key: string,
+    value: string,
+    options?: { expiration: Date },
+  ): Promise<unknown> {
     this.assertQueueing();
-    this.writes.push({ action: "set", key, value });
+    this.writes.push({ action: "set", key, value, ...options });
     return this;
   }
 
@@ -164,8 +191,8 @@ function createFixture(options: SoloStoreOptions = {}): {
   store: SoloStore;
   setNow: (value: number) => void;
 } {
-  const redis = new MemoryRedis();
   let timestamp = Date.UTC(2026, 8, 1, 12);
+  const redis = new MemoryRedis(() => timestamp);
   let gameSequence = 0;
   let seedSequence = 0;
   let shareSequence = 0;
@@ -232,6 +259,132 @@ function moveRequest(
     ...point,
   };
 }
+
+describe("request allocation protections", () => {
+  it("admits only one simultaneous share and preserves the cooldown boundary", async () => {
+    const redis = new MemoryRedis(() => 100_000);
+    const results = await Promise.allSettled(
+      Array.from({ length: 2 }, () =>
+        reserveShareCooldown(redis, "share", 10_000, 100_000),
+      ),
+    );
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      results.find((result) => result.status === "rejected"),
+    ).toMatchObject({
+      reason: { retryAfterMs: 10_000 },
+    });
+    await expect(
+      reserveShareCooldown(redis, "share", 10_000, 109_999),
+    ).rejects.toMatchObject({ retryAfterMs: 1 });
+    await expect(
+      reserveShareCooldown(redis, "share", 10_000, 110_000),
+    ).resolves.toBeUndefined();
+  });
+
+  it("atomically charges concurrent allocations while allowing retries and other users", async () => {
+    const { redis, store } = createFixture();
+    const first = await startRanked(store);
+    redis.seed(
+      soloReceiptBudgetKey("owner"),
+      JSON.stringify({
+        resetAt: Date.UTC(2026, 8, 2, 12),
+        count: SOLO_RECEIPT_LIMITS.count - 1,
+        bytes: 0,
+      }),
+    );
+    const results = await Promise.allSettled([
+      startRanked(store, "resume-a"),
+      startRanked(store, "resume-b"),
+    ]);
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      results.find((result) => result.status === "rejected"),
+    ).toMatchObject({
+      reason: { name: "RequestLimitError" },
+    });
+    await expect(startRanked(store)).resolves.toEqual({
+      ...first,
+      replayed: true,
+    });
+    await expect(
+      store.start("another-user", { mode: "ranked", commandId: "start" }),
+    ).resolves.toMatchObject({ ok: true });
+    const before = redis.value(SOLO_STORE_KEYS.game(first.snapshot.gameId));
+    await expect(
+      store.move("owner", moveRequest(first.snapshot, "blocked")),
+    ).rejects.toMatchObject({ name: "RequestLimitError" });
+    expect(redis.value(SOLO_STORE_KEYS.game(first.snapshot.gameId))).toBe(
+      before,
+    );
+  });
+
+  it("bounds rejected receipts by bytes and expires retries without expiring game results", async () => {
+    const { redis, store, setNow } = createFixture();
+    const first = await startRanked(store);
+    const request = {
+      ...moveRequest(first.snapshot, "invalid"),
+      expectedRevision: 999,
+    };
+    const rejected = await store.move("owner", request);
+    expect(rejected.accepted).toBe(false);
+    const budgetKey = soloReceiptBudgetKey("owner");
+    const budget = redis.json<{
+      count: number;
+      bytes: number;
+      resetAt: number;
+    }>(budgetKey)!;
+    expect(budget.count).toBe(2);
+    expect(budget.bytes).toBeGreaterThan(0);
+    redis.seed(
+      budgetKey,
+      JSON.stringify({ ...budget, bytes: SOLO_RECEIPT_LIMITS.bytes }),
+    );
+    await expect(
+      store.move("owner", { ...request, commandId: "invalid-2" }),
+    ).rejects.toMatchObject({ name: "RequestLimitError" });
+    await expect(store.move("owner", request)).resolves.toEqual({
+      ...rejected,
+      replayed: true,
+    });
+    setNow(budget.resetAt);
+    expect(
+      redis.value(
+        SOLO_STORE_KEYS.move(
+          first.snapshot.gameId,
+          hashSoloCommandId("invalid"),
+        ),
+      ),
+    ).toBeUndefined();
+    const abandoned = await store.abandon("owner", {
+      gameId: first.snapshot.gameId,
+      commandId: "abandon",
+      expectedRevision: first.snapshot.revision,
+    });
+    const result = redis.value(SOLO_STORE_KEYS.result(first.snapshot.gameId));
+    expect(abandoned.abandoned).toBe(true);
+    expect(result).toBeDefined();
+    setNow(budget.resetAt + SOLO_RECEIPT_LIMITS.retentionMs);
+    expect(
+      redis.value(
+        SOLO_STORE_KEYS.abandon(
+          first.snapshot.gameId,
+          hashSoloCommandId("abandon"),
+        ),
+      ),
+    ).toBeUndefined();
+    expect(redis.value(SOLO_STORE_KEYS.result(first.snapshot.gameId))).toBe(
+      result,
+    );
+    expect(
+      redis.value(SOLO_STORE_KEYS.game(first.snapshot.gameId)),
+    ).toBeDefined();
+  });
+});
 
 function strongestAvailableMove(snapshot: SoloSessionSnapshot): {
   x: number;

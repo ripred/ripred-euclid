@@ -75,6 +75,10 @@ import {
 import { ResultShareView } from "./share-preview";
 import { fetchRankings, type LoadedRankings } from "./rankings-loader";
 import { errorMessage } from "./error-message";
+import {
+  readPracticeDifficulty,
+  savePracticeDifficulty,
+} from "./solo-preferences";
 import { isRecord } from "./fetch-json";
 import { useLiveGames } from "./live-games";
 import {
@@ -663,9 +667,13 @@ export const App = ({
     return () => window.clearTimeout(timer);
   }, [activeScoreFeedback]);
 
-  // Difficulty default -> Beginner
-  const [selectedDifficulty, setSelectedDifficulty] =
-    useState<AiDifficulty>("beginner");
+  // Remember practice preferences; ranked and resumed games use server rules.
+  const [selectedDifficulty, setSelectedDifficulty] = useState<AiDifficulty>(
+    readPracticeDifficulty,
+  );
+  useEffect(() => {
+    savePracticeDifficulty(selectedDifficulty);
+  }, [selectedDifficulty]);
   const [soloMode, setSoloMode] = useState<SoloMode>("practice");
 
   // Independent W/H (even)
@@ -3215,7 +3223,10 @@ export const App = ({
         {RulesOverlay}
         <HomeScreen
           username={initState?.username ?? ""}
-          playEuclidSubtitle={getPlayEuclidSubtitle(soloMode)}
+          playEuclidSubtitle={getPlayEuclidSubtitle(
+            soloMode,
+            selectedDifficulty,
+          )}
           records={getHomeRecordPresentations(homeStats)}
           soloContinuation={
             homeSolo ? getSoloContinuationPresentation(homeSolo) : null
@@ -3340,12 +3351,14 @@ export const App = ({
             >
               <div>
                 <label
+                  htmlFor="practice-difficulty"
                   className="font-medium block mb-1"
                   style={{ color: "var(--muted)" }}
                 >
                   Difficulty
                 </label>
                 <select
+                  id="practice-difficulty"
                   className="rounded px-3 py-2 w-full"
                   style={{
                     background: "var(--card-bg)",
@@ -5721,11 +5734,11 @@ const SharedPostView: React.FC<{ share: SharedPostPayload }> = ({ share }) => {
                       textAlign: "left",
                     }}
                   >
-                    <th style={{ padding: "0 12px" }}>RANK</th>
-                    <th style={{ padding: "0 12px" }}>PLAYER</th>
-                    <th style={{ padding: "0 12px" }}>RATING</th>
-                    <th style={{ padding: "0 12px" }}>GAMES</th>
-                    <th style={{ padding: "0 12px" }}>W-L</th>
+                    <th style={{ padding: "0 12px" }}>Rank</th>
+                    <th style={{ padding: "0 12px" }}>Player</th>
+                    <th style={{ padding: "0 12px" }}>Rating</th>
+                    <th style={{ padding: "0 12px" }}>Games</th>
+                    <th style={{ padding: "0 12px" }}>Win–loss</th>
                   </tr>
                 </thead>
                 <tbody>

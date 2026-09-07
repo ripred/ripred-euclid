@@ -67,6 +67,21 @@ function completeButtonMarkup(markup: string, className: string): string {
 }
 
 describe("home dashboard structure", () => {
+  it("offers difficulty settings beside solo play and locks them during requests", () => {
+    const render = (busyAction: Exclude<HomeScreenProps["busyAction"], undefined>) =>
+      renderToStaticMarkup(<HomeScreen {...homeProps({ busyAction })} />);
+    const ready = render(null);
+    expect(ready).toContain("Change difficulty");
+    expect(ready.indexOf("Change difficulty")).toBeLessThan(
+      ready.indexOf("Play a Redditor"),
+    );
+    const pending = render("solo");
+    const index = pending.indexOf("Change difficulty");
+    expect(
+      pending.slice(pending.lastIndexOf("<button", index), index),
+    ).toContain("disabled");
+  });
+
   it("keeps the home and status headers text-only", () => {
     const screens = [
       <HomeScreen {...homeProps()} />,

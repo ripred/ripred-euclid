@@ -137,7 +137,6 @@
   font-weight: 750;
   letter-spacing: 0.1em;
   line-height: 1.3;
-  text-transform: uppercase;
 }
 
 .euclid-home__header h1 {
@@ -270,6 +269,12 @@
   align-items: start;
   grid-template-columns: minmax(0, 1.9fr) minmax(15.5rem, 0.78fr);
   gap: clamp(1rem, 2vw, 1.5rem);
+}
+
+.euclid-home__solo-choice {
+  display: grid;
+  min-width: 0;
+  gap: 0.5rem;
 }
 
 .euclid-home__play-column {
@@ -568,7 +573,6 @@
   font-size: 0.72rem;
   font-weight: 750;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .euclid-home__record dl {
