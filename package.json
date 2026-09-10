@@ -50,7 +50,7 @@
     "typescript": "5.8.3",
     "typescript-eslint": "8.29.0",
     "vite": "6.4.3",
-    "vitest": "3.2.7"
+    "vitest": "5.0.0"
   },
   "allowScripts": {
     "@tailwindcss/oxide@4.1.6": true,
