@@ -41,7 +41,7 @@
     "@types/react-dom": "19.1.5",
     "@vitejs/plugin-react": "4.4.1",
     "concurrently": "9.1.2",
-    "devvit": "1.0.0",
+    "devvit": "0.14.2",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "5.2.0",
     "eslint-plugin-react-refresh": "0.4.20",
@@ -65,7 +65,8 @@
   "overrides": {
     "protobufjs": "7.6.5",
     "@devvit/cli": {
-      "inquirer": "9.3.8"
+      "inquirer": "9.3.8",
+      "js-yaml@4.3.1": "4.3.2"
     }
   }
 }
