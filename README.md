@@ -130,11 +130,13 @@ Requirements:
 Install dependencies and run the local quality gate:
 
 ```bash
-npm install
+npm ci
 npm run type-check
 npm run lint
-npx vitest run
+npm test
+npm run test:dependencies
 npm run build
+npm run check:devvit
 git diff --check
 ```
 
@@ -146,11 +148,13 @@ npm run dev:vite  # browser-only Vite surface on port 7474
 npm run build     # production client and server bundles in dist/
 ```
 
-Tests are colocated as `*.spec.{ts,tsx}` files. The suite covers scoring and AI priorities, canonical replay validation, forged state, stale revisions, command replay/conflicts, concurrent Redis mutations, settlement idempotency, spectator behavior, onboarding, victory effects, responsive layout, home record/resume/matchmaking presentation, H2H presence stabilization, participant-control eligibility and markup, rematch convergence and detachment, terminal-Close/rematch cancellation, immutable terminal-round archives, canonical score-feedback normalization, history-reset handling, footprint geometry, and legacy replay compatibility.
+Tests are colocated as `*.spec.{ts,tsx}` files. `vitest.config.ts` restricts discovery to source files so type-check output in `dist/types` is never run as a second test suite. GitHub CI runs the clean install/build, type check, lint, application tests, dependency regressions, and local Devvit packaging check. The suite covers scoring and AI priorities, canonical replay validation, forged state, stale revisions, command replay/conflicts, concurrent Redis mutations, settlement idempotency, spectator behavior, onboarding, victory effects, responsive layout, home record/resume/matchmaking presentation, H2H presence stabilization, participant-control eligibility and markup, rematch convergence and detachment, terminal-Close/rematch cancellation, immutable terminal-round archives, canonical score-feedback normalization, history-reset handling, footprint geometry, and legacy replay compatibility.
 
 `npm run check` is intentionally mutating: it applies ESLint fixes and Prettier formatting. Use the explicit non-mutating gate above when reviewing a worktree.
 
-At the current lockfile, the September 6, 2026 `npm audit --omit=dev` check reports no production dependency vulnerabilities. The full audit reports six affected development packages—four high and two low—in the Devvit CLI's `image-size` and `tmp` dependency chains; npm currently offers no fix for those paths. Do not run `npm audit fix --force` or add unsupported overrides. Reassess the Devvit toolchain when compatible releases become available. `@devvit/public-api` is pinned as a development-only packaging compatibility dependency because the 0.14.2 CLI resolves its generated template from the project root; Euclid remains a Devvit Web app and application source must not import that legacy API. `package.json` also pins the reviewed install-script approvals needed by the native build tools—run `npm install-scripts ls` after dependency changes.
+Vitest is pinned to `5.0.0`. Devvit stays at `0.14.2`: the deprecated `devvit@1.0.0` package has no CLI executable and breaks playtest/upload. A scoped `@devvit/cli` override selects `inquirer@9.3.8`, which replaces the legacy editor and removes `tmp` from the dependency tree. `npm run test:dependencies` checks temporary-file containment, non-string affixes, the editor round trip, input/list/confirm prompts, and Vitest mock redirects against Vite file-serving rules. `npm run check:devvit` checks command loading, validates the built entrypoints, and runs the same local bundler used by upload/playtest without uploading or installing. Run it after the build.
+
+The September 11, 2026 full audit still reports four high-severity affected development packages in the Devvit CLI's `image-size` and `js-yaml` chains; the production-only audit reports zero. These are separate from the resolved `tmp` and Vitest advisories. Do not run `npm audit fix --force`: its proposed `devvit@1.0.0` replacement removes the CLI. Reassess these remaining paths when compatible fixes are available. `@devvit/public-api` is pinned as a development-only packaging compatibility dependency because the 0.14.2 CLI resolves its generated template from the project root; Euclid remains a Devvit Web app and application source must not import that legacy API. `package.json` also pins the reviewed install-script approvals needed by the native build tools—run `npm install-scripts ls` after dependency changes.
 
 ## Devvit operation
 
