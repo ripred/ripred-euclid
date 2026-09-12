@@ -9,6 +9,7 @@
     "build:client": "cd src/client && vite build",
     "build:server": "cd src/server && vite build",
     "check": "npm run type-check && npm run lint:fix && npm run prettier",
+    "check:devvit": "node tools/check-devvit.mjs",
     "deploy": "npm run build && devvit upload",
     "dev": "concurrently -k -p \"[{name}]\" -n \"CLIENT,SERVER,DEVVIT\" -c \"blue,green,magenta\" \"npm run dev:client\" \"npm run dev:server\" \"npm run dev:devvit\"",
     "dev:client": "cd src/client && vite build --watch",
@@ -21,6 +22,8 @@
     "lint:fix": "eslint --fix ./src",
     "login": "devvit login",
     "prettier": "prettier-package-json --write ./package.json && prettier --write .",
+    "test": "vitest run",
+    "test:dependencies": "node --test tools/dependency-security.mjs",
     "type-check": "tsc --build"
   },
   "dependencies": {
@@ -60,6 +63,9 @@
     "protobufjs@7.6.5": true
   },
   "overrides": {
-    "protobufjs": "7.6.5"
+    "protobufjs": "7.6.5",
+    "@devvit/cli": {
+      "inquirer": "9.3.8"
+    }
   }
 }
