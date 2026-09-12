@@ -212,3 +212,52 @@ for (const [label, redirect, allowed] of [
     assert.equal(result, allowed ? "export const allowed = true;" : undefined);
   });
 }
+
+const { readYamlToJson, dumpJsonToYaml } = await import(
+  pathToFileURL(
+    join(
+      dirname(require.resolve("@devvit/cli/package.json")),
+      "dist/util/files.js",
+    ),
+  )
+);
+
+function loadDevvitYaml(t, source) {
+  const { base } = fixture(t);
+  const filename = join(base, "devvit.yaml");
+  writeFileSync(filename, source);
+  return readYamlToJson(filename);
+}
+
+for (const [label, sequenceLength, targets] of [
+  ["one oversized sequence of empty mappings", 101, 1],
+  ["empty mappings repeated across allowed-size sequences", 100, 101],
+]) {
+  test(`Devvit YAML loader rejects ${label}`, async (t) => {
+    // Bounded fixtures reproduce both limits without a CPU timing assertion.
+    const source = `empty: &empty [${Array(sequenceLength).fill("{}").join(",")}]\ntargets:\n${"  - <<: *empty\n".repeat(targets)}`;
+    await assert.rejects(loadDevvitYaml(t, source), (error) => {
+      assert.equal(error.name, "YAMLException");
+      assert.match(error.reason, /merge/i);
+      return true;
+    });
+  });
+}
+
+test("Devvit YAML loader preserves aliases, merge precedence, and Unicode", async (t) => {
+  const source =
+    "defaults: &defaults {enabled: true, retries: 3}\napp:\n  <<: *defaults\n  retries: 2\n  name: 'Euclid π'\n  empty: {}\n";
+  const expected = {
+    defaults: { enabled: true, retries: 3 },
+    app: { enabled: true, retries: 2, name: "Euclid π", empty: {} },
+  };
+  assert.deepEqual(await loadDevvitYaml(t, source), expected);
+  assert.deepEqual(await loadDevvitYaml(t, dumpJsonToYaml(expected)), expected);
+});
+
+test("Devvit YAML loader retains empty-document and invalid-syntax behavior", async (t) => {
+  assert.equal(await loadDevvitYaml(t, ""), null);
+  await assert.rejects(loadDevvitYaml(t, "app: [unterminated"), {
+    name: "YAMLException",
+  });
+});
