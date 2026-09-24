@@ -15,24 +15,10 @@ import {
 } from "../../shared/edition-game";
 import type { PlayMode } from "../../shared/edition-contract";
 import { useEdition } from "./use-edition";
-import type { LatticeScene, SceneModel, ViewName } from "./lattice-scene";
+import type { SceneModel } from "./lattice-scene";
+import { CubeMark } from "./CubeMark";
+import { LatticeBoard } from "./LatticeBoard";
 import "./style.css";
-
-function CubeMark({ small = false }: { small?: boolean }) {
-  return (
-    <svg
-      width={small ? 18 : 28}
-      height={small ? 18 : 28}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      aria-hidden="true"
-    >
-      <path d="m12 2 9 5v10l-9 5-9-5V7zM3 7l9 5 9-5M12 12v10" />
-    </svg>
-  );
-}
 
 function Modal({
   title,
@@ -71,158 +57,6 @@ function Modal({
       </div>
       {children}
     </dialog>
-  );
-}
-
-function Board({
-  model,
-  onSelect,
-}: {
-  model: SceneModel;
-  onSelect: (index: number) => void;
-}) {
-  const host = useRef<HTMLDivElement>(null);
-  const scene = useRef<LatticeScene | null>(null);
-  const selection = useRef(onSelect);
-  const initial = useRef(model);
-  const [status, setStatus] = useState<string | null>(null);
-  const [view, setView] = useState<ViewName>("isometric");
-  const requestedView = useRef<ViewName>("isometric");
-  selection.current = onSelect;
-  useEffect(() => {
-    if (!host.current) return;
-    let disposed = false;
-    // Inspector and controls remain usable while the independent 3D bundle loads.
-    void import("./lattice-scene")
-      .then(({ LatticeScene: Scene }) => {
-        if (disposed || !host.current) return;
-        scene.current = new Scene(
-          host.current,
-          initial.current,
-          (index) => selection.current(index),
-          setStatus,
-        );
-        // A view chosen during the lazy download still applies when rendering becomes ready.
-        scene.current.setView(requestedView.current);
-      })
-      .catch(() => {
-        if (!disposed)
-          setStatus(
-            "3D rendering is unavailable in this browser. Every point is still playable in the layer inspector.",
-          );
-      });
-    return () => {
-      disposed = true;
-      scene.current?.dispose();
-      scene.current = null;
-    };
-  }, []);
-  initial.current = model;
-  useEffect(() => {
-    scene.current?.update(model);
-  }, [model]);
-  const changeView = (name: ViewName) => {
-    requestedView.current = name;
-    setView(name);
-    scene.current?.setView(name);
-  };
-  const handleKeyboard = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.repeat || event.target !== event.currentTarget) return;
-    const rotations: Record<string, [number, number]> = {
-      ArrowLeft: [-0.2, 0],
-      ArrowRight: [0.2, 0],
-      ArrowUp: [0, -0.2],
-      ArrowDown: [0, 0.2],
-    };
-    const delta = rotations[event.key];
-    if (delta) {
-      event.preventDefault();
-      scene.current?.rotate(...delta);
-    } else if (event.key === "+" || event.key === "=") scene.current?.zoom(0.9);
-    else if (event.key === "-") scene.current?.zoom(1.1);
-    else if (event.key.toLowerCase() === "r") changeView("isometric");
-  };
-  return (
-    <>
-      <div
-        className="lattice-stage"
-        tabIndex={0}
-        onKeyDown={handleKeyboard}
-        aria-label="3D view controls. Arrow keys rotate, plus and minus zoom, R resets."
-      >
-        <div className="scene-host" ref={host} />
-        <div className="axis-key" aria-hidden="true">
-          <span>
-            <i className="axis-x" />X
-          </span>
-          <span>
-            <i className="axis-y" />Y
-          </span>
-          <span>
-            <i className="axis-z" />Z ↑
-          </span>
-        </div>
-        <div className="scene-note">
-          {model.isolate
-            ? `Only layer Z ${model.layer + 1}`
-            : `Highlighted plane · Z ${model.layer + 1}`}
-        </div>
-        <div className="zoom-controls">
-          <button onClick={() => scene.current?.zoom(0.9)} aria-label="Zoom in">
-            +
-          </button>
-          <button
-            onClick={() => scene.current?.zoom(1.1)}
-            aria-label="Zoom out"
-          >
-            −
-          </button>
-        </div>
-        {status && (
-          <p className="render-status" role="status">
-            {status}
-          </p>
-        )}
-      </div>
-      <div className="view-tools">
-        <p>
-          Drag to rotate <span>·</span> Scroll or pinch to zoom
-        </p>
-        <div className="view-buttons" aria-label="Camera views">
-          <button
-            className={view === "isometric" ? "active" : ""}
-            onClick={() => changeView("isometric")}
-          >
-            <CubeMark small />
-            Isometric
-          </button>
-          <button
-            className={view === "front" ? "active" : ""}
-            onClick={() => changeView("front")}
-          >
-            Front
-          </button>
-          <button
-            className={view === "top" ? "active" : ""}
-            onClick={() => changeView("top")}
-          >
-            Top
-          </button>
-          <button
-            className={view === "side" ? "active" : ""}
-            onClick={() => changeView("side")}
-          >
-            Side
-          </button>
-          <button
-            onClick={() => changeView("isometric")}
-            aria-label="Reset view"
-          >
-            ↺<span className="reset-label"> Reset view</span>
-          </button>
-        </div>
-      </div>
-    </>
   );
 }
 
@@ -458,7 +292,7 @@ export function Lattice() {
     <div className="lattice-app">
       <header className="site-header">
         <a href="#main" className="wordmark">
-          LATTICE<span>Euclid</span>
+          Lattice<span>Euclid</span>
         </a>
         <nav aria-label="Game">
           <button onClick={() => setDialog("rules")}>Rules</button>
@@ -494,7 +328,7 @@ export function Lattice() {
             ))}
             <span className="score-rule">Most points wins.</span>
           </div>
-          <Board model={model} onSelect={selectPoint} />
+          <LatticeBoard model={model} onSelect={selectPoint} />
           <div className="view-options">
             <label>
               <input

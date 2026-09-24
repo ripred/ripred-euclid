@@ -41,7 +41,7 @@ Local testing uses separate browser profiles, or one normal window and one priva
 
 ## Local development
 
-The package remains at the preserved release baseline `0.1.98`, with Devvit `0.14.2`, React, Vite, TypeScript, and pinned Three.js `0.179.1`. New edition source is under `src/client/edition/`; `src/shared/edition-game.ts` owns the pure cube rules. Both HTML entrypoints launch Lattice on this branch.
+The package remains at the preserved release baseline `0.1.98`, with Devvit `0.14.2`, React, Vite, TypeScript, and pinned Three.js `0.179.1`. New edition source is under `src/client/edition/`; `src/shared/edition-game.ts` owns the pure cube rules. `index.html` launches the expanded game. `preview.html` is a bounded, non-scrolling post preview of the same lattice, with no session provider, spectator polling, point input or connected camera gestures. **Open Lattice** requests expansion from a click or keyboard activation; a plain local page needs a host bridge to test that transition. These entry changes have not been installed on Reddit.
 
 ```bash
 npm install

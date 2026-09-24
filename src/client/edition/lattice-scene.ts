@@ -127,6 +127,7 @@ export class LatticeScene {
     model: SceneModel,
     private onSelect: (index: number) => void,
     private onStatus: (message: string | null) => void,
+    interactive = true,
   ) {
     this.model = model;
     this.renderer = new THREE.WebGLRenderer({
@@ -140,7 +141,9 @@ export class LatticeScene {
     this.canvas = this.renderer.domElement;
     this.canvas.setAttribute(
       "aria-label",
-      "Rotatable three-dimensional lattice. Use the layer inspector to select points with the keyboard.",
+      interactive
+        ? "Rotatable three-dimensional lattice. Use the layer inspector to select points with the keyboard."
+        : "Three-dimensional lattice preview.",
     );
     this.canvas.setAttribute("role", "img");
     this.host.append(this.canvas);
@@ -148,7 +151,11 @@ export class LatticeScene {
     this.selectionLabel.className = "spatial-selection";
     this.selectionLabel.setAttribute("aria-hidden", "true");
     this.host.append(this.selectionLabel);
-    this.controls = new OrbitControls(this.camera, this.canvas);
+    // Unconnected controls retain camera math without installing host gestures.
+    this.controls = new OrbitControls(
+      this.camera,
+      interactive ? this.canvas : null,
+    );
     this.controls.enableDamping = false;
     this.controls.enablePan = false;
     this.controls.minDistance = 6;
@@ -184,10 +191,12 @@ export class LatticeScene {
     this.resizeObserver = new ResizeObserver(this.resize);
     this.resizeObserver.observe(host);
     this.resize();
-    this.canvas.addEventListener("pointerdown", this.onPointerDown);
-    this.canvas.addEventListener("pointermove", this.onPointerMove);
-    this.canvas.addEventListener("pointerup", this.onPointerUp);
-    this.canvas.addEventListener("pointercancel", this.onPointerCancel);
+    if (interactive) {
+      this.canvas.addEventListener("pointerdown", this.onPointerDown);
+      this.canvas.addEventListener("pointermove", this.onPointerMove);
+      this.canvas.addEventListener("pointerup", this.onPointerUp);
+      this.canvas.addEventListener("pointercancel", this.onPointerCancel);
+    }
     this.canvas.addEventListener("webglcontextlost", this.onContextLost);
     this.canvas.addEventListener(
       "webglcontextrestored",
@@ -599,7 +608,8 @@ export class LatticeScene {
     cancelAnimationFrame(this.frame);
     this.resizeObserver.disconnect();
     this.controls.removeEventListener("change", this.render);
-    this.controls.dispose();
+    // Three's disconnect assumes a DOM element, even for unconnected controls.
+    if (this.controls.domElement) this.controls.dispose();
     this.canvas.removeEventListener("pointerdown", this.onPointerDown);
     this.canvas.removeEventListener("pointermove", this.onPointerMove);
     this.canvas.removeEventListener("pointerup", this.onPointerUp);

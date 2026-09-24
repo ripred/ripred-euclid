@@ -1,0 +1,20 @@
+.lattice-inline {
+  --inline-background: var(--paper);
+  --inline-text: var(--ink);
+  --inline-muted: var(--quiet);
+  --inline-accent: var(--teal);
+  --inline-display: "Space Grotesk", sans-serif;
+  --inline-weight: 700;
+}
+
+.lattice-inline .lattice-stage {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.lattice-inline .scene-note,
+.lattice-inline .axis-key,
+.lattice-inline .spatial-label {
+  font-size: 10px;
+}
