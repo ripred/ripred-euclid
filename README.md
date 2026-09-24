@@ -11,7 +11,7 @@ npm ci --ignore-scripts
 npm run dev:vite -- --port 7481
 ```
 
-Open <http://127.0.0.1:7481/>. Choose **Against Euclid** for a computer opponent or **Pass & play** for two people at the same device. The default target is 150; a short game ends at 75. Both `index.html` and `preview.html` launch this edition.
+Open <http://127.0.0.1:7481/>. Choose **Against Euclid** for a computer opponent or **Pass & play** for two people at the same device. The default target is 150; a short game ends at 75. `index.html` is the full game. `preview.html` is a bounded, non-scrolling post preview that reuses the same board artwork without starting or loading a session. **Open Prism** requests the expanded game through Reddit from a click or keyboard activation; a plain local page needs a host bridge to test that transition.
 
 The local server owns the board in memory, identified by an HttpOnly browser cookie. Reload resumes play while that server remains running. A server restart or a day of inactivity ends the local session. The server binds to loopback only; it is not a hosted multiplayer service. When deployed through Devvit, the edition route instead uses authenticated Reddit identity and a separate Redis namespace.
 
@@ -59,7 +59,7 @@ Local testing uses separate browser profiles, or one normal window and one priva
 
 The browser never supplies an accepted score, winning result, computer move, or final board. Rules are shared for clarity; server validation remains the trust boundary. Duplicate commands are idempotent, stale revisions are rejected, and a winning placement is resolved before any computer reply.
 
-The original application source remains available on this branch for comparison, but the two client entrypoints render PRISM. Runtime geometry and optical effects are rendered directly, not represented by a background screenshot.
+The original application source remains available on this branch for comparison. The inline preview mounts no gameplay or spectator provider and offers only expansion; point controls, dialogs and spectator features run in the expanded game. These entry changes have not been installed on Reddit. Runtime geometry and optical effects are rendered directly, not represented by a background screenshot.
 
 ## Verification
 

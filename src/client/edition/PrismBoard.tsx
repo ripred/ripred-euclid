@@ -7,6 +7,7 @@ interface BoardProps {
   game: PrismState;
   active: boolean;
   readOnly?: boolean;
+  decorative?: boolean;
   flat: boolean;
   onMove(index: number): void;
 }
@@ -18,15 +19,16 @@ function fallbackPoints(): ProjectedPoint[] {
   }));
 }
 
-/** Every rendered point has a native, projected button: no inaccessible canvas-only input. */
+/** Interactive boards expose projected native buttons; decorative previews omit input targets. */
 export function PrismBoard({
   game,
   active: mayPlay,
   readOnly = false,
+  decorative = false,
   flat,
   onMove,
 }: BoardProps) {
-  const active = mayPlay && !readOnly;
+  const active = mayPlay && !readOnly && !decorative;
   const boardRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<PrismRenderer | null>(null);
@@ -164,62 +166,64 @@ export function PrismBoard({
           })}
         </svg>
       )}
-      <div
-        className="board-controls"
-        role="group"
-        aria-label={
-          readOnly
-            ? "Eight by eight point board. Arrow keys inspect points. Read-only."
-            : "Eight by eight point board. Arrow keys move focus; Enter or Space claims a point."
-        }
-      >
-        {game.board.map((owner, index) => (
-          <button
-            key={index}
-            ref={(element) => {
-              buttonsRef.current[index] = element;
-            }}
-            className={`point-target owner-${owner}`}
-            style={{
-              left: `${points[index]!.x}%`,
-              top: `${points[index]!.y}%`,
-            }}
-            type="button"
-            tabIndex={(active || readOnly) && index === focused ? 0 : -1}
-            aria-label={`${coordinate(index)}, ${owner === 0 ? "empty" : owner === 1 ? "coral diamond" : "mint ring"}`}
-            aria-disabled={!active || owner !== 0}
-            onFocus={() => {
-              setFocused(index);
-              setHovered(index);
-            }}
-            onBlur={() => setHovered(-1)}
-            onMouseEnter={(event) =>
-              setHovered(pointerPoint(event.clientX, event.clientY))
-            }
-            onMouseMove={(event) =>
-              setHovered(pointerPoint(event.clientX, event.clientY))
-            }
-            onMouseLeave={() => setHovered(-1)}
-            onKeyDown={(event) => keyDown(event, index)}
-            onClick={(event) => {
-              // Keyboard and assistive activation target an explicit point;
-              // pointer input follows visible proximity where hit areas overlap.
-              const selected =
-                event.detail === 0
-                  ? index
-                  : pointerPoint(event.clientX, event.clientY);
-              if (active && selected >= 0 && game.board[selected] === 0) {
-                setFocused(selected);
-                buttonsRef.current[selected]?.focus({ preventScroll: true });
-                onMove(selected);
+      {!decorative && (
+        <div
+          className="board-controls"
+          role="group"
+          aria-label={
+            readOnly
+              ? "Eight by eight point board. Arrow keys inspect points. Read-only."
+              : "Eight by eight point board. Arrow keys move focus; Enter or Space claims a point."
+          }
+        >
+          {game.board.map((owner, index) => (
+            <button
+              key={index}
+              ref={(element) => {
+                buttonsRef.current[index] = element;
+              }}
+              className={`point-target owner-${owner}`}
+              style={{
+                left: `${points[index]!.x}%`,
+                top: `${points[index]!.y}%`,
+              }}
+              type="button"
+              tabIndex={(active || readOnly) && index === focused ? 0 : -1}
+              aria-label={`${coordinate(index)}, ${owner === 0 ? "empty" : owner === 1 ? "coral diamond" : "mint ring"}`}
+              aria-disabled={!active || owner !== 0}
+              onFocus={() => {
+                setFocused(index);
+                setHovered(index);
+              }}
+              onBlur={() => setHovered(-1)}
+              onMouseEnter={(event) =>
+                setHovered(pointerPoint(event.clientX, event.clientY))
               }
-            }}
-          >
-            <span>{coordinate(index)}</span>
-          </button>
-        ))}
-      </div>
-      {fallback && (
+              onMouseMove={(event) =>
+                setHovered(pointerPoint(event.clientX, event.clientY))
+              }
+              onMouseLeave={() => setHovered(-1)}
+              onKeyDown={(event) => keyDown(event, index)}
+              onClick={(event) => {
+                // Keyboard and assistive activation target an explicit point;
+                // pointer input follows visible proximity where hit areas overlap.
+                const selected =
+                  event.detail === 0
+                    ? index
+                    : pointerPoint(event.clientX, event.clientY);
+                if (active && selected >= 0 && game.board[selected] === 0) {
+                  setFocused(selected);
+                  buttonsRef.current[selected]?.focus({ preventScroll: true });
+                  onMove(selected);
+                }
+              }}
+            >
+              <span>{coordinate(index)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {fallback && !decorative && (
         <p className="fallback-note">Flat rendering · WebGL unavailable</p>
       )}
     </div>

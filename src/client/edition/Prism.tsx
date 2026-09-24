@@ -1,29 +1,11 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import {
-  coordinate,
-  createPrism,
-  PRISM_SQUARES,
-  type PrismState,
-} from "../../shared/edition-game";
+import { coordinate, type PrismState } from "../../shared/edition-game";
 import type { PlayMode } from "../../shared/edition-contract";
 import { useEdition } from "./use-edition";
 import { PrismBoard } from "./PrismBoard";
+import { makeExhibit } from "./prism-exhibit";
 import "./style.css";
 
-function makeExhibit(): PrismState {
-  const game = createPrism();
-  for (const index of [9, 16, 18, 25, 42, 58]) game.board[index] = 1;
-  for (const index of [37, 44, 46, 53, 5, 23]) game.board[index] = 2;
-  game.completed = PRISM_SQUARES.filter((square) =>
-    square.corners.every((index) => game.board[index] === 1),
-  ).map((square) => ({ ...square, owner: 1 }));
-  game.completed.push(
-    ...PRISM_SQUARES.filter((square) =>
-      square.corners.every((index) => game.board[index] === 2),
-    ).map((square) => ({ ...square, owner: 2 as const })),
-  );
-  return game;
-}
 const exhibit = makeExhibit();
 
 function formatSquareCount(count: number): string {
@@ -265,7 +247,7 @@ export function Prism() {
     <main className="prism-app">
       <header className="masthead">
         <div className="wordmark">
-          <h1>PRISM</h1>
+          <h1>Prism</h1>
           <p>Euclid</p>
         </div>
         <nav aria-label="Game controls">
@@ -281,7 +263,7 @@ export function Prism() {
         </nav>
       </header>
       <div className="game-layout">
-        <section className="board-column" aria-label="PRISM game">
+        <section className="board-column" aria-label="Prism game">
           <PrismBoard
             game={game ?? exhibit}
             active={canPlay}

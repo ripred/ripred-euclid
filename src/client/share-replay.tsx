@@ -397,7 +397,6 @@ export function ReplayBoardCard({
               fontSize: compact ? 12 : 13,
               fontWeight: 800,
               letterSpacing: "0.12em",
-              textTransform: "uppercase",
             }}
           >
             Real Game Replay
