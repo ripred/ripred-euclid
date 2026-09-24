@@ -22,7 +22,7 @@ describe("solo rules", () => {
       winScore: 150,
       humanPlayer: 0,
       firstPlayer: 0,
-      difficulty: "brutal",
+      difficulty: "casual",
     });
     expect(RANKED_SOLO_RULES.rulesVersion).toBe(SOLO_RULES_VERSION);
     expect(Object.isFrozen(RANKED_SOLO_RULES)).toBe(true);

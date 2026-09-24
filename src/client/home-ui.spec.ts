@@ -214,7 +214,7 @@ describe("Play Euclid presentation", () => {
 
   it("describes the rating consequence of each path", () => {
     expect(getPlayEuclidSubtitle("ranked", "beginner")).toBe(
-      "Ranked · Brutal · fixed rules · rating on the line",
+      "Ranked · Casual · fixed rules · rating on the line",
     );
     expect(getPlayEuclidSubtitle("practice", "casual")).toBe(
       "Practice · Casual · no rating changes",

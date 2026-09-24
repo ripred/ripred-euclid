@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   RANKED_SOLO_RULES,
+  PLAY_STYLES,
   SOLO_RULES_VERSION,
   validatePracticeRules,
 } from "../shared/game/rules";
@@ -82,7 +83,23 @@ function makeHumanMove(
 }
 
 describe("solo request and rules validation", () => {
+  it.each(["beginner", "brutal"])(
+    "rejects %s as a stored ranked difficulty",
+    (difficulty) => {
+      const record = ranked();
+      expect(() =>
+        normalizeSoloSessionRecord({
+          ...record,
+          rules: { ...record.rules, difficulty },
+        }),
+      ).toThrow("Ranked solo rules must match the fixed preset");
+    },
+  );
+
   it("accepts only the fixed Ranked start shape", () => {
+    const record = ranked();
+    expect(record.rules.difficulty).toBe("casual");
+    expect(record.board.m_players[1]?.m_playStyle).toBe(PLAY_STYLES.CASUAL);
     expect(
       validateSoloStartRequest({ mode: "ranked", commandId: "start-1" }),
     ).toEqual({
