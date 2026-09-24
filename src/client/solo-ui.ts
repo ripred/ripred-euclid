@@ -69,6 +69,12 @@ const RANKED_ASSISTANCE_POLICY: Readonly<SoloAssistancePolicy> = Object.freeze({
   allowSecretAutoMove: false,
 });
 
+const RANKED_TEST_ASSISTANCE_POLICY: Readonly<SoloAssistancePolicy> =
+  Object.freeze({
+    ...RANKED_ASSISTANCE_POLICY,
+    allowSecretAutoMove: true,
+  });
+
 const PRACTICE_ASSISTANCE_POLICY: Readonly<SoloAssistancePolicy> =
   Object.freeze({
     allowAssistHighlights: true,
@@ -170,10 +176,13 @@ export function shouldAdoptSoloSnapshot(
 
 export function getSoloAssistancePolicy(
   mode: SoloMode,
+  username = "",
 ): Readonly<SoloAssistancePolicy> {
-  return mode === "ranked"
-    ? RANKED_ASSISTANCE_POLICY
-    : PRACTICE_ASSISTANCE_POLICY;
+  if (mode !== "ranked") return PRACTICE_ASSISTANCE_POLICY;
+  // Keep the testing shortcut account-specific without enabling visible helpers.
+  return username.toLowerCase() === "ripred3"
+    ? RANKED_TEST_ASSISTANCE_POLICY
+    : RANKED_ASSISTANCE_POLICY;
 }
 
 export function isSoloHumanTurn(snapshot: SoloSessionSnapshot): boolean {

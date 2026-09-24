@@ -2325,7 +2325,8 @@ export const App = ({
       const snapshot = soloSnapshotRef.current;
       if (
         !snapshot ||
-        !getSoloAssistancePolicy(snapshot.mode).allowSecretAutoMove ||
+        !getSoloAssistancePolicy(snapshot.mode, initState?.username)
+          .allowSecretAutoMove ||
         !isSoloHumanTurn(snapshot) ||
         soloMovePendingRef.current ||
         soloAbandonPendingRef.current
@@ -2370,6 +2371,7 @@ export const App = ({
     board,
     finalReason,
     finalSide,
+    initState?.username,
     isPlayer1,
     mode,
     spectating,
@@ -3605,7 +3607,10 @@ export const App = ({
   } else if (mode === "ai" && isBoardValid(board) && soloSnapshot) {
     /* ===== Canonical Ranked / Practice solo ===== */
     const presentation = getSoloResultPresentation(soloSnapshot);
-    const assistance = getSoloAssistancePolicy(soloSnapshot.mode);
+    const assistance = getSoloAssistancePolicy(
+      soloSnapshot.mode,
+      initState?.username,
+    );
     const soloExitPending = soloPending !== null || shareBusy === "ai";
     const soloExitPendingLabel =
       shareBusy === "ai"

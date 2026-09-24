@@ -242,7 +242,7 @@ describe("solo player orientation and presentation", () => {
 });
 
 describe("solo assistance and exit policy", () => {
-  it("disables every built-in assistance path in Ranked", () => {
+  it("disables every built-in assistance path in Ranked by default", () => {
     expect(getSoloAssistancePolicy("ranked")).toEqual({
       allowAssistHighlights: false,
       allowAutoMove: false,
@@ -253,6 +253,26 @@ describe("solo assistance and exit policy", () => {
       allowAutoMove: true,
       allowSecretAutoMove: true,
     });
+  });
+
+  it("allows only the secret Ranked shortcut for the testing account", () => {
+    for (const username of ["ripred3", "RipRed3"]) {
+      expect(getSoloAssistancePolicy("ranked", username)).toEqual({
+        allowAssistHighlights: false,
+        allowAutoMove: false,
+        allowSecretAutoMove: true,
+      });
+    }
+    for (const username of ["", "another-player", "ripred", "ripred30"]) {
+      expect(getSoloAssistancePolicy("ranked", username)).toEqual({
+        allowAssistHighlights: false,
+        allowAutoMove: false,
+        allowSecretAutoMove: false,
+      });
+    }
+    expect(getSoloAssistancePolicy("practice", "ripred3")).toEqual(
+      getSoloAssistancePolicy("practice"),
+    );
   });
 
   it("warns about a Ranked loss only after the first human move", () => {
