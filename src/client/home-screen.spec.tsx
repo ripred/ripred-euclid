@@ -83,6 +83,17 @@ describe("home dashboard structure", () => {
     ).toContain("disabled");
   });
 
+  it("offers difficulty only for Practice, since Ranked rules are fixed", () => {
+    const render = (soloMode: "practice" | "ranked") =>
+      renderToStaticMarkup(
+        <HomeScreen
+          {...homeProps({ soloMode, onSoloModeChange: () => undefined })}
+        />,
+      );
+    expect(render("practice")).toContain("Change difficulty");
+    expect(render("ranked")).not.toContain("Change difficulty");
+  });
+
   it("titles the home and status headers with a decorative-only mark", () => {
     const screens = [
       <HomeScreen {...homeProps()} />,

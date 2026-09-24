@@ -500,18 +500,21 @@ export function HomeScreen(props: HomeScreenProps) {
                   </span>
                   <Icon name="arrow" />
                 </button>
-                <button
-                  type="button"
-                  className="btn btn--ghost home-solo__settings"
-                  disabled={
-                    navigationLocked || loading.presence || loading.solo
-                  }
-                  aria-describedby={lockDescriptionId}
-                  onClick={onOptions}
-                >
-                  <Icon name="sliders" size={18} />
-                  <span>Change difficulty</span>
-                </button>
+                {/* Ranked rules are fixed; only Practice has a difficulty. */}
+                {soloMode !== "ranked" ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost home-solo__settings"
+                    disabled={
+                      navigationLocked || loading.presence || loading.solo
+                    }
+                    aria-describedby={lockDescriptionId}
+                    onClick={onOptions}
+                  >
+                    <Icon name="sliders" size={18} />
+                    <span>Change difficulty</span>
+                  </button>
+                ) : null}
               </div>
             </article>
 
