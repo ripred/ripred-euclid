@@ -37,7 +37,7 @@ describe("spectator lobby", () => {
     const markup = renderToStaticMarkup(
       <WatchLobby {...callbacks} games={[game]} loading={false} error={null} />,
     );
-    expect(markup).toContain("Euclid — Watch Live");
+    expect(markup).toContain("Watch live</h1>");
     expect(markup).toContain("1 live game");
     expect(markup).toContain("First_Player vs Second_Player");
     expect(markup).toContain("<dt>First_Player</dt><dd>35</dd>");
@@ -95,7 +95,7 @@ describe("spectator lobby", () => {
       expect(markup).toContain(">Watch demo</button>");
       expect(markup).toContain(">Play</button>");
       expect(markup).toContain(">Refresh</button>");
-      expect(markup).not.toContain("Real Game Replay");
+      expect(markup).not.toContain("Real game replay");
     }
   });
 
@@ -160,19 +160,19 @@ describe("spectator continuation", () => {
     expect(unavailable).toContain("no confirmed final board to replay");
     expect(unavailable).toContain(">Watch demo</button>");
     expect(unavailable).not.toContain(">Replay</button>");
-    expect(unavailable).not.toContain("Real Game Replay");
+    expect(unavailable).not.toContain("Real game replay");
   });
 
   it("reuses the replay board but never labels the teaching sequence as a real game", () => {
     const markup = renderToStaticMarkup(
       <WatchReplay board={null} theme="light" onAnother={noOp} onPlay={noOp} />,
     );
-    expect(markup).toContain("Euclid — Watch demo");
+    expect(markup).toContain("Watch demo</h1>");
     expect(markup).toContain("not a live match");
-    expect(markup).toContain("Teaching Demo");
+    expect(markup).toContain("Teaching demo");
     expect(markup).toContain("Demo starting position");
     expect(markup).toContain("Demo total");
-    expect(markup).not.toContain("Real Game Replay");
+    expect(markup).not.toContain("Real game replay");
     expect(markup).not.toContain("real finished game");
     expect(markup).not.toContain("Final");
     expect(markup).not.toContain("Live now");
@@ -188,10 +188,10 @@ describe("spectator continuation", () => {
         onPlay={noOp}
       />,
     );
-    expect(markup).toContain("Euclid — Match replay");
+    expect(markup).toContain("Match replay</h1>");
     expect(markup).toContain("Second_Player wins by forfeit");
-    expect(markup).toContain("Real Game Replay");
+    expect(markup).toContain("Real game replay");
     expect(markup).toContain("This does not affect the result.");
-    expect(markup).not.toContain("Teaching Demo");
+    expect(markup).not.toContain("Teaching demo");
   });
 });

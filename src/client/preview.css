@@ -12,257 +12,305 @@ html.euclid-inline,
 }
 
 .euclid-preview {
+  box-sizing: border-box;
   height: 100vh;
   height: 100dvh;
   min-height: 0;
   min-width: 0;
-  box-sizing: border-box;
   overflow: clip;
-  font-family: system-ui, sans-serif;
+  padding: 12px;
+  background: var(--stage), var(--bg);
+  color: var(--text);
 }
 
-.euclid-preview * {
+.euclid-preview *,
+.euclid-preview *::before,
+.euclid-preview *::after {
   box-sizing: border-box;
   min-width: 0;
 }
-.euclid-preview-card {
-  position: relative;
-  min-height: 0;
-  padding: 14px;
+
+/* Wide posts: the board runs full height; story and actions stack beside it. */
+.preview {
+  display: grid;
+  grid-template-areas:
+    "board side"
+    "board actions";
+  grid-template-columns: auto minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
-  gap: 10px;
+  gap: 12px 20px;
+  height: 100%;
+  max-width: 860px;
+  margin: 0 auto;
 }
-.euclid-preview-content {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 218px);
-}
-.euclid-preview-copy {
+
+.preview__board {
+  grid-area: board;
+  align-self: center;
+  justify-self: center;
+  height: 100%;
+  max-height: 100%;
+  max-width: min(58vw, 520px);
   min-height: 0;
-  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.preview__board .board--poster {
+  animation: poster-in 900ms var(--ease-out) both;
+}
+
+@keyframes poster-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+/* One panel holds the story beside the board: brand, lesson, progress. */
+.preview__side {
+  grid-area: side;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 12px;
-}
-.euclid-preview-title {
-  font-size: 34px;
-}
-.euclid-preview-demo-copy {
   min-height: 0;
-  padding: 10px 12px;
+  overflow: hidden;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, var(--surface-top), var(--surface));
+  box-shadow: var(--panel-shadow);
 }
-.euclid-preview-demo-title {
-  font-size: 15px;
-}
-.euclid-preview-board {
-  min-height: 0;
-  grid-template-rows: auto minmax(0, 1fr);
-}
-.euclid-preview-actions {
-  position: relative;
-  padding: 10px 12px;
-}
-.euclid-preview-action-buttons {
+
+.preview__brand {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
+  justify-items: start;
   gap: 8px;
-  flex: 0 1 auto;
-  max-width: 100%;
 }
-.euclid-preview-actions button {
-  min-height: 44px;
+
+.preview__brand .score-chips {
+  justify-content: flex-start;
+}
+
+.preview__panel {
+  align-self: center;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.preview__progress {
+  display: grid;
+  gap: 6px;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.preview__progress-bar {
+  height: 4px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+}
+
+.preview__progress-bar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--red), var(--blue));
+  transform-origin: left;
+  transition: transform 240ms var(--ease-out);
+}
+
+.preview-panel__kicker {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+.preview-panel__body {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+/* Narrated demo caption with lesson progress. */
+.preview-caption {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.preview-steps {
+  display: flex;
+  gap: 4px;
+}
+
+.preview-steps__pip {
+  flex: 1;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+  transition: background-color var(--dur);
+}
+
+.preview-steps__pip--done {
+  background: linear-gradient(90deg, var(--red), var(--red-line));
+}
+
+.preview-caption__copy {
+  display: grid;
+  gap: 6px;
+  animation: caption-in 420ms var(--ease-out) both;
+}
+
+@keyframes caption-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.preview-caption__title {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-stretch: var(--wide);
+  font-weight: 850;
   line-height: 1.2;
 }
-.euclid-preview-start {
-  padding: 11px 20px;
-  font-size: 15px;
+
+/* Standings view */
+.preview-standings {
+  display: grid;
+  align-content: start;
+  gap: 8px;
 }
-.euclid-preview-more,
-.euclid-preview-watch {
-  border: 1px solid;
-  border-radius: 999px;
-  padding: 8px 12px;
-  background: transparent;
-  font-size: 13px;
-  cursor: pointer;
+
+.preview-standings__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
-.euclid-preview-watch {
-  font-size: 15px;
-  font-weight: 800;
+
+.preview-standings__tabs button {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: var(--fs-xs);
 }
-.euclid-preview-rules {
+
+.preview-standings .standing--sm .standing__record {
   display: none;
 }
-.euclid-preview-standings {
-  align-content: start;
-}
-.euclid-preview-standings-panel {
-  padding: 12px 12px 10px;
-  gap: 10px;
-}
-.euclid-preview-standings-title {
-  font-size: 30px;
-}
-.euclid-preview-leader-row {
-  display: grid;
-}
-.euclid-preview-bucket {
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 8px;
-}
-.euclid-preview-leader-record {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.euclid-preview-rank-tabs {
+
+/* Actions stay put through every phase. */
+.preview-actions {
+  grid-area: actions;
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
 }
-.euclid-preview-rank-tabs button {
+
+.preview-actions .btn {
   min-height: 44px;
-  padding: 6px 10px;
-  border: 1px solid;
-  border-radius: 10px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
 }
-.euclid-preview-rank-tabs button[aria-pressed="true"] {
-  font-weight: 800;
+
+.preview-actions__game {
+  flex: 1 1 140px;
 }
-.euclid-preview-open-error {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
-  right: 0;
-  border-radius: 8px;
-  padding: 8px;
-  color: #fff;
-  background: #7f1d1d;
-  font-size: 13px;
+
+.preview-actions__error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--attention);
+  font-size: var(--fs-sm);
 }
-.euclid-preview button:focus-visible {
-  outline: 3px solid #f59e0b;
-  outline-offset: 2px;
+
+.preview-status {
+  display: grid;
+  gap: 10px;
+  width: min(100%, 520px);
+  margin: 0 auto;
 }
-.euclid-preview-status-card {
-  max-height: 100%;
-  overflow: clip;
-  overflow-wrap: anywhere;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+
+.preview-status__title {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: 850;
 }
+
 .euclid-preview-status-message {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
-  overflow: clip;
-}
-.euclid-preview-status-card button {
-  min-height: 44px;
+  margin: 0;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
 }
 
-@media (min-width: 640px) and (min-height: 600px) {
-  .euclid-preview-card {
-    grid-template-rows: minmax(0, 1fr) auto auto;
-  }
-  .euclid-preview-rules {
-    display: grid;
-  }
-}
-@media (max-width: 620px) {
-  .euclid-preview-action-copy {
-    display: none;
-  }
-  .euclid-preview-action-buttons {
-    width: 100%;
+/* Narrow posts: actions return to a full-width row under the board. */
+@media (max-width: 600px) {
+  .preview {
+    grid-template-areas:
+      "board side"
+      "actions actions";
   }
 }
-@media (max-width: 560px) {
-  .euclid-preview-content {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
+
+/* Narrow posts: a smaller board and a tighter story. */
+@media (max-width: 520px) {
+  .euclid-preview {
+    padding: 10px;
   }
-  .euclid-preview-copy {
-    grid-template-rows: auto auto;
-    gap: 6px;
+  .preview {
+    gap: 10px 12px;
   }
-  .euclid-preview-tagline {
-    display: none;
+  .preview__board {
+    max-width: 50vw;
   }
-  .euclid-preview-bucket-heading .euclid-preview-secondary {
-    display: none;
+  .preview__brand .wordmark__text {
+    font-size: var(--fs-xl);
   }
-  .euclid-preview-demo-copy {
-    padding: 6px 8px;
+  .preview__brand .brand-mark {
+    width: 30px !important;
+    height: 30px !important;
   }
-  .euclid-preview-title {
-    font-size: 28px;
+  .preview__side {
+    padding: 10px 12px;
   }
-  .euclid-preview-standings-title {
-    font-size: 25px;
+  .preview-caption__title {
+    font-size: var(--fs-md);
   }
-}
-@media (max-height: 440px) {
-  .euclid-preview-card {
-    padding: 8px;
-    gap: 6px;
+  .preview-actions__leaderboard {
+    width: 44px;
+    padding: 0;
   }
-  .euclid-preview-actions {
-    padding: 4px;
-  }
-  .euclid-preview-secondary,
-  .euclid-preview-bucket-heading,
-  .euclid-preview-tagline,
-  .euclid-preview-board > div {
-    display: none !important;
-  }
-  .euclid-preview-board {
-    grid-template-rows: minmax(0, 1fr);
-  }
-  /* Hidden headings must not leave an empty grid track above the actions. */
-  .euclid-preview-bucket {
-    grid-template-rows: minmax(0, 1fr);
-    gap: 0;
-  }
-  .euclid-preview-leaders > :nth-child(n + 2) {
-    display: none;
-  }
-  .euclid-preview-copy {
-    gap: 6px;
-  }
-}
-@media (min-height: 441px) and (max-height: 599px) {
-  .euclid-preview-leaders > :nth-child(n + 3) {
+  .preview-actions__text {
     display: none;
   }
 }
 
-/* Short or zoomed frames reserve room for the board and the expansion actions. */
-@media (max-height: 360px) {
-  .euclid-preview-content {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 140px);
-    grid-template-rows: minmax(0, 1fr);
-  }
-  .euclid-preview-copy {
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-  .euclid-preview-title,
-  .euclid-preview-standings-title {
-    font-size: 22px;
-  }
-  .euclid-preview-demo-title {
-    font-size: 13px;
-  }
-  .euclid-preview-demo-label,
-  .euclid-preview-demo-description,
-  .euclid-preview-standings-eyebrow {
+/* Short posts, such as some native mobile embeds. */
+@media (max-height: 400px) {
+  .preview-caption .preview-panel__body,
+  .preview-standings > .preview-panel__body {
     display: none;
   }
-  .euclid-preview-standings-panel {
-    padding: 6px;
-    gap: 6px;
+  .score-chips .score-chip__label {
+    display: none;
   }
-  .euclid-preview-actions button {
-    padding: 8px 10px;
-    font-size: 13px;
+}
+
+@media (max-height: 400px) {
+  .preview__progress {
+    display: none;
+  }
+}
+
+@media (max-height: 300px) {
+  .preview__brand .score-chips {
+    display: none;
   }
 }

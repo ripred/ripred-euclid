@@ -5,6 +5,7 @@ import type {
   SerializableBoard,
 } from "../shared/types/api";
 import { ReplayBoardCard, type ReplayTheme } from "./share-replay";
+import { PageShell } from "./ui/PageShell";
 import { buildWatchDemo } from "./watch-demo";
 import "./watch-view.css";
 
@@ -34,7 +35,7 @@ function WatchControls({
           key={label}
           type="button"
           autoFocus={index === focusIndex}
-          className={primary ? "watch-controls__primary" : undefined}
+          className={primary ? "btn btn--primary" : "btn"}
           onClick={onClick}
           disabled={disabled}
         >
@@ -55,12 +56,20 @@ function WatchPage({
   children: ReactNode;
 }) {
   return (
-    <main className="watch-page" data-theme={theme} tabIndex={0}>
-      <div className="watch-page__content">
-        <h1>Euclid — {title}</h1>
-        {children}
-      </div>
-    </main>
+    <PageShell
+      title={
+        <>
+          <span className="euclid-sr-only">Euclid — </span>
+          {title}
+        </>
+      }
+      titleId="watch-title"
+      className="watch-page"
+      data-theme={theme}
+      tabIndex={0}
+    >
+      <div className="watch-page__content">{children}</div>
+    </PageShell>
   );
 }
 
@@ -93,13 +102,19 @@ function LiveMatch({
     (id, index) => game.names[id] || `Player ${index + 1}`,
   );
   return (
-    <li className="watch-match">
-      <h3>
-        {names[0]} vs {names[1]}
-      </h3>
+    <li className="panel watch-match">
+      <div className="watch-match__head">
+        <span className="badge badge--live">Live</span>
+        <h3>
+          {names[0]} vs {names[1]}
+        </h3>
+      </div>
       <dl className="watch-match__scores">
         {names.map((name, index) => (
-          <div key={game.playerIds[index]}>
+          <div
+            key={game.playerIds[index]}
+            className={`watch-match__player watch-match__player--${index + 1}`}
+          >
             <dt>{name}</dt>
             <dd>{game.scores[index] ?? 0}</dd>
           </div>
@@ -156,7 +171,7 @@ export function WatchLobby({
   ];
 
   return (
-    <WatchPage title="Watch Live" theme={theme}>
+    <WatchPage title="Watch live" theme={theme}>
       <p className="watch-page__muted">
         Watch other Redditors place dots and complete squares. You are a
         spectator: watching does not join the match or change its board.
@@ -164,7 +179,7 @@ export function WatchLobby({
       {loading ? (
         <p role="status">Finding live games…</p>
       ) : error ? (
-        <div role="alert" className="watch-page__panel">
+        <div role="alert" className="panel watch-page__panel">
           <h2>Could not load live games</h2>
           <p>{error}</p>
           <p className="watch-page__muted">
@@ -183,7 +198,7 @@ export function WatchLobby({
           </ul>
         </section>
       ) : (
-        <div className="watch-page__panel" role="status">
+        <div className="panel watch-page__panel" role="status">
           <h2>No live games right now</h2>
           <p className="watch-page__muted">
             Watch the recorded teaching demo to see how squares score, or play a

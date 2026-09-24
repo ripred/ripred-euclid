@@ -1,9 +1,15 @@
+import type { SoloMode } from "../shared/game/rules";
 import {
   shouldLockHomeNavigation,
   type CompetitiveRecordPresentation,
   type H2HHomePresentation,
   type SoloContinuationPresentation,
 } from "./home-ui";
+import { HowToPlay } from "./how-to-play";
+import { BoardMacro, BrandMark, TokenCluster, Wordmark } from "./ui/Brand";
+import { Icon, type IconName } from "./ui/Icon";
+import { PieceGlyph } from "./ui/BoardDiagram";
+import "./home-screen.css";
 
 export type HomeBusyAction =
   | "solo"
@@ -31,6 +37,9 @@ export interface HomeScreenProps {
   busyAction?: HomeBusyAction | null;
   status?: string;
   error?: string;
+  /** The selected solo path; Ranked uses fixed server rules. */
+  soloMode?: SoloMode;
+  onSoloModeChange?: ((mode: SoloMode) => void) | undefined;
   onPlayEuclid: () => void;
   onPlayRedditor: () => void;
   onContinueSolo: () => void;
@@ -71,9 +80,7 @@ function HomeActionButton({
       onClick={onClick}
     >
       <span>{busy ? busyLabel : label}</span>
-      <span className="euclid-home__button-arrow" aria-hidden="true">
-        →
-      </span>
+      <Icon name="arrow" size={18} />
     </button>
   );
 }
@@ -81,21 +88,26 @@ function HomeActionButton({
 function CompetitiveRecordCard({
   record,
   loading,
+  owner,
 }: {
   record: CompetitiveRecordPresentation;
   loading: boolean;
+  owner: 1 | 2;
 }) {
   return (
     <article
-      className={`euclid-home__record${record.available || loading ? "" : " euclid-home__record--unavailable"}`}
+      className={`home-record${record.available || loading ? "" : " home-record--unavailable"}`}
       aria-label={`${record.label} record`}
       aria-busy={loading || undefined}
     >
-      <h3>{record.label}</h3>
+      <h3>
+        <PieceGlyph owner={owner} size={16} />
+        {record.label}
+      </h3>
       <dl>
-        <div className="euclid-home__record-rating">
+        <div className="home-record__rating">
           <dt>Rating</dt>
-          <dd>{loading ? "…" : record.rating}</dd>
+          <dd className="num">{loading ? "…" : record.rating}</dd>
         </div>
         <div>
           <dt>Record</dt>
@@ -122,6 +134,9 @@ interface RedditorMatchCardProps {
   onCancelSearch: () => void;
 }
 
+const STRONG_BUTTON =
+  "btn btn--blue euclid-home__secondary-button euclid-home__secondary-button--strong";
+
 function RedditorMatchCard({
   h2h,
   actionPending,
@@ -133,26 +148,22 @@ function RedditorMatchCard({
   onContinueH2H,
   onCancelSearch,
 }: RedditorMatchCardProps) {
-  const cardClassName = `euclid-home__match-card euclid-home__match-card--${h2h.state}`;
+  const cardClassName = `panel home-card home-match home-match--${h2h.state}`;
 
   if (h2h.state === "queued") {
     return (
       <article className={cardClassName}>
-        <div
-          className="euclid-home__match-status"
-          role="status"
-          aria-live="polite"
-        >
-          <div className="euclid-home__match-heading">
-            <span className="euclid-home__queue-indicator" aria-hidden="true" />
-            <span className="euclid-home__state-label">Matchmaking</span>
-          </div>
+        <div className="home-card__copy" role="status" aria-live="polite">
+          <p className="eyebrow home-match__state">
+            <span className="home-match__radar" aria-hidden="true" />
+            Matchmaking
+          </p>
           <h2>{h2h.title}</h2>
           <p>{h2h.detail}</p>
         </div>
         <button
           type="button"
-          className="euclid-home__secondary-button"
+          className="btn euclid-home__secondary-button"
           disabled={actionPending}
           aria-busy={h2hBusy || undefined}
           aria-describedby={lockDescriptionId}
@@ -167,17 +178,19 @@ function RedditorMatchCard({
   if (h2h.state === "active") {
     return (
       <article className={cardClassName}>
-        <div className="euclid-home__match-heading">
-          <span className="euclid-home__state-dot" aria-hidden="true" />
-          <span className="euclid-home__state-label">
+        <div className="home-card__copy">
+          <p className="eyebrow home-match__state">
+            {!h2h.ended ? (
+              <span className="badge badge--live">Live</span>
+            ) : null}
             {h2h.ended ? "Completed match" : "Match in progress"}
-          </span>
+          </p>
+          <h2>{h2h.title}</h2>
+          <p>{h2h.detail}</p>
+          <p className="home-card__score num">{h2h.score}</p>
         </div>
-        <h2>{h2h.title}</h2>
-        <p>{h2h.detail}</p>
-        <p className="euclid-home__match-score">{h2h.score}</p>
         <HomeActionButton
-          className="euclid-home__secondary-button euclid-home__secondary-button--strong"
+          className={STRONG_BUTTON}
           label={h2h.actionLabel}
           busyLabel={presenceLoading ? "Checking status…" : "Opening match…"}
           disabled={actionPending || presenceLoading}
@@ -191,13 +204,14 @@ function RedditorMatchCard({
 
   return (
     <article className={cardClassName}>
-      <div className="euclid-home__match-heading">
-        <span className="euclid-home__state-label">Live multiplayer</span>
+      <TokenCluster owner={2} className="home-card__tokens" />
+      <div className="home-card__copy">
+        <p className="eyebrow">Live multiplayer</p>
+        <h2>{h2h.title}</h2>
+        <p>{h2h.detail}</p>
       </div>
-      <h2>{h2h.title}</h2>
-      <p>{h2h.detail}</p>
       <HomeActionButton
-        className="euclid-home__secondary-button euclid-home__secondary-button--strong"
+        className={STRONG_BUTTON}
         label={h2h.actionLabel}
         busyLabel={presenceLoading ? "Checking status…" : "Joining queue…"}
         disabled={actionPending || presenceLoading}
@@ -212,16 +226,6 @@ function RedditorMatchCard({
 function formatUsername(username: string): string {
   const trimmed = username.trim().replace(/^u\//i, "");
   return trimmed ? `u/${trimmed}` : "Redditor";
-}
-
-function EuclidBrand({ titleId }: { titleId: string }) {
-  return (
-    <div className="euclid-home__brand">
-      <div>
-        <h1 id={titleId}>Euclid</h1>
-      </div>
-    </div>
-  );
 }
 
 export interface HomeStatusAction {
@@ -250,39 +254,41 @@ export function HomeStatusScreen({
 }: HomeStatusScreenProps) {
   return (
     <main
-      className="euclid-home euclid-home--status"
+      className="screen euclid-home euclid-home--status"
       aria-labelledby="euclid-status-brand"
     >
-      <div className="euclid-home__frame euclid-home__status-frame">
-        <header className="euclid-home__header">
-          <EuclidBrand titleId="euclid-status-brand" />
+      <div className="home-status">
+        <header>
+          <Wordmark id="euclid-status-brand" size="md" />
         </header>
         <section
-          className={`euclid-home__status-card${error ? " euclid-home__status-card--error" : ""}`}
+          className={`panel home-status__card${error ? " home-status__card--error" : ""}`}
         >
           <div
-            className="euclid-home__status-message"
+            className="home-status__message"
             role={error ? "alert" : "status"}
             aria-live={error ? "assertive" : "polite"}
           >
-            {busy && (
-              <span className="euclid-home__loading-dot" aria-hidden="true" />
-            )}
+            {busy ? (
+              <span className="home-status__spinner" aria-hidden="true">
+                <BrandMark size={44} />
+              </span>
+            ) : null}
             <div>
               <h2>{heading}</h2>
               <p>{detail}</p>
             </div>
           </div>
           {actions.length > 0 && (
-            <div className="euclid-home__status-actions">
+            <div className="home-status__actions">
               {actions.map((action) => (
                 <button
                   key={action.label}
                   type="button"
                   className={
                     action.primary
-                      ? "euclid-home__secondary-button euclid-home__secondary-button--strong"
-                      : "euclid-home__secondary-button"
+                      ? "btn btn--primary euclid-home__secondary-button euclid-home__secondary-button--strong"
+                      : "btn euclid-home__secondary-button"
                   }
                   disabled={action.disabled}
                   aria-busy={action.busy || undefined}
@@ -299,31 +305,42 @@ export function HomeStatusScreen({
   );
 }
 
+const UTILITIES: readonly {
+  label: string;
+  icon: IconName;
+  action: "onWatchGames" | "onLeaderboard" | "onOptions" | "onRules";
+}[] = [
+  { label: "Live games", icon: "watch", action: "onWatchGames" },
+  { label: "Leaderboard", icon: "trophy", action: "onLeaderboard" },
+  { label: "Options", icon: "sliders", action: "onOptions" },
+  { label: "Rules", icon: "help", action: "onRules" },
+];
+
 /**
  * Presentational home dashboard. All game state and actions remain owned by the
  * caller so this view cannot infer or mutate authoritative match state.
  */
-export function HomeScreen({
-  username,
-  playEuclidSubtitle,
-  records,
-  soloContinuation,
-  h2h,
-  loading,
-  presenceReconciliationPending = false,
-  busyAction = null,
-  status = "",
-  error = "",
-  onPlayEuclid,
-  onPlayRedditor,
-  onContinueSolo,
-  onContinueH2H,
-  onCancelSearch,
-  onWatchGames,
-  onLeaderboard,
-  onOptions,
-  onRules,
-}: HomeScreenProps) {
+export function HomeScreen(props: HomeScreenProps) {
+  const {
+    username,
+    playEuclidSubtitle,
+    records,
+    soloContinuation,
+    h2h,
+    loading,
+    presenceReconciliationPending = false,
+    busyAction = null,
+    status = "",
+    error = "",
+    soloMode,
+    onSoloModeChange,
+    onPlayEuclid,
+    onPlayRedditor,
+    onContinueSolo,
+    onContinueH2H,
+    onCancelSearch,
+    onOptions,
+  } = props;
   const actionPending = busyAction !== null;
   const matchmaking = h2h.state === "queued";
   const navigationLocked = shouldLockHomeNavigation(
@@ -335,16 +352,13 @@ export function HomeScreen({
   const lockDescriptionId = navigationLocked
     ? "euclid-home-action-lock-description"
     : undefined;
-  const utilityActions = [
-    { label: "Live games", onClick: onWatchGames },
-    { label: "Leaderboard", onClick: onLeaderboard },
-    { label: "Options", onClick: onOptions },
-    { label: "Rules", onClick: onRules },
-  ] as const;
+  const soloStartDisabled =
+    actionPending || matchmaking || loading.presence || loading.solo;
 
   return (
-    <main className="euclid-home" aria-labelledby="euclid-home-title">
-      <div className="euclid-home__frame">
+    <main className="screen euclid-home" aria-labelledby="euclid-home-title">
+      <BoardMacro className="home-hero__art" />
+      <div className="home">
         {navigationLocked && (
           <p
             id="euclid-home-action-lock-description"
@@ -357,92 +371,149 @@ export function HomeScreen({
                 : "Unavailable while another game action is in progress."}
           </p>
         )}
-        <header className="euclid-home__header">
-          <EuclidBrand titleId="euclid-home-title" />
-          <p className="euclid-home__username" title={formatUsername(username)}>
-            <span aria-hidden="true">●</span>
+        <header className="home-hero">
+          <Wordmark id="euclid-home-title" size="lg" />
+          <p className="home-hero__user" title={formatUsername(username)}>
             {formatUsername(username)}
+          </p>
+          <p className="home-hero__tagline">
+            A minute to learn. A lifetime to master.
           </p>
         </header>
 
         {(anythingLoading || status || error) && (
-          <div className="euclid-home__notices">
+          <div className="home-notices">
             {anythingLoading && (
               <p
                 id="euclid-home-loading-description"
-                className="euclid-home__notice"
+                className="notice home-notice--loading"
                 role="status"
               >
-                <span className="euclid-home__loading-dot" aria-hidden="true" />
+                <span className="busy-dot" aria-hidden="true" />
                 Refreshing your games and records…
               </p>
             )}
             {status && (
-              <p
-                className="euclid-home__notice"
-                role="status"
-                aria-live="polite"
-              >
+              <p className="notice" role="status" aria-live="polite">
                 {status}
               </p>
             )}
             {error && (
-              <p
-                className="euclid-home__notice euclid-home__notice--error"
-                role="alert"
-              >
+              <p className="notice notice--attention" role="alert">
                 {error}
               </p>
             )}
           </div>
         )}
 
-        <section className="euclid-home__dashboard" aria-label="Choose a game">
-          <div className="euclid-home__play-column">
-            <div className="euclid-home__solo-choice">
-              <button
-                type="button"
-                className="euclid-home__primary-action"
-                disabled={
-                  actionPending ||
-                  matchmaking ||
-                  loading.presence ||
-                  loading.solo
-                }
-                aria-busy={
-                  busyAction === "solo" ||
-                  loading.presence ||
-                  loading.solo ||
-                  undefined
-                }
-                aria-describedby={
-                  loading.presence || loading.solo
-                    ? "euclid-home-loading-description"
-                    : lockDescriptionId
-                }
-                onClick={onPlayEuclid}
+        <section className="home-grid" aria-label="Choose a game">
+          <div className="home-grid__play">
+            {loading.solo ? (
+              <article
+                className="panel home-card home-continue home-continue--pending"
+                aria-busy="true"
               >
-                <span className="euclid-home__primary-kicker">Solo play</span>
-                <span className="euclid-home__primary-title">
-                  {busyAction === "solo" ? "Opening game…" : "Play Euclid"}
-                </span>
-                <span className="euclid-home__primary-detail">
-                  {playEuclidSubtitle}
-                </span>
-                <span className="euclid-home__primary-arrow" aria-hidden="true">
-                  →
-                </span>
-              </button>
-              <HomeActionButton
-                label="Change difficulty"
-                busyLabel="Change difficulty"
-                disabled={navigationLocked || loading.presence || loading.solo}
-                busy={false}
-                className="euclid-home__secondary-button"
-                describedBy={lockDescriptionId}
-                onClick={onOptions}
-              />
-            </div>
+                <div className="home-card__copy">
+                  <p className="eyebrow">Saved game</p>
+                  <h2>Checking for a saved game…</h2>
+                  <p>Your current Ranked game will appear here.</p>
+                </div>
+              </article>
+            ) : soloContinuation ? (
+              <article className="panel home-card home-continue">
+                <div className="home-card__copy">
+                  <p className="eyebrow">Saved game</p>
+                  <h2>{soloContinuation.title}</h2>
+                  <p>{soloContinuation.detail}</p>
+                  <p className="home-card__score num">
+                    {soloContinuation.score}
+                  </p>
+                  <p className="home-card__rules">{soloContinuation.rules}</p>
+                </div>
+                <HomeActionButton
+                  className="btn btn--primary euclid-home__continue-button"
+                  label={soloContinuation.actionLabel}
+                  busyLabel={
+                    loading.presence ? "Checking status…" : "Opening game…"
+                  }
+                  disabled={actionPending || matchmaking || loading.presence}
+                  busy={busyAction === "solo-continuation" || loading.presence}
+                  describedBy={
+                    loading.presence
+                      ? "euclid-home-loading-description"
+                      : lockDescriptionId
+                  }
+                  onClick={onContinueSolo}
+                />
+              </article>
+            ) : null}
+
+            <article className="panel home-card home-solo">
+              <TokenCluster owner={1} className="home-card__tokens" />
+              <div className="home-solo__head">
+                <div className="home-card__copy">
+                  <p className="eyebrow">Solo · against Euclid</p>
+                  <h2>Play Euclid</h2>
+                </div>
+                {soloMode && onSoloModeChange ? (
+                  <div
+                    className="seg home-solo__mode"
+                    role="radiogroup"
+                    aria-label="Solo game type"
+                  >
+                    {(["practice", "ranked"] as const).map((choice) => (
+                      <button
+                        key={choice}
+                        type="button"
+                        role="radio"
+                        aria-checked={soloMode === choice}
+                        disabled={navigationLocked}
+                        onClick={() => onSoloModeChange(choice)}
+                      >
+                        {choice === "ranked" ? "Ranked" : "Practice"}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <p className="home-solo__detail">{playEuclidSubtitle}</p>
+              <div className="home-solo__actions">
+                <button
+                  type="button"
+                  className="btn btn--primary btn--lg euclid-home__primary-action"
+                  disabled={soloStartDisabled}
+                  aria-busy={
+                    busyAction === "solo" ||
+                    loading.presence ||
+                    loading.solo ||
+                    undefined
+                  }
+                  aria-describedby={
+                    loading.presence || loading.solo
+                      ? "euclid-home-loading-description"
+                      : lockDescriptionId
+                  }
+                  onClick={onPlayEuclid}
+                >
+                  <span className="euclid-home__primary-title">
+                    {busyAction === "solo" ? "Opening game…" : "Play Euclid"}
+                  </span>
+                  <Icon name="arrow" />
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost home-solo__settings"
+                  disabled={
+                    navigationLocked || loading.presence || loading.solo
+                  }
+                  aria-describedby={lockDescriptionId}
+                  onClick={onOptions}
+                >
+                  <Icon name="sliders" size={18} />
+                  <span>Change difficulty</span>
+                </button>
+              </div>
+            </article>
 
             <RedditorMatchCard
               h2h={h2h}
@@ -461,61 +532,23 @@ export function HomeScreen({
               onContinueH2H={onContinueH2H}
               onCancelSearch={onCancelSearch}
             />
-
-            {loading.solo ? (
-              <article className="euclid-home__continue-card" aria-busy="true">
-                <div className="euclid-home__continue-copy">
-                  <span className="euclid-home__state-label">Saved game</span>
-                  <h2>Checking for a saved game…</h2>
-                  <p>Your current Ranked game will appear here.</p>
-                </div>
-              </article>
-            ) : soloContinuation ? (
-              <article className="euclid-home__continue-card">
-                <div className="euclid-home__continue-copy">
-                  <span className="euclid-home__state-label">Saved game</span>
-                  <h2>{soloContinuation.title}</h2>
-                  <p>{soloContinuation.detail}</p>
-                  <p className="euclid-home__continue-score">
-                    {soloContinuation.score}
-                  </p>
-                  <p className="euclid-home__continue-rules">
-                    {soloContinuation.rules}
-                  </p>
-                </div>
-                <HomeActionButton
-                  className="euclid-home__continue-button"
-                  label={soloContinuation.actionLabel}
-                  busyLabel={
-                    loading.presence ? "Checking status…" : "Opening game…"
-                  }
-                  disabled={actionPending || matchmaking || loading.presence}
-                  busy={busyAction === "solo-continuation" || loading.presence}
-                  describedBy={
-                    loading.presence
-                      ? "euclid-home-loading-description"
-                      : lockDescriptionId
-                  }
-                  onClick={onContinueSolo}
-                />
-              </article>
-            ) : null}
           </div>
 
           <aside
-            className="euclid-home__records"
+            className="panel home-records"
             aria-labelledby="home-records-title"
           >
-            <div className="euclid-home__section-heading">
-              <p className="euclid-home__eyebrow">Competitive profile</p>
+            <div className="home-card__copy">
+              <p className="eyebrow">Competitive profile</p>
               <h2 id="home-records-title">Your records</h2>
               <p>Solo and multiplayer ratings are tracked separately.</p>
             </div>
-            <div className="euclid-home__record-list">
-              {records.map((record) => (
+            <div className="home-records__list">
+              {records.map((record, index) => (
                 <CompetitiveRecordCard
                   key={record.label}
                   record={record}
+                  owner={index === 0 ? 1 : 2}
                   loading={loading.records}
                 />
               ))}
@@ -523,20 +556,29 @@ export function HomeScreen({
           </aside>
         </section>
 
-        <nav
-          className="euclid-home__utilities"
-          aria-label="More Euclid options"
-        >
+        <section className="home-learn" aria-labelledby="home-learn-title">
+          <div className="home-learn__head">
+            <h2 id="home-learn-title">Learn in a minute</h2>
+            <p className="muted">
+              Three ideas carry the whole game. Mastering them takes a lifetime.
+            </p>
+          </div>
+          <HowToPlay layout="strip" />
+        </section>
+
+        <nav className="home-nav" aria-label="More Euclid options">
           <ul>
-            {utilityActions.map((action) => (
-              <li key={action.label}>
+            {UTILITIES.map((item) => (
+              <li key={item.label}>
                 <button
                   type="button"
+                  className="home-nav__item"
                   disabled={navigationLocked}
                   aria-describedby={lockDescriptionId}
-                  onClick={action.onClick}
+                  onClick={props[item.action]}
                 >
-                  {action.label}
+                  <Icon name={item.icon} />
+                  <span>{item.label}</span>
                 </button>
               </li>
             ))}

@@ -1,5 +1,6 @@
 import { playerColorForIndex, type PlayerColor } from "../shared/game/rules";
 import { scoreSquareCorners } from "../shared/scoring";
+import type { BoardMarker, BoardSquareShape } from "./ui/board-geometry";
 import type {
   SerializableBoard,
   SharePoint,
@@ -269,4 +270,34 @@ export function buildReplayFrames(board: SerializableBoard): ReplayFrames {
   }
 
   return frames;
+}
+
+/** Converts one replay frame into the shared board's shapes. */
+export function frameShapes(frame: ReplayFrame): {
+  squares: BoardSquareShape[];
+  markers: BoardMarker[];
+} {
+  const fresh = new Set(frame.newSquares.map((square) => square.key));
+  return {
+    squares: [
+      ...frame.allSquares
+        .filter((square) => !fresh.has(square.key))
+        .map((square) => ({ ...square, tone: "history" as const })),
+      ...frame.newSquares.map((square) => ({
+        ...square,
+        key: `${frame.moveNumber}-${square.key}`,
+        tone: "fresh" as const,
+      })),
+    ],
+    markers: frame.move
+      ? [
+          {
+            x: frame.move.x,
+            y: frame.move.y,
+            owner: frame.move.owner,
+            kind: "last",
+          },
+        ]
+      : [],
+  };
 }

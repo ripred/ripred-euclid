@@ -1,0 +1,338 @@
+/* The board object. Units are grid cells; strokes scale with the board. */
+
+.board {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.board__plinth {
+  fill: var(--slab-plinth);
+}
+
+.board__grooves line {
+  stroke: rgb(0 0 0 / 0.2);
+  stroke-width: 0.035;
+  stroke-linecap: round;
+}
+
+/* Open points: porcelain studs set into shallow wells. */
+.board__point-well {
+  fill: rgb(0 0 0 / 0.34);
+}
+
+.board__point-cap {
+  transition: opacity var(--dur);
+}
+
+.board--dim-empty .board__point:not([class*="--hint-"]) {
+  opacity: 0.38;
+}
+
+.board__point--hint-near .board__point-well,
+.board__point--hint-far .board__point-well {
+  stroke-width: 0.07;
+}
+
+.board__point--hint-1 .board__point-well {
+  stroke: var(--red);
+}
+
+.board__point--hint-2 .board__point-well {
+  stroke: var(--blue);
+}
+
+.board__point--hint-near .board__point-well {
+  stroke-width: 0.1;
+  animation: hint-pulse 1.3s ease-in-out infinite;
+}
+
+.board__point--hint-far .board__point-well {
+  stroke-dasharray: 0.1 0.08;
+}
+
+@keyframes hint-pulse {
+  50% {
+    stroke-width: 0.03;
+  }
+}
+
+/* Tokens */
+.board__piece-disc {
+  stroke: rgb(0 0 0 / 0.5);
+  stroke-width: 0.025;
+}
+
+.board__piece-gloss {
+  fill: #fff;
+  opacity: 0.42;
+}
+
+/* Both tokens share one construction; only the colour differs. */
+.board__piece-groove {
+  fill: none;
+  stroke-width: 0.04;
+}
+
+.board__piece--1 .board__piece-groove {
+  stroke: rgb(90 14 2 / 0.55);
+}
+
+.board__piece--2 .board__piece-groove {
+  stroke: rgb(4 10 60 / 0.55);
+}
+
+.board__piece-groove-light {
+  fill: none;
+  stroke: rgb(255 255 255 / 0.5);
+  stroke-width: 0.035;
+}
+
+.board__piece-body,
+.board__piece-shadow {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.board__piece--arriving .board__piece-body {
+  animation: piece-drop 460ms var(--ease-spring) both;
+}
+
+.board__piece--arriving .board__piece-shadow {
+  animation: piece-shadow 460ms var(--ease-out) both;
+}
+
+.board__piece--ghost {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+@keyframes piece-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-0.5px) scale(1.45);
+  }
+  45% {
+    opacity: 1;
+  }
+  70% {
+    transform: translateY(0) scale(0.92, 0.88);
+  }
+}
+
+@keyframes piece-shadow {
+  from {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+/* Completed squares: glossy bands like the edges of a real board. */
+.board__band-shadow,
+.board__band-core,
+.board__band-shine,
+.board__band-fill {
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.board__band-shadow {
+  fill: none;
+  stroke: rgb(0 0 0 / 0.32);
+  stroke-width: 0.2;
+  transform: translate(0.02px, 0.05px);
+}
+
+.board__band-core {
+  fill: none;
+  stroke-width: 0.14;
+}
+
+.board__band-shine {
+  fill: none;
+  stroke: rgb(255 255 255 / 0.45);
+  stroke-width: 0.035;
+  transform: translate(-0.012px, -0.022px);
+}
+
+.board__band--1 .board__band-core {
+  stroke: var(--red-line);
+}
+
+.board__band--2 .board__band-core {
+  stroke: var(--blue-line);
+}
+
+.board__band-fill {
+  opacity: 0;
+  animation: band-fill 1.4s 220ms var(--ease-out) forwards;
+}
+
+.board__band--1 .board__band-fill {
+  fill: var(--red);
+}
+
+.board__band--2 .board__band-fill {
+  fill: var(--blue);
+}
+
+.board__band--fresh .board__band-core,
+.board__band--fresh .board__band-shine {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: band-draw 560ms var(--ease-out) forwards;
+}
+
+.board__band--fresh .board__band-core {
+  stroke-width: 0.17;
+}
+
+.board__band--fresh .board__band-shadow {
+  opacity: 0;
+  animation: fade-in 300ms 400ms var(--ease-out) forwards;
+}
+
+@keyframes band-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes band-fill {
+  30% {
+    opacity: 0.42;
+  }
+  to {
+    opacity: 0.2;
+  }
+}
+
+.board__flash {
+  fill: none;
+  stroke-width: 0.08;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: corner-flash 720ms 380ms var(--ease-out) both;
+  pointer-events: none;
+}
+
+.board__flash--1 {
+  stroke: #ffd2c7;
+}
+
+.board__flash--2 {
+  stroke: #d3dbff;
+}
+
+@keyframes corner-flash {
+  0% {
+    opacity: 1;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.1);
+  }
+}
+
+.board__blocked {
+  fill: none;
+  stroke-width: 0.09;
+  stroke-dasharray: 0.18 0.14;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+  animation: blocked-in 1.6s 300ms var(--ease-out) forwards;
+}
+
+.board__blocked--1 {
+  stroke: var(--red-line);
+}
+
+.board__blocked--2 {
+  stroke: var(--blue-line);
+}
+
+@keyframes blocked-in {
+  20%,
+  60% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.7;
+  }
+}
+
+.board__footprint {
+  fill: rgb(255 255 255 / 0.07);
+  stroke: rgb(255 255 255 / 0.9);
+  stroke-width: 0.05;
+  stroke-dasharray: 0.16 0.12;
+  animation: fade-in var(--dur) var(--ease-out) both;
+}
+
+.board__marker {
+  fill: none;
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.board__marker--last {
+  stroke: rgb(255 255 255 / 0.92);
+  stroke-width: 0.055;
+  animation: last-halo 1.8s ease-in-out infinite;
+}
+
+.board__marker--pending {
+  stroke-width: 0.09;
+  animation: marker-pulse 1.1s ease-in-out infinite;
+}
+
+.board__marker--pending.board__marker--1 {
+  stroke: var(--red-line);
+}
+
+.board__marker--pending.board__marker--2 {
+  stroke: var(--blue-line);
+}
+
+@keyframes last-halo {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes marker-pulse {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.82);
+  }
+}
+
+.piece-glyph {
+  display: inline-block;
+  flex: none;
+  overflow: visible;
+  vertical-align: -0.2em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board__band--fresh .board__band-core,
+  .board__band--fresh .board__band-shine {
+    stroke-dashoffset: 0;
+  }
+  .board__band-fill {
+    opacity: 0.2;
+  }
+  .board__band--fresh .board__band-shadow {
+    opacity: 1;
+  }
+  .board__flash {
+    display: none;
+  }
+}

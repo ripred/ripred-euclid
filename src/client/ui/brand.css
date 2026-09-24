@@ -1,0 +1,69 @@
+.brand-mark {
+  display: inline-block;
+  flex: none;
+}
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.wordmark__text {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-2xl);
+  font-stretch: 125%;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.wordmark--sm .wordmark__text {
+  font-size: var(--fs-xl);
+}
+
+.wordmark--lg .wordmark__text {
+  font-size: clamp(2.25rem, 7vw, 3.25rem);
+}
+
+/* Macro art: a close-up board that fades into the stage. */
+.board-macro {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.board-macro .board {
+  position: absolute;
+  inset: 0;
+}
+
+/* The close-up fades into whatever stage sits behind it. */
+.board-macro {
+  -webkit-mask-image: linear-gradient(180deg, #000 30%, transparent 96%);
+  mask-image: linear-gradient(180deg, #000 30%, transparent 96%);
+}
+
+.board-macro::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgb(0 0 0 / 0.4),
+    transparent 28%,
+    transparent 72%,
+    rgb(0 0 0 / 0.3)
+  );
+  content: "";
+  pointer-events: none;
+}
+
+.token-cluster {
+  pointer-events: none;
+}
+
+.token-cluster .board {
+  overflow: visible;
+}

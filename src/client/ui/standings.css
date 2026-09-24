@@ -1,0 +1,124 @@
+.avatar {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.avatar--initial {
+  background: radial-gradient(circle at 35% 30%, #5c5c64, #2f2f35 70%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18);
+  color: #fff;
+  font-weight: 800;
+}
+
+.standings {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.standing {
+  display: grid;
+  grid-template-columns: 32px auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.standing__rank {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--text-2);
+  font-weight: 800;
+}
+
+/* The top three wear tokens: gold, porcelain and red. */
+.standing--top .standing__rank {
+  color: #1a1a1a;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.55),
+    0 2px 0 rgb(0 0 0 / 0.35);
+}
+
+.standing--rank-1 .standing__rank {
+  background: radial-gradient(circle at 35% 30%, #ffe7a1, #f2b72c 60%, #a8740b);
+}
+
+.standing--rank-2 .standing__rank {
+  background: radial-gradient(circle at 35% 30%, #ffffff, #d9d9d4 60%, #9a9a94);
+}
+
+.standing--rank-3 .standing__rank {
+  background: radial-gradient(circle at 35% 30%, #ffb59d, #e0603f 60%, #93301a);
+  color: #fff;
+}
+
+.standing--rank-1 {
+  border-color: color-mix(in srgb, #f2b72c 45%, var(--line));
+}
+
+.standing__who {
+  display: grid;
+  min-width: 0;
+}
+
+.standing__name {
+  overflow: hidden;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.standing__record {
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.standing__rating {
+  font-size: var(--fs-lg);
+  font-stretch: var(--wide);
+  font-weight: 900;
+}
+
+.standing--sm {
+  gap: var(--sp-2);
+  padding: 6px var(--sp-2);
+}
+
+.standing--sm .standing__rating {
+  font-size: var(--fs-md);
+}
+
+.standing--lg {
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.standing--lg .standing__rating {
+  font-size: var(--fs-2xl);
+}
+
+.standing--lg .standing__name {
+  font-size: var(--fs-lg);
+}
+
+.standings__empty {
+  margin: 0;
+  padding: var(--sp-4);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-2);
+  text-align: center;
+}
