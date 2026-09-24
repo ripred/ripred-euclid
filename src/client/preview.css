@@ -36,7 +36,9 @@ html.euclid-inline,
   grid-template-areas:
     "board side"
     "board actions";
-  grid-template-columns: auto minmax(0, 1fr);
+  /* Resolve widths before measuring wrapped buttons; the board's aspect ratio
+     must not determine the action column's available width. */
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 12px 20px;
   height: 100%;
@@ -50,7 +52,7 @@ html.euclid-inline,
   justify-self: center;
   height: 100%;
   max-height: 100%;
-  max-width: min(58vw, 520px);
+  max-width: min(100%, 520px);
   min-height: 0;
 }
 
@@ -266,9 +268,6 @@ html.euclid-inline,
   }
   .preview {
     gap: 10px 12px;
-  }
-  .preview__board {
-    max-width: 50vw;
   }
   .preview__brand .wordmark__text {
     font-size: var(--fs-xl);
