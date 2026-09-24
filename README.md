@@ -6,9 +6,9 @@ Euclid is a turn-based Reddit strategy game about claiming grid points and compl
 
 ![Euclid game](Euclid-Game2.png)
 
-The local package is `0.1.109` and the project is pinned to Devvit `0.14.2`. Deployment and Git pushes are separate operations.
+The local package is `0.2.0` and the project is pinned to Devvit `0.14.2`. This release introduces the redesigned interface, gameplay presentation, artwork, and sound. Deployment and Git pushes are separate operations.
 
-The intended public-facing community is [r/EuclidTheGame](https://www.reddit.com/r/EuclidTheGame/), currently private for beta testing. The current original build is installed there as `0.1.109`, confirmed by a separate installation readback on September 7, 2026. The development subreddit was not changed and was last verified at `0.1.99`. The communities' matching icon and desktop/mobile banners were unchanged; the development playtest target remains `r/ripred_euclid_dev`. Installation verification is separate from the desktop and native-mobile gameplay checks below.
+The intended public-facing community is [r/EuclidTheGame](https://www.reddit.com/r/EuclidTheGame/), currently private for beta testing. Deploy the `0.2.0` release there and verify the installed version separately with `npx devvit list installs EuclidTheGame`. The development playtest target remains `r/ripred_euclid_dev`; a release installation on the beta community does not update that target or change subreddit icons and banners. Installation verification is separate from the desktop and native-mobile gameplay checks below.
 
 ## Game rules
 
@@ -233,7 +233,7 @@ The full real-surface checklist still requires three distinct Reddit identities,
 
 ## Pending release work
 
-- Run the real-surface checklist above against installed `0.1.109` on Reddit desktop card view, compact view, and the native mobile app. The current release passed type-check, lint, all 451 tests across 32 files, and client/server builds. Automated fixtures do not establish native-platform behavior; the installation readback is not a gameplay check.
+- After verifying the `0.2.0` installation, run the real-surface checklist above in Reddit desktop card view, compact view, and the native mobile app. Local validation covers type-check, lint, 461 application tests across 33 files, 18 dependency tests, client/server and local-server builds, and Devvit packaging. Automated fixtures do not establish native-platform behavior; the installation readback is not a gameplay check.
 - Keep the five unshipped edition branches separate from this installed original release.
 - After private-beta results are acceptable, decide whether the community remains private, becomes restricted, or opens publicly, and prepare any introductory or how-to-play post.
 
