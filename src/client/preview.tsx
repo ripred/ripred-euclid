@@ -182,7 +182,6 @@ function PreviewStatus({
             fontSize: 12,
             fontWeight: 800,
             letterSpacing: "0.14em",
-            textTransform: "uppercase",
           }}
         >
           Euclid
@@ -504,7 +503,6 @@ function LeaderboardRow({
           style={{
             color: palette.text,
             fontSize: 10,
-            textTransform: "uppercase",
             letterSpacing: "0.08em",
           }}
         >
@@ -604,7 +602,6 @@ function PreviewLeaderboard({
             fontSize: 12,
             fontWeight: 800,
             letterSpacing: "0.16em",
-            textTransform: "uppercase",
             color: palette.accent,
           }}
         >
@@ -1078,7 +1075,6 @@ export const PreviewApp = () => {
                     fontSize: 12,
                     fontWeight: 800,
                     letterSpacing: "0.16em",
-                    textTransform: "uppercase",
                     color: palette.accent,
                   }}
                 >
@@ -1118,7 +1114,6 @@ export const PreviewApp = () => {
                     fontSize: 12,
                     fontWeight: 800,
                     letterSpacing: "0.12em",
-                    textTransform: "uppercase",
                   }}
                 >
                   <span

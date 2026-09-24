@@ -1,15 +1,11 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { coordinate } from "../../shared/edition-geometry";
-import type { TideState } from "../../shared/edition-game";
+import { TIDE_SIZE as SIZE, type TideState } from "../../shared/edition-game";
 import type { PlayMode } from "../../shared/edition-contract";
 import { useEdition } from "./use-edition";
+import { TideBoard } from "./TideBoard";
 import "./style.css";
 
-const SIZE = 6;
-const position = (point: number) => ({
-  x: 70 + (point % SIZE) * 100,
-  y: 70 + Math.floor(point / SIZE) * 100,
-});
 const ownerName = (player: number, mode: PlayMode, humanName: string) =>
   player === 1
     ? mode === "duel"
@@ -187,90 +183,17 @@ export function Tide() {
           className="playfield"
           aria-label="Tide board and placement controls"
         >
-          <div
-            className="board-wrap"
-            ref={grid}
-            role="group"
-            aria-label={
+          <TideBoard
+            game={game}
+            selected={selected}
+            fresh={fresh}
+            gridRef={grid}
+            ariaLabel={
               watching
                 ? "Six by six board. Arrow keys inspect points. Read-only."
                 : "Six by six board. Arrow keys navigate, Enter selects, then use Place stone."
             }
-          >
-            <svg className="board-art" viewBox="0 0 640 640" aria-hidden="true">
-              <defs>
-                <radialGradient id="shore">
-                  <stop offset="0" stopColor="#fcfaf5" />
-                  <stop offset="1" stopColor="#f8f8f3" />
-                </radialGradient>
-              </defs>
-              {[0, 1, 2, 3, 4].map((i) => (
-                <rect
-                  key={i}
-                  x={30 - i * 6}
-                  y={30 - i * 6}
-                  width={580 + i * 12}
-                  height={580 + i * 12}
-                  rx={42 + i * 9}
-                  fill="none"
-                  stroke="#cfdfd8"
-                  strokeOpacity={0.5 - i * 0.065}
-                />
-              ))}
-              <rect
-                x="45"
-                y="45"
-                width="550"
-                height="550"
-                rx="4"
-                fill="url(#shore)"
-                stroke="#c4ccc2"
-              />
-              {Array.from({ length: 6 }, (_, i) => (
-                <g key={i}>
-                  <path
-                    d={`M70 ${70 + i * 100}H570 M${70 + i * 100} 70V570`}
-                    stroke="#c3cec5"
-                    strokeWidth="1"
-                  />
-                  <text x={70 + i * 100} y="24" textAnchor="middle">
-                    {String.fromCharCode(65 + i)}
-                  </text>
-                  <text x="23" y={77 + i * 100} textAnchor="middle">
-                    {i + 1}
-                  </text>
-                </g>
-              ))}
-              {game?.squares.map((square) => (
-                <polygon
-                  key={square.id}
-                  className={`${square.owner === 1 ? "coral-square" : "teal-square"} ${fresh.includes(square.id) ? "fresh-square" : ""}`}
-                  points={square.corners
-                    .map((point) => {
-                      const p = position(point);
-                      return `${p.x},${p.y}`;
-                    })
-                    .join(" ")}
-                />
-              ))}
-              {Array.from({ length: 36 }, (_, point) => {
-                const p = position(point);
-                return (
-                  <circle key={point} cx={p.x} cy={p.y} r="4" fill="#a1afa5" />
-                );
-              })}
-            </svg>
-            {Array.from({ length: 36 }, (_, point) => {
-              const owner = game?.board[point] ?? 0,
-                anchored = game?.anchored[point] ?? false;
-              const turnsLeft =
-                owner && game
-                  ? Math.max(
-                      0,
-                      Math.ceil((game.expires[point]! - game.revision) / 2),
-                    )
-                  : 0;
-              const p = position(point);
+            renderPoint={(point, owner, anchored, turnsLeft, pointProps) => {
               const description = owner
                 ? `${name(owner)}, ${anchored ? "anchored" : `${turnsLeft} ${turnsLeft === 1 ? "turn" : "turns"} until it washes away`}`
                 : "empty";
@@ -282,39 +205,16 @@ export function Tide() {
                   aria-label={`${coordinate(point)}: ${description}`}
                   aria-pressed={selected === point}
                   aria-disabled={!playable || owner !== 0}
-                  className={`board-point owner-${owner}${anchored ? " anchored" : ""}${selected === point ? " selected" : ""}${owner && !anchored && turnsLeft <= 1 ? " fading" : ""}`}
-                  style={{ left: `${p.x / 6.4}%`, top: `${p.y / 6.4}%` }}
+                  {...pointProps}
                   onFocus={() => setFocus(point)}
                   onClick={() => selectPoint(point)}
                   onKeyDown={(event) => navigate(event, point)}
                 >
-                  {owner !== 0 && (
-                    <>
-                      <span className="stone" />
-                      {anchored ? (
-                        <span className="anchor-center" />
-                      ) : (
-                        <svg
-                          className="age-ring"
-                          viewBox="0 0 48 48"
-                          aria-hidden="true"
-                        >
-                          <circle
-                            cx="24"
-                            cy="24"
-                            r="21"
-                            pathLength="6"
-                            strokeDasharray={`${turnsLeft} 6`}
-                          />
-                        </svg>
-                      )}
-                    </>
-                  )}
-                  {selected === point && <span className="selection-corners" />}
+                  {pointProps.children}
                 </button>
               );
-            })}
-          </div>
+            }}
+          />
           <div className="board-controls">
             <div className="mode-label">
               <span className="mode-dot" />

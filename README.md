@@ -31,7 +31,7 @@ The browser submits only an intent, a command identifier, and the revision it is
 
 Locally, the Vite server owns game state in memory under an HttpOnly, same-site browser cookie. Reloading the page resumes a game while that server process is running. Restarting the local server clears its games. Separate browser profiles have separate games. **Restart Vite after changing server-side rules**: hot-reloaded presentation must not be compared with an older rules module still loaded by the local server.
 
-The packaged Devvit route uses the signed-in Reddit identity and Redis compare-and-set transactions in its own versioned Tide namespace. Actual Reddit deployment and verification are separate steps. Both HTML entrypoints load Tide. Deployment commands retain the original application ID: do not upload this branch over the established release without deliberately choosing to replace that application.
+The packaged Devvit route uses the signed-in Reddit identity and Redis compare-and-set transactions in its own versioned Tide namespace. Actual Reddit deployment and verification are separate steps. `preview.html` loads a passive, fitted illustration using the existing Tide board artwork. **Open Tide** opens the full `index.html` game after a tap or click. The inline preview has no scrolling, stone controls, game session, or spectator polling; the expanded game retains its normal controls. Its illustrative board is not your saved game. Deployment commands retain the original application ID: do not upload this branch over the established release without deliberately choosing to replace that application.
 
 ## Live spectators
 
