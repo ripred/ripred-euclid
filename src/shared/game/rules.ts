@@ -122,7 +122,7 @@ export type RankedSoloRules = SoloRules & {
   readonly winScore: 150;
   readonly humanPlayer: 0;
   readonly firstPlayer: 0;
-  readonly difficulty: "casual";
+  readonly difficulty: "tenderfoot";
 };
 
 export type PracticeRules = SoloRules & { readonly mode: "practice" };
@@ -142,7 +142,7 @@ export const RANKED_SOLO_RULES: Readonly<RankedSoloRules> = Object.freeze({
   winScore: 150,
   humanPlayer: 0,
   firstPlayer: 0,
-  difficulty: "casual",
+  difficulty: "tenderfoot",
 });
 
 export const DEFAULT_PRACTICE_RULES: Readonly<PracticeRules> = Object.freeze({

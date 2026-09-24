@@ -98,8 +98,8 @@ describe("solo request and rules validation", () => {
 
   it("accepts only the fixed Ranked start shape", () => {
     const record = ranked();
-    expect(record.rules.difficulty).toBe("casual");
-    expect(record.board.m_players[1]?.m_playStyle).toBe(PLAY_STYLES.CASUAL);
+    expect(record.rules.difficulty).toBe("tenderfoot");
+    expect(record.board.m_players[1]?.m_playStyle).toBe(PLAY_STYLES.TENDERFOOT);
     expect(
       validateSoloStartRequest({ mode: "ranked", commandId: "start-1" }),
     ).toEqual({
