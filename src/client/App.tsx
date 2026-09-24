@@ -5679,11 +5679,11 @@ const SharedPostView: React.FC<{ share: SharedPostPayload }> = ({ share }) => {
                       textAlign: "left",
                     }}
                   >
-                    <th style={{ padding: "0 12px" }}>RANK</th>
-                    <th style={{ padding: "0 12px" }}>PLAYER</th>
-                    <th style={{ padding: "0 12px" }}>RATING</th>
-                    <th style={{ padding: "0 12px" }}>GAMES</th>
-                    <th style={{ padding: "0 12px" }}>W-L</th>
+                    <th style={{ padding: "0 12px" }}>Rank</th>
+                    <th style={{ padding: "0 12px" }}>Player</th>
+                    <th style={{ padding: "0 12px" }}>Rating</th>
+                    <th style={{ padding: "0 12px" }}>Games</th>
+                    <th style={{ padding: "0 12px" }}>Win–loss</th>
                   </tr>
                 </thead>
                 <tbody>

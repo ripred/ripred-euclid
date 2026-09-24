@@ -290,7 +290,6 @@ input:focus-visible {
   gap: 8px;
   font-family: var(--serif);
   font-size: 18px;
-  text-transform: uppercase;
 }
 .score-name .piece {
   width: 8px;
@@ -347,7 +346,6 @@ input:focus-visible {
 .last-stitch h3 {
   font-family: var(--serif);
   font-size: 19px;
-  text-transform: uppercase;
   letter-spacing: 0.055em;
   font-weight: 400;
   margin: 0 0 15px;
@@ -395,7 +393,6 @@ input:focus-visible {
   font-size: 11px;
   color: var(--muted);
   letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 .weave-dialog {
   width: min(650px, calc(100vw - 32px));
@@ -482,7 +479,6 @@ input:focus-visible {
 }
 .mode-choice legend {
   font-size: 12px;
-  text-transform: uppercase;
   letter-spacing: 0.08em;
   margin-bottom: 12px;
   color: var(--muted);

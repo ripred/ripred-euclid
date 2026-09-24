@@ -10,22 +10,13 @@ import {
   POINTS,
   TARGET,
   TRIANGLES,
-  TRIANGLE_BY_ID,
-  distanceSquared,
   type WeaveState,
 } from "../../shared/edition-game";
 import type { PlayMode, Player } from "../../shared/edition-contract";
 import { useEdition } from "./use-edition";
+import { WeaveBoard } from "./WeaveBoard";
 
 const playerName = (player: Player) => (player === 1 ? "Terracotta" : "Indigo");
-const pointPosition = (point: number) => POINTS[point];
-const edges = POINTS.flatMap((a) =>
-  POINTS.filter((b) => b.id > a.id && distanceSquared(a, b) === 1).map((b) => ({
-    a,
-    b,
-  })),
-);
-
 function Dialog({
   children,
   title,
@@ -220,87 +211,49 @@ function Lattice({
   }
 
   return (
-    <div
-      className={`lattice ${available ? "is-ready" : "is-paused"}`}
-      role="group"
-      aria-label="Seven-row triangular lattice"
-    >
-      <svg
-        className="lattice-threads"
-        viewBox="0 0 1000 870"
-        aria-hidden="true"
-      >
-        <g className="grid-lines">
-          {edges.map(({ a, b }) => (
-            <line key={`${a.id}-${b.id}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
-          ))}
-        </g>
-        {game?.claims.map((claim) => {
-          const triangle = TRIANGLE_BY_ID.get(claim.id);
-          if (!triangle) return null;
-          const points = triangle.corners
-            .map((id) => {
-              const p = pointPosition(id);
-              return p ? `${p.x},${p.y}` : "";
-            })
-            .join(" ");
-          return (
-            <g
-              key={claim.id}
-              className={`claimed-triangle player-${claim.player} ${claim.revision > newFromRevision ? "new-stitch" : ""}`}
-            >
-              <polygon points={points} />
-              <polygon className="stitch-line" points={points} />
-            </g>
-          );
-        })}
-      </svg>
-      {POINTS.map((point) => {
-        const owner = game?.cells[point.id] ?? 0;
-        return (
-          <button
-            key={point.id}
-            className={`lattice-point owner-${owner} ${game?.lastMove?.point === point.id ? "last-point" : ""}`}
-            style={{ left: `${point.x / 10}%`, top: `${point.y / 8.7}%` }}
-            ref={(element) => {
-              buttons.current[point.id] = element;
-            }}
-            tabIndex={point.id === cursor ? 0 : -1}
-            aria-label={`Point ${point.label}, ${owner ? playerName(owner) : "empty"}${game?.lastMove?.point === point.id ? ", last move" : ""}`}
-            aria-disabled={!available || owner !== 0}
-            onFocus={() => setCursor(point.id)}
-            onKeyDown={(event) => {
-              if (event.key.startsWith("Arrow")) {
-                event.preventDefault();
-                navigate(point.id, event.key);
-              } else if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                if (
-                  !event.repeat &&
-                  event.timeStamp >= acceptAfter.current &&
-                  available &&
-                  owner === 0
-                )
-                  onClaim(point.id);
-              }
-            }}
-            onClick={(event) => {
+    <WeaveBoard
+      game={game}
+      available={available}
+      newFromRevision={newFromRevision}
+      renderPoint={(point, owner, pointProps) => (
+        <button
+          key={point.id}
+          {...pointProps}
+          ref={(element) => {
+            buttons.current[point.id] = element;
+          }}
+          tabIndex={point.id === cursor ? 0 : -1}
+          aria-label={`Point ${point.label}, ${owner ? playerName(owner) : "empty"}${game?.lastMove?.point === point.id ? ", last move" : ""}`}
+          aria-disabled={!available || owner !== 0}
+          onFocus={() => setCursor(point.id)}
+          onKeyDown={(event) => {
+            if (event.key.startsWith("Arrow")) {
+              event.preventDefault();
+              navigate(point.id, event.key);
+            } else if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
               if (
+                !event.repeat &&
                 event.timeStamp >= acceptAfter.current &&
                 available &&
                 owner === 0
               )
                 onClaim(point.id);
-            }}
-          >
-            <span className={`point-mark ${owner === 2 ? "diamond" : ""}`} />
-            <span className="point-coordinate" aria-hidden="true">
-              {point.label}
-            </span>
-          </button>
-        );
-      })}
-    </div>
+            }
+          }}
+          onClick={(event) => {
+            if (
+              event.timeStamp >= acceptAfter.current &&
+              available &&
+              owner === 0
+            )
+              onClaim(point.id);
+          }}
+        >
+          {pointProps.children}
+        </button>
+      )}
+    />
   );
 }
 
@@ -456,7 +409,7 @@ export function Weave() {
   return (
     <main className="weave-app">
       <header className="weave-header">
-        <div className="wordmark">WEAVE</div>
+        <div className="wordmark">Weave</div>
         <p>A game of connected triangles</p>
         <nav aria-label="Game">
           <button onClick={() => setRulesOpen(true)}>How to play</button>

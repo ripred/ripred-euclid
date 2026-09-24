@@ -6,6 +6,8 @@ This branch contains the Weave edition. The original Euclid release remains on `
 
 ## Play
 
+The inline post shows a passive, fitted preview using the same lattice artwork. **Open Weave** opens the full game after a tap or click. The preview has no scrolling, point controls, game session, or spectator polling; its illustrative board is not your saved game. `preview.html` loads `edition-preview.tsx`, while `index.html` keeps the full `edition-main.tsx` game and its normal keyboard controls.
+
 Choose **Begin a weave** or **New game**, then **Play Euclid** for a computer opponent or **Play a friend** to alternate turns on the same device. Both modes are unrated. A new game starts with all 28 points empty, and starting over requires confirmation.
 
 - Terracotta moves first. Players alternate claiming one empty point; claims are permanent.
