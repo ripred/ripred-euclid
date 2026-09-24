@@ -1,0 +1,43 @@
+.inline-preview--relay {
+  --inline-background: var(--plum);
+  --inline-text: var(--ivory);
+  --inline-muted: var(--muted);
+  --inline-accent: var(--yellow);
+  --inline-button-text: #201d32;
+  --inline-display: var(--display);
+  --inline-weight: 200;
+}
+.inline-preview--relay .puzzle-board {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  container-type: size;
+}
+.inline-preview--relay .board-point {
+  width: 11%;
+  height: 11%;
+  min-height: 0;
+}
+.inline-preview--relay .point-core {
+  width: 1.5cqw;
+  height: 1.5cqw;
+}
+.inline-preview--relay .occupied .point-core {
+  width: 4cqw;
+  height: 4cqw;
+}
+.inline-preview--relay .placed .point-core {
+  width: 3.3cqw;
+  height: 3.3cqw;
+  border-width: 0.33cqw;
+}
+.inline-preview--relay .last-point .point-core {
+  outline-offset: 0.67cqw;
+}
+.inline-preview--relay .latest-square,
+.inline-preview--relay .connection-rays,
+.inline-preview--relay .point-core {
+  animation: none;
+  transition: none;
+}

@@ -8,7 +8,6 @@ import {
 import {
   PUZZLES,
   SIZE,
-  SQUARE_BY_ID,
   relayPuzzle,
   type RelayState,
 } from "../../shared/edition-game";
@@ -19,13 +18,9 @@ import {
 } from "../../shared/relay-generator";
 import { coordinate } from "../../shared/edition-geometry";
 import { useEdition } from "./use-edition";
+import { RelayBoard } from "./RelayBoard";
 import { selectedRelayPoint, type RelaySelection } from "./relay-selection";
 
-const points = Array.from({ length: SIZE * SIZE }, (_, point) => point);
-const location = (point: number) => ({
-  x: 50 + (point % SIZE) * 100,
-  y: 50 + Math.floor(point / SIZE) * 100,
-});
 const progressKey = "euclid-relay-completed-v1";
 type GeneratorSettings = Omit<RelayGeneratorOptions, "seed"> & {
   seed?: string | undefined;
@@ -297,157 +292,69 @@ function PuzzleBoard({
     acceptAfter.current = performance.now();
   }, [game?.revision, busy]);
   const playable = !!game && game.winner === null && !busy && !readOnly;
-  const last = game?.placements.at(-1);
   const hint =
     !readOnly && selected === game?.hint?.point ? game?.hint?.point : null;
-  const hintSquares =
-    !readOnly && selected === hint ? (game?.hint?.squares ?? []) : [];
   return (
-    <div
-      className="puzzle-board"
-      role="group"
-      aria-label={
-        readOnly
-          ? "Six by six puzzle board. Arrow keys inspect points. Read-only."
-          : "Six by six puzzle board"
-      }
-    >
-      <svg viewBox="0 0 600 600" className="board-art" aria-hidden="true">
-        <g className="board-grid">
-          {Array.from({ length: SIZE }, (_, index) => (
-            <g key={index}>
-              <line
-                x1={50 + index * 100}
-                y1="50"
-                x2={50 + index * 100}
-                y2="550"
-              />
-              <line
-                x1="50"
-                y1={50 + index * 100}
-                x2="550"
-                y2={50 + index * 100}
-              />
-            </g>
-          ))}
-        </g>
-        {hintSquares.map((id) => {
-          const square = SQUARE_BY_ID.get(id);
-          return square ? (
-            <polygon
-              key={`hint-${id}`}
-              className="hint-square"
-              points={square.corners
-                .map((point) => {
-                  const p = location(point);
-                  return `${p.x},${p.y}`;
-                })
-                .join(" ")}
-            />
-          ) : null;
-        })}
-        {game?.completed.map((id) => {
-          const square = SQUARE_BY_ID.get(id);
-          return square ? (
-            <polygon
-              key={id}
-              className={`square ${game.lastSquares.includes(id) ? "latest-square" : ""}`}
-              points={square.corners
-                .map((point) => {
-                  const p = location(point);
-                  return `${p.x},${p.y}`;
-                })
-                .join(" ")}
-            />
-          ) : null;
-        })}
-        {last !== undefined && game && game.lastSquares.length > 0 && (
-          <g className="connection-rays">
-            {Array.from({ length: 24 }, (_, index) => {
-              const angle = (index * Math.PI) / 12;
-              const center = location(last);
-              return (
-                <line
-                  key={index}
-                  x1={center.x + Math.cos(angle) * 16}
-                  y1={center.y + Math.sin(angle) * 16}
-                  x2={center.x + Math.cos(angle) * 46}
-                  y2={center.y + Math.sin(angle) * 46}
-                />
-              );
-            })}
-          </g>
-        )}
-      </svg>
-      {points.map((point) => {
-        const occupied = game?.cells[point] === 1;
-        const placed = game?.placements.includes(point);
-        const p = location(point);
-        return (
-          <button
-            className={`board-point ${occupied ? "occupied" : "empty"} ${placed ? "placed" : ""} ${selected === point ? "selected-point" : ""} ${hint === point ? "hint-point" : ""} ${last === point ? "last-point" : ""}`}
-            key={point}
-            ref={(element) => {
-              refs.current[point] = element;
-            }}
-            style={{ left: `${p.x / 6}%`, top: `${p.y / 6}%` }}
-            tabIndex={cursor === point ? 0 : -1}
-            aria-label={`${coordinate(point)}, ${occupied ? (placed ? (readOnly ? "placed point" : "your placed point") : "starting point") : "empty"}${selected === point ? ", selected" : ""}${hint === point ? ", suggested point" : ""}`}
-            aria-disabled={!playable || occupied}
-            aria-pressed={selected === point}
-            onFocus={() => setCursor(point)}
-            onClick={(event) => {
+    <RelayBoard
+      game={game}
+      selected={selected}
+      readOnly={readOnly}
+      renderPoint={(point, occupied, placed, pointProps) => (
+        <button
+          {...pointProps}
+          key={point}
+          ref={(element) => {
+            refs.current[point] = element;
+          }}
+          tabIndex={cursor === point ? 0 : -1}
+          aria-label={`${coordinate(point)}, ${occupied ? (placed ? (readOnly ? "placed point" : "your placed point") : "starting point") : "empty"}${selected === point ? ", selected" : ""}${hint === point ? ", suggested point" : ""}`}
+          aria-disabled={!playable || occupied}
+          aria-pressed={selected === point}
+          onFocus={() => setCursor(point)}
+          onClick={(event) => {
+            if (playable && !occupied && event.timeStamp >= acceptAfter.current)
+              onSelect(point);
+          }}
+          onKeyDown={(event) => {
+            const delta =
+              event.key === "ArrowUp"
+                ? -SIZE
+                : event.key === "ArrowDown"
+                  ? SIZE
+                  : event.key === "ArrowLeft"
+                    ? -1
+                    : event.key === "ArrowRight"
+                      ? 1
+                      : null;
+            if (delta !== null) {
+              event.preventDefault();
+              const next = point + delta;
               if (
-                playable &&
-                !occupied &&
-                event.timeStamp >= acceptAfter.current
+                next < 0 ||
+                next >= SIZE * SIZE ||
+                (Math.abs(delta) === 1 &&
+                  Math.floor(next / SIZE) !== Math.floor(point / SIZE))
               )
-                onSelect(point);
-            }}
-            onKeyDown={(event) => {
-              const delta =
-                event.key === "ArrowUp"
-                  ? -SIZE
-                  : event.key === "ArrowDown"
-                    ? SIZE
-                    : event.key === "ArrowLeft"
-                      ? -1
-                      : event.key === "ArrowRight"
-                        ? 1
-                        : null;
-              if (delta !== null) {
-                event.preventDefault();
-                const next = point + delta;
-                if (
-                  next < 0 ||
-                  next >= SIZE * SIZE ||
-                  (Math.abs(delta) === 1 &&
-                    Math.floor(next / SIZE) !== Math.floor(point / SIZE))
-                )
-                  return;
-                setCursor(next);
-                refs.current[next]?.focus();
-                if (playable && game?.cells[next] === 0) onSelect(next);
-              } else if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                if (
-                  !event.repeat &&
-                  event.timeStamp >= acceptAfter.current &&
-                  playable &&
-                  !occupied
-                )
-                  onPlace(point);
-              }
-            }}
-          >
-            <span className="point-core" />
-            <span className="coordinate-label" aria-hidden="true">
-              {coordinate(point)}
-            </span>
-          </button>
-        );
-      })}
-    </div>
+                return;
+              setCursor(next);
+              refs.current[next]?.focus();
+              if (playable && game?.cells[next] === 0) onSelect(next);
+            } else if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              if (
+                !event.repeat &&
+                event.timeStamp >= acceptAfter.current &&
+                playable &&
+                !occupied
+              )
+                onPlace(point);
+            }
+          }}
+        >
+          {pointProps.children}
+        </button>
+      )}
+    />
   );
 }
 

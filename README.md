@@ -50,7 +50,7 @@ Local testing uses separate browser profiles, or one normal window and one priva
 
 ## Development
 
-This branch is `redesign/relay`. Both `index.html` and `preview.html` launch Relay. The existing Devvit packaging and original game modules remain available, but the edition entrypoints do not render those modules.
+This branch is `redesign/relay`. `preview.html` loads a passive, fitted illustration using the existing Relay board artwork. **Open Relay** opens the full `index.html` game after a tap or click. The inline preview has no scrolling, point controls, active puzzle session, or spectator polling; it does not start a puzzle or change introductory progress. Its illustrative board is not your saved puzzle. The expanded game retains all puzzle, hint, generator, and spectator controls. The existing Devvit packaging and original game modules remain available, but the edition entrypoints do not render those modules.
 
 Use Node.js 24 and the pinned dependencies:
 
