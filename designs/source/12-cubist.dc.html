@@ -13,7 +13,7 @@
 <style>
 body{margin:0;background:#EFE3C8;font-family:"Syne",system-ui,sans-serif;color:#1E1B18}
 a{color:#2E4E9E}a:hover{color:#1E1B18}
-.cb{font-family:"Syne",system-ui,sans-serif;font-size:16px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;min-height:50px;padding:0 22px;border:4px solid #1E1B18;background:#EFE3C8;color:#1E1B18;cursor:pointer}
+.cb{white-space:nowrap;font-family:"Syne",system-ui,sans-serif;font-size:14px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;min-height:50px;padding:0 16px;border:4px solid #1E1B18;background:#EFE3C8;color:#1E1B18;cursor:pointer}
 .split{background:linear-gradient(90deg,#D9918A 0 50%,#C9973F 50% 100%)}
 .split-d{background:linear-gradient(118deg,#D9918A 0 50%,#C9973F 50% 100%)}
 </style>
@@ -71,11 +71,11 @@ a{color:#2E4E9E}a:hover{color:#1E1B18}
   <!-- scores -->
   <div style="position: absolute; left: 712px; top: 196px; width: 200px; height: 168px; box-sizing: border-box; padding: 14px 18px; background: #2E4E9E; color: #EFE3C8; border: 5px solid #1E1B18; transform: rotate(-3deg); display: flex; flex-direction: column; justify-content: space-between">
     <div style="font-size: 16px; font-weight: 800; letter-spacing: .1em">YOU</div>
-    <div style="font-size: 96px; font-weight: 800; line-height: .9">27</div>
+    <div style="font-size: 64px; font-weight: 800; line-height: .9; letter-spacing: -.02em">27</div>
   </div>
   <div class="split-d" style="position: absolute; left: 930px; top: 210px; width: 210px; height: 168px; box-sizing: border-box; padding: 14px 18px; border: 5px solid #1E1B18; transform: rotate(4deg); display: flex; flex-direction: column; justify-content: space-between">
     <div style="font-size: 16px; font-weight: 800; letter-spacing: .1em">EUCLID</div>
-    <div style="font-size: 96px; font-weight: 800; line-height: .9">29</div>
+    <div style="font-size: 64px; font-weight: 800; line-height: .9; letter-spacing: -.02em">29</div>
   </div>
   <!-- the watching eye -->
   <div style="position: absolute; left: 1066px; top: 168px; width: 92px; height: 50px; background: #EFE3C8; border: 4px solid #1E1B18; border-radius: 100% 0; transform: rotate(-14deg); display: flex; align-items: center; justify-content: center">
@@ -95,7 +95,7 @@ a{color:#2E4E9E}a:hover{color:#1E1B18}
     </sc-for>
   </div>
 
-  <div style="position: absolute; left: 716px; top: 648px; display: flex; gap: 12px">
+  <div style="position: absolute; left: 716px; top: 648px; display: flex; gap: 10px">
     <button class="cb" style="transform: rotate(-2deg)">Hint</button>
     <button class="cb" style="transform: rotate(2deg); background: #C9973F">Squares</button>
     <button class="cb" style="transform: rotate(-1deg); background: #2E4E9E; color: #EFE3C8">New game</button>
@@ -146,7 +146,7 @@ class Component extends DCLogic {
       seg(696, 384, 360, 440, 6), seg(696, 384, 1200, 304, 6), seg(360, 440, 456, 800, 6),
       seg(696, 384, 768, 800, 6), seg(984, 496, 1200, 464, 5), seg(984, 496, 1056, 800, 5)
     ];
-    var recent = L.log.slice(0, 4).map(function (r) { return { cell: r.cell, who: r.a ? 'You' : 'Euclid', bg: r.a ? '#2E4E9E' : 'transparent', cls: r.a ? '' : 'split-d', plus: r.plus }; });
+    var recent = L.log.slice(0, 4).map(function (r) { return { cell: r.cell, who: r.a ? 'You' : 'Euclid', bg: r.a ? '#2E4E9E' : 'linear-gradient(118deg,#D9918A 0 50%,#C9973F 50% 100%)', cls: '', plus: r.plus }; });
     return { cells: L.cells, lines: L.lines, squares: L.squares, fractures: fractures, recent: recent };
   }
 }
