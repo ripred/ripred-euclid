@@ -31,5 +31,8 @@ runtime and Playwright:
 node designs/tools/render.mjs <out-dir> designs/source/*.dc.html
 ```
 
-It needs `playwright-core` and a Chromium executable; adjust `executablePath`
-in the script for your machine.
+It needs `playwright-core`, `curl`, and a Chromium executable; adjust
+`executablePath` in the script for your machine. Google Fonts requests are
+fetched through `curl`, so they use the system trust store (including any
+proxy certificate authority) instead of Chromium's; without the fonts, every
+mockup silently falls back to default faces and its layout shifts.
