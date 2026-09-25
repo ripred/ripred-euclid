@@ -26,9 +26,9 @@ a{color:#1C3765}a:hover{color:#B23A28}
   <div style="position: absolute; left: 862px; top: 226px; width: 120px; height: 66px; background: #4A6F9A; clip-path: polygon(50% 0, 100% 100%, 0 100%)"></div>
   <div style="position: absolute; left: 896px; top: 226px; width: 52px; height: 22px; background: #F4ECD8; clip-path: polygon(50% 0, 100% 100%, 78% 70%, 62% 100%, 42% 72%, 22% 100%, 0 100%)"></div>
 
-  <div style="position: absolute; left: 700px; top: -40px; width: 420px; height: 420px; border-radius: 50%; box-sizing: border-box; border: 64px solid #1C3765; border-bottom-color: transparent; border-left-color: transparent; transform: rotate(-24deg)"></div>
-  <div style="position: absolute; left: 752px; top: 12px; width: 316px; height: 316px; border-radius: 50%; box-sizing: border-box; border: 22px solid #4A6F9A; border-bottom-color: transparent; border-left-color: transparent; transform: rotate(-24deg)"></div>
-  <div style="position: absolute; left: 782px; top: 42px; width: 256px; height: 256px; border-radius: 50%; box-sizing: border-box; border: 8px solid #A9BFCF; border-bottom-color: transparent; border-left-color: transparent; transform: rotate(-24deg)"></div>
+  <div style="position: absolute; left: 700px; top: -40px; width: 420px; height: 420px; border-radius: 50%; box-sizing: border-box; border: 64px solid #1C3765; border-bottom-color: transparent; transform: rotate(20deg)"></div>
+  <div style="position: absolute; left: 752px; top: 12px; width: 316px; height: 316px; border-radius: 50%; box-sizing: border-box; border: 22px solid #4A6F9A; border-bottom-color: transparent; transform: rotate(20deg)"></div>
+  <div style="position: absolute; left: 782px; top: 42px; width: 256px; height: 256px; border-radius: 50%; box-sizing: border-box; border: 8px solid #A9BFCF; border-bottom-color: transparent; transform: rotate(20deg)"></div>
 
   <div style="position: absolute; left: 610px; top: 296px; width: 600px; height: 210px; border-radius: 50% 50% 0 0; background: #1C3765"></div>
   <div style="position: absolute; left: 650px; top: 320px; width: 520px; height: 180px; border-radius: 50% 50% 0 0; box-sizing: border-box; border: 3px solid #4A6F9A; border-bottom: 0"></div>
@@ -81,17 +81,17 @@ a{color:#1C3765}a:hover{color:#B23A28}
   <div style="position: absolute; left: 700px; top: 528px; width: 450px; display: flex; flex-direction: column; gap: 16px">
     <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px">
       <div style="border: 2px solid #1C3765; background: #EFE4C9; padding: 10px 16px; display: flex; align-items: center; gap: 14px">
-        <div style="width: 26px; height: 26px; border-radius: 50%; background: #1C3765; box-shadow: inset 0 0 0 3px #4A6F9A, inset 0 0 0 5px #1C3765"></div>
+        <div style="width: 26px; height: 26px; flex-shrink: 0; border-radius: 50%; background: #1C3765; box-shadow: inset 0 0 0 3px #4A6F9A, inset 0 0 0 5px #1C3765"></div>
         <div style="flex-grow: 1; font-size: 14px; letter-spacing: .12em">YOU<br>INDIGO</div>
         <div style="font-size: 60px; font-weight: 800; line-height: 1">27</div>
       </div>
       <div style="border: 2px solid #1C3765; background: #EFE4C9; padding: 10px 16px; display: flex; align-items: center; gap: 14px">
-        <div style="width: 26px; height: 26px; border-radius: 50%; background: #D6A85A; box-shadow: 0 0 0 2px #1C3765"></div>
+        <div style="width: 26px; height: 26px; flex-shrink: 0; border-radius: 50%; background: #D6A85A; box-shadow: 0 0 0 2px #1C3765"></div>
         <div style="flex-grow: 1; font-size: 14px; letter-spacing: .12em">EUCLID<br>OCHRE</div>
         <div style="font-size: 60px; font-weight: 800; line-height: 1; color: #7A5214">29</div>
       </div>
     </div>
-    <div style="font-size: 18px">Your move. Euclid rode in at H6; the tide is first to 150.</div>
+    <div style="font-size: 18px">Your move. Euclid rode in at H6.</div>
     <div style="display: flex; gap: 10px">
       <button class="wb">Hint</button>
       <button class="wb">Squares</button>
@@ -139,13 +139,13 @@ class Component extends DCLogic {
     // foam claws along the crest of the curl, centre (910,170)
     var foam = [], spray = [];
     for (var i = 0; i < 18; i++) {
-      var t = (-172 + i * 7.5) * Math.PI / 180;
-      var r = 214 + (i % 2 ? 10 : 0);
+      var t = (128 + i * 7) * Math.PI / 180;
+      var r = 212 + (i % 2 ? 14 : 0);
       var s = 14 + (i % 3) * 6;
       foam.push({ x: 910 + r * Math.cos(t), y: 170 + r * Math.sin(t), s: s, m: -s / 2 });
     }
     for (var j = 0; j < 14; j++) {
-      var u = (-176 + j * 9) * Math.PI / 180, rr = 250 + (j * 37 % 40);
+      var u = (120 + j * 10) * Math.PI / 180, rr = 250 + (j * 37 % 40);
       spray.push({ x: 910 + rr * Math.cos(u), y: 170 + rr * Math.sin(u) });
     }
     return { cells: L.cells, lines: L.lines, squares: L.squares, foam: foam, spray: spray };
