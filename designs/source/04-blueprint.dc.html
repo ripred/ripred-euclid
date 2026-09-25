@@ -48,9 +48,10 @@ a{color:#FFC857}a:hover{color:#FFE0A0}
     </sc-for>
 
     <!-- callout for the newest square -->
-    <div style="position: absolute; left: 109px; top: 414px; width: 1.5px; height: 200px; background: #DDEBFA"></div>
+    <div style="position: absolute; left: 105px; top: 419px; width: 44px; height: 1.5px; background: #DDEBFA; transform-origin: 0 50%; transform: rotate(135deg)"></div>
+    <div style="position: absolute; left: 74px; top: 450px; width: 1.5px; height: 160px; background: #DDEBFA"></div>
     <div style="position: absolute; left: 104px; top: 409px; width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid #DDEBFA; box-sizing: border-box"></div>
-    <div style="position: absolute; left: 122px; top: 596px; font-size: 12px; font-weight: 700; letter-spacing: .1em; white-space: nowrap">SQ-05 · A · CORNER B3 · 3 × 3 · +9</div>
+    <div style="position: absolute; left: 84px; top: 596px; font-size: 12px; font-weight: 700; letter-spacing: .1em; white-space: nowrap">SQ-05 · A · CORNER B3 · 3 × 3 · +9</div>
 
     <sc-for list="{{cells}}" as="c" hint-placeholder-count="64">
       <sc-if value="{{c.empty}}" hint-placeholder-val="{{ true }}">
@@ -78,7 +79,7 @@ a{color:#FFC857}a:hover{color:#FFE0A0}
   </div>
 
   <!-- title block -->
-  <div style="position: absolute; left: 720px; top: 52px; width: 420px; display: flex; flex-direction: column; gap: 16px">
+  <div style="position: absolute; left: 720px; top: 52px; width: 420px; display: flex; flex-direction: column; gap: 14px">
     <div>
       <div style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 72px; line-height: .9; letter-spacing: .08em">EUCLID</div>
       <div style="font-size: 12px; letter-spacing: .16em; margin-top: 6px">GRID STRATEGY · DRAWING NO. EU-8</div>
@@ -108,6 +109,11 @@ a{color:#FFC857}a:hover{color:#FFE0A0}
       <button class="bpb">HINT</button>
       <button class="bpb">LAYERS</button>
       <button class="bpb" style="border-color: #FFC857; color: #FFC857">NEW SHEET</button>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 6px; border-top: 1px solid rgba(221,235,250,.5); padding-top: 12px; font-size: 11px; line-height: 1.5; letter-spacing: .06em; opacity: .9">
+      <div style="font-weight: 700; letter-spacing: .14em">NOTES</div>
+      <div>1. DISC = A · RING WITH CROSSHAIR = B</div>
+      <div>2. SCORE = FOOTPRINT² · TURNED SQUARES COUNT</div>
     </div>
   </div>
 </div>
