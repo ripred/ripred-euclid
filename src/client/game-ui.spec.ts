@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   calculateBoardLayout,
+  shouldPlaceFromKey,
   getH2HExitAction,
   getH2HResultPresentation,
   isLocalVictory,
@@ -295,10 +296,10 @@ describe("calculateBoardLayout", () => {
 
   it("preserves cell-size clamps and large-board dot scaling", () => {
     expect(calculateBoardLayout(1_200, 900, 8, 8)).toMatchObject({
-      cellSize: 64,
-      dotSize: 52,
-      boardWidth: 512,
-      boardHeight: 512,
+      cellSize: 88,
+      dotSize: 72,
+      boardWidth: 704,
+      boardHeight: 704,
     });
 
     expect(calculateBoardLayout(168, 0, 16, 16)).toMatchObject({
@@ -330,5 +331,23 @@ describe("calculateBoardLayout", () => {
     expect(() => calculateBoardLayout(width, height, columns, rows)).toThrow(
       RangeError,
     );
+  });
+});
+
+describe("shouldPlaceFromKey", () => {
+  const key = (timeStamp: number, repeat = false) => ({ timeStamp, repeat });
+
+  it("places only on a fresh press during a placeable turn", () => {
+    expect(shouldPlaceFromKey(key(120), 100, true)).toBe(true);
+  });
+
+  it("drops keystrokes that queued before the turn became placeable", () => {
+    expect(shouldPlaceFromKey(key(80), 100, true)).toBe(false);
+    expect(shouldPlaceFromKey(key(120), Infinity, true)).toBe(false);
+  });
+
+  it("ignores held-key repeats and presses while no placement is allowed", () => {
+    expect(shouldPlaceFromKey(key(120, true), 100, true)).toBe(false);
+    expect(shouldPlaceFromKey(key(120), 100, false)).toBe(false);
   });
 });

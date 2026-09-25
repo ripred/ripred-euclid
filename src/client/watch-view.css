@@ -1,154 +1,121 @@
-/* Expanded spectator pages scroll as one surface, so controls remain reachable
-   even in Reddit's shortest viewport or with enlarged browser text. */
-.watch-page {
-  --watch-surface: #101d30;
-  --watch-border: #34465e;
-  --watch-muted: #b5c3d5;
-  box-sizing: border-box;
-  width: 100%;
-  height: 100vh;
-  height: 100dvh;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
-  padding: clamp(12px, 3vw, 28px);
-  color: #f8fafc;
-  background: #0b1220;
-}
+/* Spectator lobby, replay and unavailable views. */
 
-.watch-page[data-theme="light"] {
-  --watch-surface: #ffffff;
-  --watch-border: #b8cbe3;
-  --watch-muted: #4b647f;
-  color: #0f172a;
-  background: #f1f5f9;
-}
-
-.watch-page *,
-.watch-controls,
-.watch-controls * {
-  box-sizing: border-box;
-  min-width: 0;
-}
-
-.watch-page__content {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  width: 100%;
-  max-width: 680px;
-  margin: 0 auto;
-  overflow-wrap: anywhere;
-}
-
-.watch-page h1,
-.watch-page h2,
-.watch-page h3,
-.watch-page p,
-.watch-page dl,
-.watch-page dd {
+.watch-page h2 {
   margin: 0;
-}
-
-.watch-page h1 {
-  font-size: clamp(23px, 4vw, 32px);
-  line-height: 1.2;
+  font-size: var(--fs-lg);
   font-weight: 800;
 }
 
-.watch-page h2 {
-  font-size: 20px;
-  font-weight: 700;
+.watch-page__content {
+  display: grid;
+  gap: var(--sp-4);
 }
 
-.watch-page h3 {
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.watch-page p {
-  line-height: 1.5;
+.watch-page__content > p {
+  margin: 0;
 }
 
 .watch-page__muted {
-  color: var(--watch-muted);
+  margin: 0;
+  color: var(--text-2);
 }
 
-.watch-page__panel,
-.watch-match {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  border: 1px solid var(--watch-border);
-  border-radius: 16px;
-  background: var(--watch-surface);
+.watch-page__panel {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.watch-page__panel p {
+  margin: 0;
 }
 
 .watch-matches {
   display: grid;
-  gap: 16px;
-  margin: 12px 0 0;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--sp-3);
+  margin: var(--sp-3) 0 0;
   padding: 0;
   list-style: none;
+}
+
+.watch-match {
+  display: grid;
+  gap: var(--sp-3);
+  animation: rise-in 420ms var(--ease-out) both;
+}
+
+.watch-match__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.watch-match__head h3 {
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--fs-md);
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .watch-match__scores {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: var(--sp-2);
+  margin: 0;
 }
 
-.watch-match__scores dt {
-  font-weight: 600;
+.watch-match__player {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
 }
 
-.watch-match__scores dd {
-  font-size: 28px;
-  font-weight: 800;
+.watch-match__player::before {
+  grid-row: span 2;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--token-red);
+  content: "";
+}
+
+.watch-match__player--2::before {
+  background: var(--token-blue);
+}
+
+.watch-match__player dt {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.watch-match__player dd {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-stretch: var(--wide);
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
 }
 
 .watch-match__activity {
-  font-size: 13px;
+  font-size: var(--fs-xs);
 }
 
 .watch-controls {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  align-items: stretch;
-  gap: 10px;
+  gap: var(--sp-2);
+}
+
+.watch-match .watch-controls .btn {
   width: 100%;
-}
-
-.watch-controls button {
-  min-height: 44px;
-  max-width: 100%;
-  padding: 10px 16px;
-  border: 1px solid currentColor;
-  border-radius: 10px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-weight: 700;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-  cursor: pointer;
-}
-
-.watch-controls button.watch-controls__primary {
-  border-color: #2563eb;
-  color: #ffffff;
-  background: #2563eb;
-}
-
-.watch-controls button:focus-visible,
-.watch-page:focus-visible {
-  outline: 3px solid #c67612;
-  outline-offset: 3px;
-}
-
-.watch-controls button:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
 }

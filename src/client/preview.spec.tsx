@@ -94,7 +94,7 @@ describe("inline preview", () => {
     "persistent %s actions",
     (theme) => {
       it.each(["intro", "demo", "leaderboard"] as const)(
-        "keeps Play and Watch Live available during %s",
+        "keeps Play and Watch live available during %s",
         (surfaceMode) => {
           const onExpand = vi.fn();
           const html = renderToStaticMarkup(
@@ -106,9 +106,9 @@ describe("inline preview", () => {
             />,
           );
           expect(html).toContain('data-entry="game"');
-          expect(html).toContain("Start Playing!");
+          expect(html).toContain("Play Euclid");
           expect(html).toContain('data-entry="watch"');
-          expect(html).toContain("Watch Live");
+          expect(html).toContain("Watch live");
           expect(html.includes("Full leaderboard")).toBe(
             surfaceMode === "leaderboard",
           );
@@ -165,8 +165,8 @@ describe("inline preview", () => {
     );
     expect(html).toContain('role="alert"');
     expect(html).toContain("Could not open. Please try again.");
-    expect(html).toContain("Watch Live");
-    expect(html).toContain("Start Playing!");
+    expect(html).toContain("Watch live");
+    expect(html).toContain("Play Euclid");
   });
 
   it("keeps inline bounds separate from every expanded entry", () => {

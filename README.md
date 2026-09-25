@@ -6,9 +6,9 @@ Euclid is a turn-based Reddit strategy game about claiming grid points and compl
 
 ![Euclid game](Euclid-Game2.png)
 
-The local package is `0.1.109` and the project is pinned to Devvit `0.14.2`. Deployment and Git pushes are separate operations.
+The local package is `0.2.5` and the project is pinned to Devvit `0.14.2`. This release introduces the redesigned interface, gameplay presentation, artwork, and sound. Deployment and Git pushes are separate operations.
 
-The intended public-facing community is [r/EuclidTheGame](https://www.reddit.com/r/EuclidTheGame/), currently private for beta testing. The current original build is installed there as `0.1.109`, confirmed by a separate installation readback on September 7, 2026. The development subreddit was not changed and was last verified at `0.1.99`. The communities' matching icon and desktop/mobile banners were unchanged; the development playtest target remains `r/ripred_euclid_dev`. Installation verification is separate from the desktop and native-mobile gameplay checks below.
+The intended public-facing community is [r/EuclidTheGame](https://www.reddit.com/r/EuclidTheGame/), currently private for beta testing. Deploy the `0.2.5` release there and verify the installed version separately with `npx devvit list installs EuclidTheGame`. The development playtest target remains `r/ripred_euclid_dev`; a release installation on the beta community does not update that target or change subreddit icons and banners. Installation verification is separate from the desktop and native-mobile gameplay checks below.
 
 ## Game rules
 
@@ -25,7 +25,7 @@ The first player to reach the target wins. If the board fills first, the higher 
 
 | Mode                 | Rules                                                                                   | Rating          | Persistence and assistance                                                                     |
 | -------------------- | --------------------------------------------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------- |
-| Ranked vs Euclid     | 8×8, Grid Footprint, first to 150, human first, Brutal                                  | Ranked solo Elo | One active game per user; reload resumes it; assistance is disabled                            |
+| Ranked vs Euclid     | 8×8, Grid Footprint, first to 150, human first, Tenderfoot                                  | Ranked solo Elo | One active game per user; reload resumes it; visible assistance is disabled                            |
 | Practice vs Euclid   | Even dimensions from 4 through 16, either scoring mode, supported target and difficulty | Unrated         | Server-authoritative custom game; hints and local auto-move tools are allowed                  |
 | Redditor vs Redditor | 8×8, Grid Footprint, first to 150                                                       | Multiplayer Elo | Matchmaking, reload resume, leave/forfeit, rematch, participant chat, and read-only spectating |
 
@@ -35,7 +35,9 @@ Ranked solo Elo starts at 1200 and uses K=32 against Euclid's fixed 1600 referen
 
 Euclid has nine difficulty levels. Brutal prioritizes its own immediate win, then prevents an opponent's immediate win, compares immediate offensive and defensive value, and finally pursues longer-term square construction.
 
-The home screen shows the selected difficulty beside **Play Euclid** and offers **Change difficulty**. Practice remembers a valid selection in browser storage, falling back to Beginner when storage is unavailable. Ranked and resumed games retain their server-owned rules.
+Ranked games use Tenderfoot, with the same fixed rules and difficulty for every player.
+
+The home screen shows the selected difficulty beside **Play Euclid**. **Change difficulty** appears only in Practice; Ranked displays its fixed preset. Options remains available from the home navigation. Practice remembers a valid selection in browser storage, falling back to Beginner when storage is unavailable. Ranked and resumed games retain their server-owned rules.
 
 ## Authority and integrity
 
@@ -59,12 +61,13 @@ Home records, resume and queue status, and live scoring effects are projections 
 
 ## Application surfaces
 
-- The default inline post entrypoint fits the post container without document or nested scrolling: intro, the existing rules-demo artwork, then compact live standings. Tap **vs Redditors** or **vs Euclid** to choose a standings bucket. Preview onboarding is complete only after the full demo finishes.
-- **Start Playing!** and **Watch Live** stay visible throughout the inline rotation. They open the expanded `game` and `watch` entrypoints respectively; Watch goes directly to the spectator lobby without joining a match. **Full leaderboard** opens the expanded `leaderboard` entrypoint, which reuses the full app in rankings mode. Expansion follows the user's button action.
+- The default inline post entrypoint fits the post container without document or nested scrolling. It opens on the finished teaching board as a poster, then replays that recorded game move by move: quick moves between six narrated lessons, each preceded by a pulse where the next piece lands. The blocking lesson outlines the denied square. Compact live standings follow; tap **vs Redditors** or **vs Euclid** to choose a bucket. Wide posts run the board the full post height with the story and actions beside it; narrow posts keep a full-width action row. Preview onboarding is complete only after the full demo finishes.
+- **Play Euclid** and **Watch live** stay visible throughout the inline rotation. They open the expanded `game` and `watch` entrypoints respectively; Watch goes directly to the spectator lobby without joining a match. **Full leaderboard** opens the expanded `leaderboard` entrypoint, which reuses the full app in rankings mode. Expansion follows the user's button action.
 - Solo gameplay shortcuts require a fresh key press during the displayed human turn. Buffered keys, held-key repeats, and partial shortcut input do not carry into the next turn; gameplay keys are ignored while a move is pending or the game has ended. Chat typing is unaffected.
 - Expanded solo, multiplayer, and spectator games share a viewport-bounded layout. Board sizing accounts for the actual title, scores, chat, and action controls as they resize or wrap. Unusually small expanded frames retain scrolling rather than clipping controls or shrinking cells below their minimum size.
-- The expanded entrypoint opens on a responsive navy-and-vector-grid dashboard. **Play Euclid** is the primary action, **Play a Redditor** is secondary, separate solo and multiplayer ratings are shown, and saved solo games, active Redditor matches, and matchmaking state have explicit continue or cancel controls. Live games, Leaderboard, Options, and Rules remain quieter navigation.
-- Canonical scoring moves show `+N` and the completed-square count beside the move and scorecard, animate only the newly completed squares, and briefly show each new square's enclosing footprint in Grid Footprint mode. Players can hide accumulated square lines without hiding the active scoring event; True Area does not show a footprint overlay.
+- The expanded entrypoint opens on a home screen under a close-up of a board in play. **Play Euclid** is the primary action, with a Practice/Ranked switch beside it; **Play a Redditor** is secondary. Separate solo and multiplayer ratings are shown, and saved solo games, active Redditor matches, and matchmaking state have explicit continue or cancel controls. A "Learn in a minute" strip shows the three illustrated lessons. Live games, Leaderboard, Options, and Rules remain quieter navigation.
+- The game screen keeps the board, both scoreboards, the turn status, and chat in one column whose width follows the board. Each scoreboard races toward the target score. Points are keyboard-operable grid cells with coordinate and ownership labels, arrow navigation, and Enter or Space placement; board keystrokes never queue ahead of a move, so a key places only if it was pressed after the turn became placeable and is not a repeat. On touch screens with small cells, the first tap aims (preview piece and pulse) and a second tap on the same point places. Practice games and Redditor matches offer the square-hint toggle in the game bar.
+- Canonical scoring moves show `+N` beside the move (with the footprint size, such as `3×3 footprint`, in Grid Footprint mode) and on the scorecard, count the score up, draw only the newly completed squares with a corner flash, and briefly show each new square's enclosing footprint in Grid Footprint mode. Players can hide accumulated square lines without hiding the active scoring event; True Area does not show a footprint overlay.
 - Live Redditor matches give participants a visible, touch-sized **Chat** control while retaining the `\` keyboard shortcut. The focus-contained composer has explicit Send and Cancel actions, and its chronological live log wraps long messages without trapping the board controls below the viewport. Spectators can read the existing shared log but cannot compose messages.
 - After a normally completed Redditor match, either participant can select **Rematch** while both players remain attached. The request is bound to the terminal revision, simultaneous requests converge on one canonical new round, and a player who already left is never silently restored. The server derives ongoing rematch availability from both participant mappings; if either player closes, the remaining client hides the action and stops terminal polling without changing the finished board. If terminal Close and an untouched rematch race, Close cancels that rematch without recording a forfeit. Finished-round sharing is bound to the immutable terminal revision, so a rematch cannot replace the result being shared.
 - Shared leaderboard and victory posts have compact inline summaries with an explicit expansion button. Inline leaderboard summaries retain the canonical row order and show only the leading rows that fit; the expanded snapshot retains every row. Inline victories show canonical final scores and outcome; the expanded result includes the full board replay and footer, with a side-by-side layout on wider screens and a keyboard-accessible scroll area on smaller screens. Older solo replay payloads retain their player-one-first fallback.
@@ -96,7 +99,16 @@ src/client/
   rankings-loader.ts  Shared validated rankings request
   fetch-json.ts      Shared JSON transport and HTTP-error handling
   share-preview.tsx   Compact inline share summaries and expanded result presentation
-  App.tsx              Full-game orchestration, canonical state adoption, and board UI
+  App.tsx              Full-game orchestration and canonical state adoption
+  game-screen.tsx      Board, scoreboards, keyboard/touch placement, and result dialogs
+  game-results.ts      Per-player result summaries from the canonical board
+  how-to-play.tsx      Illustrated rules for the rules dialog, tutorial, and home
+  setup-screen.tsx     Practice and Ranked setup with a live board preview
+  rankings-screen.tsx  Tabbed full leaderboard
+  format.ts            Shared rules, scoring, and date labels
+  design/              Design tokens (tokens.css) and shared primitives (base.css)
+  ui/                  Board renderer, geometry, brand, dialog, icons, page shell, standings
+  dev/                 Development-only brand art preview and PNG export
   home-lifecycle.ts    Queue recovery and stale-request transition policy
   home-screen.tsx      Responsive home dashboard and transition/status surfaces
   home-ui.ts           Pure record, resume, and matchmaking presentation
@@ -145,6 +157,7 @@ Useful commands:
 ```bash
 npm run dev       # client/server watchers plus Devvit playtest
 npm run dev:vite  # browser-only Vite surface on port 7474
+npm run dev:local # the real client and server on http://127.0.0.1:7474, no Reddit needed
 npm run build     # production client and server bundles in dist/
 ```
 
@@ -155,6 +168,16 @@ Tests are colocated as `*.spec.{ts,tsx}` files. `vitest.config.ts` restricts dis
 Vitest is pinned to `5.0.0`. Devvit stays at `0.14.2`: the deprecated `devvit@1.0.0` package has no CLI executable and breaks playtest/upload. A scoped `@devvit/cli` override selects `inquirer@9.3.8`, which replaces the legacy editor and removes `tmp` from the dependency tree. A version-scoped override replaces the CLI's `js-yaml@4.3.1` with `4.3.2` to enforce empty-map merge limits (GHSA-2883-xcg3-v3hh), preserving the separate patched 3.x dependency used by oclif. Remove this YAML override when a compatible Devvit release supplies the patched dependency. `npm run test:dependencies` checks temporary-file containment, non-string affixes, the editor round trip, input/list/confirm prompts, Vitest mock redirects against Vite file-serving rules, and Devvit YAML merge limits and parsing compatibility. `npm run check:devvit` checks command loading, validates the built entrypoints, and runs the same local bundler used by upload/playtest without uploading or installing. Run it after the build.
 
 The September 11, 2026 full audit still reports three high-severity affected development packages in the Devvit CLI's `image-size` chain; the production-only audit reports zero. These are separate from the resolved `tmp`, Vitest, and `js-yaml` advisories. Do not run `npm audit fix --force`: its proposed `devvit@1.0.0` replacement removes the CLI. Reassess these remaining paths when compatible fixes are available. `@devvit/public-api` is pinned as a development-only packaging compatibility dependency because the 0.14.2 CLI resolves its generated template from the project root; Euclid remains a Devvit Web app and application source must not import that legacy API. `package.json` also pins the reviewed install-script approvals needed by the native build tools—run `npm install-scripts ls` after dependency changes.
+
+### Playing locally
+
+`npm run dev:local` bundles the unmodified server against a small in-memory stand-in for the Devvit APIs it uses (`tools/local-devvit/`), serves the client with Vite, and proxies `/api`. It is never part of an upload. Useful routes while it runs:
+
+- `/preview.html` is the inline post; `/index.html`, `/leaderboard.html`, and `/watch.html` are the expanded entrypoints.
+- `?as=alice` gives one tab its own local Redditor (kept in that tab's session storage), so two tabs can play a Redditor match and a third can watch.
+- Shares create local posts; `/__local/posts` lists them and `/__local/post?id=<post id>` opens the next page load as that post, inline or expanded. `/__local/post` returns to the ordinary game post.
+
+State lives in memory and resets when the local server restarts.
 
 ## Devvit operation
 
@@ -182,9 +205,10 @@ npx devvit view ripred-euclid@<version>
 
 ## Assets
 
-- Preserve the established page artwork and icons, including the landing page, splash screen, and demo. Change them only when explicitly requested; functional UI work does not authorize artwork changes.
+- Every surface draws the board with one renderer (`src/client/ui/BoardDiagram.tsx`) and one set of design tokens (`src/client/design/tokens.css`): a graphite board, porcelain open points, glossy red and blue tokens that share one construction, and banded square edges. The UI follows Reddit's light or dark appearance; the board looks the same in both. Change artwork deliberately and keep it consistent with these components.
 - `Euclid-Game2.png` is the repository overview image.
-- `src/client/public/snoo.png` is the bundled splash background referenced by server-created posts.
+- `src/client/public/splash.jpg` is the splash background referenced by server-created share posts.
+- Brand art is rendered from the game's own components in `src/client/dev/brand-art.tsx`. With `npm run dev:local` running, open `/dev/brand-assets.html` to preview it; **Export images** writes `subreddit/images/euclid_board_icon_300.png`, `euclid_board_banner_desktop.png` (3168×256), `euclid_board_banner_mobile.png` (1592×128), and `src/client/public/splash.jpg` (1200×900).
 - `subreddit/images/` contains curated branding candidates and moderator upload assets. These are not runtime imports; keep purpose-named files needed for final selection or a distinct Reddit upload role.
 
 ## Real-surface verification
@@ -204,14 +228,14 @@ The full real-surface checklist still requires three distinct Reddit identities,
 ## Optional enhancements
 
 - **Interactive first-score onboarding:** Add a guided lesson on the real board that asks the player to place a dot, reveals a one-move scoring opportunity, lets the player complete it, and then introduces rotated and larger squares.
-- **Accessibility and mobile completion:** Make board spots semantic keyboard-operable controls with coordinate and occupancy labels, arrow navigation, and Enter or Space placement. Add non-color ownership cues and accessible dialog focus behavior; complete dynamic-viewport, safe-area, and practical large-board touch-target support; verify Assist-mode touch behavior; and suppress the remaining celebration and assistance animations when reduced motion is requested.
+- **Accessibility and mobile completion:** Board points are now keyboard-operable with labels, dialogs contain focus, dense boards use tap-to-aim on touch, and confetti respects reduced motion. Still open: a non-color ownership cue that keeps red and blue tokens identical in construction, and verifying Assist-mode touch behavior on native devices.
 - **Balance and configuration:** Define Short, Standard, and Marathon targets from desired turn counts and playtesting, measure first-player performance, alternate the opening player in rematches, and simplify the nine AI choices into clearer player-facing tiers while retaining their personality labels where useful.
 - **Chat and spectator privacy:** Decide whether chat merits retention. If retained, disclose that spectators can read it and add appropriate mute, report, and moderation controls before wider public play. Remove or reframe AI echo chat unless it gains an intentional gameplay purpose.
 - **Independent rules verification:** Add an independent reference oracle, golden fixtures, and generated-board or property comparisons that do not reuse the production decision path, supplementing the existing replay-validation and tampering coverage.
 
 ## Pending release work
 
-- Run the real-surface checklist above against installed `0.1.109` on Reddit desktop card view, compact view, and the native mobile app. The current release passed type-check, lint, all 451 tests across 32 files, and client/server builds. Automated fixtures do not establish native-platform behavior; the installation readback is not a gameplay check.
+- After verifying the `0.2.5` installation, run the real-surface checklist above in Reddit desktop card view, compact view, and the native mobile app. Local validation covers type-check, lint, 465 application tests across 33 files, 18 dependency tests, client/server and local-server builds, and Devvit packaging. Automated fixtures do not establish native-platform behavior; the installation readback is not a gameplay check.
 - Keep the five unshipped edition branches separate from this installed original release.
 - After private-beta results are acceptable, decide whether the community remains private, becomes restricted, or opens publicly, and prepare any introductory or how-to-play post.
 

@@ -19,12 +19,8 @@ import type {
   H2HRematchResponse,
   H2HShareRequest,
   H2HStateResponse,
-  RankingsShareRow,
-  SerializableBoard,
   ShareChatItem,
   ShareBucket,
-  SharePoint,
-  ShareSquare,
   SharedPostPayload,
   SoloAbandonResponse,
   SoloMoveResponse,
@@ -36,23 +32,18 @@ import type {
 } from "../shared/types/api";
 import { Board, isBoardValid } from "../shared/game/engine";
 import {
-  AI_DIFFICULTIES,
   AI_DIFFICULTY_LABELS,
-  isAiDifficulty,
   type AiDifficulty,
   type PlayerColor,
-  type PlayerIndex,
   type SoloMode,
 } from "../shared/game/rules";
 import { recommendedWinTarget, totalSquareScore } from "../shared/scoring";
 import {
-  calculateBoardLayout,
   getH2HExitAction,
   getH2HResultPresentation,
   isH2HChatAvailable,
   isH2HRematchAvailable,
   isH2HRematchRecovery,
-  isLocalVictory,
   shouldAdoptH2HState,
   shouldPollH2HState,
   shouldProcessH2HPollSnapshot,
@@ -60,6 +51,22 @@ import {
   type H2HViewEndReason,
 } from "./game-ui";
 import { H2HChatTrigger, H2HRematchButton } from "./h2h-controls";
+import { formatDisplayDate, rulesSummary } from "./format";
+import { resultPlayers } from "./game-results";
+import {
+  AssistToggle,
+  Confetti,
+  GameScreen,
+  NoticeDialog,
+  ResultDialog,
+} from "./game-screen";
+import { HowToPlayDialog } from "./how-to-play";
+import { RankingsScreen } from "./rankings-screen";
+import { SetupScreen } from "./setup-screen";
+import { PageShell } from "./ui/PageShell";
+import { StandingsList } from "./ui/Standings";
+import { trapDialogTab } from "./ui/focus";
+import { Icon } from "./ui/Icon";
 import {
   FULL_TUTORIAL_KEY,
   hasStoredCompletion,
@@ -122,358 +129,48 @@ import {
 } from "./home-lifecycle";
 import {
   didH2HHistoryReset,
-  formatScoreFeedback,
   normalizeSoloScoreFeedback,
   resolvePendingH2HScoreFeedback,
   scoreFeedbackFromH2HMove,
   scoreFeedbackFromH2HSnapshot,
-  selectSquareLines,
-  squareSignature,
   type ScoreFeedbackEvent,
 } from "./score-feedback";
+import {
+  createSoundEngine,
+  readSoundPreference,
+  saveSoundPreference,
+} from "./sound/engine";
+import { SoundContext } from "./sound/use-sounds";
 
 const HUMAN_VS_EUCLID_LABEL = "Redditor vs Euclid";
-const HUMAN_VS_HUMAN_LABEL = "Redditor vs Redditor";
-const LEADERBOARD_LABEL = "Leaderboard";
 const EUCLID_LABEL = "Euclid";
 
 /* ===== app version (tiny watermark) ===== */
 const VersionStamp: React.FC<{ version?: string | undefined }> = ({
   version,
-}) => {
-  const label = !version
-    ? "loading"
-    : version.startsWith("v")
-      ? version
-      : `v${version}`;
-  return (
-    <div
-      style={{
-        position: "fixed",
-        top: 6,
-        right: 8,
-        fontSize: 10,
-        lineHeight: 1,
-        opacity: 0.6,
-        color: "var(--muted)",
-        zIndex: 80,
-      }}
-    >
-      {label}
-    </div>
-  );
-};
-/* ===== theme (FOLLOW user/Devvit light/dark) ===== */
-const GlobalStyles = () => (
-  <style>{`
-    /* --- Light theme defaults --- */
-    :root{
-      --bg:#f8fafc; --text:#111827; --muted:#4b5563;
-      --card-bg:#ffffff; --card-border:#e5e7eb; --error-text:#b91c1c;
-
-      --empty-fill:#f3f4f6; --empty-stroke:#9ca3af;
-
-      --dot-red-stroke:#ef4444; --dot-red-fill:#fee2e2;
-      --dot-blue-stroke:#3b82f6; --dot-blue-fill:#dbeafe;
-
-      --line-red:252,97,97; --line-blue:96,165,250;
-
-      --pill-red:rgba(239,68,68,.10); --pill-blue:rgba(59,130,246,.10);
-
-      --last-red-ring:rgba(239,68,68,.65);
-      --last-blue-ring:rgba(59,130,246,.65);
-      --last-red-glow:rgba(239,68,68,.35);
-      --last-blue-glow:rgba(59,130,246,.35);
-
-    }
-
-    /* --- Prefer dark: OS/browser choice --- */
-    @media (prefers-color-scheme: dark) {
-      :root{
-        --bg:#0b1220; --text:#f3f4f6; --muted:#9ca3af;
-        --card-bg:#111827; --card-border:#374151; --error-text:#fca5a5;
-
-        --empty-fill:#1f2937; --empty-stroke:#d1d5db;
-
-        --dot-red-stroke:#ef4444; --dot-red-fill:#7f1d1d;
-        --dot-blue-stroke:#3b82f6; --dot-blue-fill:#1e3a8a;
-
-        --line-red:252,97,97; --line-blue:96,165,250;
-
-        --pill-red:rgba(239,68,68,.20); --pill-blue:rgba(59,130,246,.20);
-
-        --last-red-ring:rgba(239,68,68,.80);
-        --last-blue-ring:rgba(59,130,246,.80);
-        --last-red-glow:rgba(239,68,68,.50);
-        --last-blue-glow:rgba(59,130,246,.50);
-
-      }
-    }
-
-    /* --- Explicit Dev/host toggles (classes/attributes) override OS --- */
-    html.dark, body.dark,
-    html[data-theme="dark"], body[data-theme="dark"],
-    html[data-color-scheme="dark"], body[data-color-scheme="dark"]{
-      --bg:#0b1220; --text:#f3f4f6; --muted:#9ca3af;
-      --card-bg:#111827; --card-border:#374151; --error-text:#fca5a5;
-
-      --empty-fill:#1f2937; --empty-stroke:#d1d5db;
-
-      --dot-red-stroke:#ef4444; --dot-red-fill:#7f1d1d;
-      --dot-blue-stroke:#3b82f6; --dot-blue-fill:#1e3a8a;
-
-      --line-red:252,97,97; --line-blue:96,165,250;
-
-      --pill-red:rgba(239,68,68,.20); --pill-blue:rgba(59,130,246,.20);
-
-      --last-red-ring:rgba(239,68,68,.80);
-      --last-blue-ring:rgba(59,130,246,.80);
-      --last-red-glow:rgba(239,68,68,.50);
-      --last-blue-glow:rgba(59,130,246,.50);
-
-    }
-    html.light, body.light,
-    html[data-theme="light"], body[data-theme="light"],
-    html[data-color-scheme="light"], body[data-color-scheme="light"]{
-      --bg:#f8fafc; --text:#111827; --muted:#4b5563;
-      --card-bg:#ffffff; --card-border:#e5e7eb; --error-text:#b91c1c;
-
-      --empty-fill:#f3f4f6; --empty-stroke:#9ca3af;
-
-      --dot-red-stroke:#ef4444; --dot-red-fill:#fee2e2;
-      --dot-blue-stroke:#3b82f6; --dot-blue-fill:#dbeafe;
-
-      --line-red:252,97,97; --line-blue:96,165,250;
-
-      --pill-red:rgba(239,68,68,.10); --pill-blue:rgba(59,130,246,.10);
-
-      --last-red-ring:rgba(239,68,68,.65);
-      --last-blue-ring:rgba(59,130,246,.65);
-      --last-red-glow:rgba(239,68,68,.35);
-      --last-blue-glow:rgba(59,130,246,.35);
-
-    }
-
-    html, body, #root { height: 100%; background: var(--bg); }
-    body { color-scheme: light dark; margin: 0; overflow: hidden; }
-
-    .glow-red { box-shadow: 0 0 0 3px rgba(239,68,68,.6), 0 0 18px rgba(239,68,68,.45); }
-	.glow-blue{ box-shadow: 0 0 0 3px rgba(59,130,246,.6), 0 0 18px rgba(59,130,246,.45); }
-
-	/* Updated hint styles - match player color with pulsing */
-	.hint-red-bright { 
-	    animation: pulse-red-bright 1.5s ease-in-out infinite;
-	}
-	.hint-red-dim { 
-	    animation: pulse-red-dim 1.5s ease-in-out infinite;
-	}
-	.hint-blue-bright { 
-	    animation: pulse-blue-bright 1.5s ease-in-out infinite;
-	}
-	.hint-blue-dim { 
-	    animation: pulse-blue-dim 1.5s ease-in-out infinite;
-	}
-
-	@keyframes pulse-red-bright {
-	    0%, 100% { box-shadow: 0 0 0 5px rgba(239,68,68,.85), 0 0 20px rgba(239,68,68,.60); }
-	    50% { box-shadow: 0 0 0 7px rgba(239,68,68,.95), 0 0 26px rgba(239,68,68,.70); }
-	}
-	@keyframes pulse-red-dim {
-	    0%, 100% { box-shadow: 0 0 0 4px rgba(239,68,68,.50), 0 0 14px rgba(239,68,68,.35); }
-	    50% { box-shadow: 0 0 0 5px rgba(239,68,68,.60), 0 0 16px rgba(239,68,68,.45); }
-	}
-	@keyframes pulse-blue-bright {
-	    0%, 100% { box-shadow: 0 0 0 5px rgba(59,130,246,.85), 0 0 20px rgba(59,130,246,.60); }
-	    50% { box-shadow: 0 0 0 7px rgba(59,130,246,.95), 0 0 26px rgba(59,130,246,.70); }
-	}
-	@keyframes pulse-blue-dim {
-	    0%, 100% { box-shadow: 0 0 0 4px rgba(59,130,246,.50), 0 0 14px rgba(59,130,246,.35); }
-	    50% { box-shadow: 0 0 0 5px rgba(59,130,246,.60), 0 0 16px rgba(59,130,246,.45); }
-	}
-
-    .assist__dim { opacity: 0.42; }
-
-    .anim__animated{animation-duration:.6s;animation-fill-mode:both;}
-    @keyframes zoomIn_kf{from{opacity:0;transform:scale3d(.3,.3,.3)}50%{opacity:1}}
-    .anim__zoomIn{animation-name:zoomIn_kf}
-    @keyframes lastPulse{0%{transform:scale(1)}50%{transform:scale(1.06)}100%{transform:scale(1)}}
-    .last__pulse{animation:lastPulse 900ms ease-out 2}
-  `}</style>
+}) => (
+  <div className="version-stamp" aria-hidden="true">
+    {!version ? "loading" : version.startsWith("v") ? version : `v${version}`}
+  </div>
 );
 
-/* ===== Simple Confetti (no deps) ===== */
-const Confetti: React.FC<{ show: boolean }> = ({ show }) => {
-  const ref = useRef<HTMLCanvasElement | null>(null);
-  useEffect(() => {
-    if (!show) return;
-    const canvas = ref.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    let w = (canvas.width = window.innerWidth),
-      h = (canvas.height = window.innerHeight);
-    const onResize = () => {
-      w = canvas.width = window.innerWidth;
-      h = canvas.height = window.innerHeight;
-    };
-    window.addEventListener("resize", onResize);
-    const colors = [
-      "#ef4444",
-      "#f59e0b",
-      "#10b981",
-      "#3b82f6",
-      "#a855f7",
-      "#ec4899",
-    ];
-    const N = 140;
-    const parts = Array.from({ length: N }, () => ({
-      x: Math.random() * w,
-      y: -20 - Math.random() * h * 0.5,
-      vx: (Math.random() - 0.5) * 2,
-      vy: 2 + Math.random() * 3,
-      size: 6 + Math.random() * 6,
-      rot: Math.random() * Math.PI,
-      vr: (Math.random() - 0.5) * 0.2,
-      color: colors[Math.floor(Math.random() * colors.length)] ?? "#ef4444",
-    }));
-    let animationFrameId: number | undefined;
-    let previousFrameAt = performance.now();
-    const tick = (t: number) => {
-      const dt = Math.min(32, t - previousFrameAt);
-      previousFrameAt = t;
-      ctx.clearRect(0, 0, w, h);
-      for (const p of parts) {
-        p.x += (p.vx * dt) / 16;
-        p.y += (p.vy * dt) / 16;
-        p.rot += (p.vr * dt) / 16;
-        ctx.save();
-        ctx.translate(p.x, p.y);
-        ctx.rotate(p.rot);
-        ctx.fillStyle = p.color;
-        ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
-        ctx.restore();
-      }
-
-      // A rotated square always fits within this radius. Since every piece
-      // moves downward, it cannot re-enter after its top clears the viewport.
-      const allPiecesHaveExited = parts.every(
-        (p) => p.y - p.size / Math.SQRT2 > h,
-      );
-      if (!allPiecesHaveExited) {
-        animationFrameId = requestAnimationFrame(tick);
-      }
-    };
-    animationFrameId = requestAnimationFrame(tick);
-    return () => {
-      if (animationFrameId !== undefined) {
-        cancelAnimationFrame(animationFrameId);
-      }
-      window.removeEventListener("resize", onResize);
-    };
-  }, [show]);
-  if (!show) return null;
-  return (
-    <canvas
-      ref={ref}
-      style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 55 }}
-    />
-  );
-};
-
-/* ===== Score card ===== */
-const ScoreCard: React.FC<{
-  label: string;
-  score: number;
-  align: "left" | "right";
-  glow?: "red" | "blue" | null;
-  avatar?: string | undefined;
-  compact?: boolean;
-  feedback?: ScoreFeedbackEvent | null;
-}> = ({
-  label,
-  score,
-  align,
-  glow = null,
-  avatar,
-  compact = false,
-  feedback = null,
-}) => {
-  const width = compact
-    ? "clamp(160px, 44vw, 210px)"
-    : "clamp(200px, 42vw, 230px)";
-  return (
-    <div
-      className={`euclid-score-card-wrap flex flex-col ${align === "right" ? "items-end" : "items-start"}`}
-    >
-      <div
-        className={`euclid-score-card flex items-center justify-between px-3 py-1 rounded-md shadow-sm ${glow === "red" ? "glow-red" : ""} ${glow === "blue" ? "glow-blue" : ""}`}
-        style={{
-          width,
-          background: "var(--card-bg)",
-          border: `1px solid var(--card-border)`,
-        }}
-      >
-        <div
-          className="flex items-center gap-2"
-          style={{ color: "var(--text)", minWidth: 0 }}
-        >
-          {avatar ? (
-            <img
-              src={avatar}
-              alt=""
-              crossOrigin="anonymous"
-              style={{ width: 22, height: 22, borderRadius: "50%" }}
-            />
-          ) : (
-            <span
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: "50%",
-                background: "var(--empty-stroke)",
-              }}
-            />
-          )}
-          <span
-            className="font-medium"
-            style={{
-              display: "inline-block",
-              overflow: "hidden",
-              whiteSpace: "nowrap",
-              textOverflow: "ellipsis",
-              maxWidth: compact ? 120 : 150,
-            }}
-            title={label}
-          >
-            {label}
-          </span>
-        </div>
-        <span className="font-semibold" style={{ color: "var(--text)" }}>
-          {score}
-        </span>
-        {feedback && (
-          <span
-            key={feedback.id}
-            className={`euclid-score-card__delta euclid-score-card__delta--${feedback.player === 0 ? "red" : "blue"}`}
-            aria-hidden="true"
-          >
-            {formatScoreFeedback(feedback)}
-          </span>
-        )}
-        <span
-          className="euclid-sr-only"
-          role="status"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          {feedback
-            ? `Move ${feedback.moveCount}: ${label} scored ${feedback.pointsScored} points by completing ${feedback.completedSquares.length} ${feedback.completedSquares.length === 1 ? "square" : "squares"}.`
-            : ""}
-        </span>
-      </div>
-    </div>
-  );
-};
+/** One sound control, placed in the game bar or floating elsewhere. */
+const SoundToggle: React.FC<{
+  on: boolean;
+  onToggle: () => void;
+  floating?: boolean;
+}> = ({ on, onToggle, floating = false }) => (
+  <button
+    type="button"
+    className={`icon-btn euclid-sound-toggle${floating ? " euclid-sound-toggle--floating" : ""}`}
+    aria-label={on ? "Mute game sounds" : "Turn on game sounds"}
+    aria-pressed={on}
+    title={on ? "Mute game sounds" : "Turn on game sounds"}
+    onClick={onToggle}
+  >
+    <Icon name={on ? "soundOn" : "soundOff"} />
+  </button>
+);
 
 /* ===== Admin metrics types ===== */
 type AdminMetrics = {
@@ -492,38 +189,8 @@ type ShareResponse = {
   status?: SoloShareResponse["status"];
 };
 
-type BrowserAudioWindow = Window &
-  typeof globalThis & {
-    webkitAudioContext?: typeof AudioContext;
-  };
-
 function reportRequestFailure(action: string, error: unknown): void {
   console.warn(`[Euclid] ${action} failed:`, error);
-}
-
-function trapDialogTab(event: React.KeyboardEvent<HTMLElement>): void {
-  if (event.key !== "Tab") return;
-  const focusable = Array.from(
-    event.currentTarget.querySelectorAll<HTMLElement>(
-      "input:not(:disabled), button:not(:disabled), [href], [tabindex]:not([tabindex='-1'])",
-    ),
-  );
-  if (focusable.length === 0) {
-    event.preventDefault();
-    event.currentTarget.focus();
-    return;
-  }
-
-  const activeIndex = focusable.indexOf(document.activeElement as HTMLElement);
-  const leavingStart = event.shiftKey && activeIndex <= 0;
-  const leavingEnd = !event.shiftKey && activeIndex === focusable.length - 1;
-  if (activeIndex === -1 || leavingStart || leavingEnd) {
-    event.preventDefault();
-    const target = event.shiftKey
-      ? focusable[focusable.length - 1]
-      : focusable[0];
-    target?.focus();
-  }
 }
 
 function isH2HMappingResponse(value: unknown): value is H2HMappingResponse {
@@ -566,16 +233,6 @@ async function requestH2HMapping(): Promise<H2HMappingResponse> {
 function createClientCommandId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
 }
-
-const formatDisplayDate = (input: string | number | Date = Date.now()) =>
-  new Date(input).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-
-const boardScoringLabel = (scoring: SerializableBoard["scoring"]) =>
-  scoring === "true" ? "True Area" : "Grid Footprint";
 
 /* ===== App (UI + flows) ===== */
 type Mode =
@@ -676,8 +333,7 @@ export const App = ({
   }, [selectedDifficulty]);
   const [soloMode, setSoloMode] = useState<SoloMode>("practice");
 
-  // Independent W/H (even)
-  const evenSizes = [4, 6, 8, 10, 12, 14, 16];
+  // Independent W/H (even); the setup screen owns the allowed sizes.
   const [boardW, setBoardW] = useState<number>(8);
   const [boardH, setBoardH] = useState<number>(8);
 
@@ -934,46 +590,29 @@ export const App = ({
     [stopPolling],
   );
 
-  // Sounds
-  const [soundOn, setSoundOn] = useState(false);
-  const audioContext = useMemo(() => {
-    const AudioContextConstructor =
-      window.AudioContext || (window as BrowserAudioWindow).webkitAudioContext;
-    if (!AudioContextConstructor) {
-      throw new Error("This browser does not support Web Audio.");
-    }
-    return new AudioContextConstructor();
-  }, []);
-  const SOUND_GAIN = 0.125;
-  const playBeep = useCallback(() => {
+  // Sounds: off until the player asks, then remembered on this device.
+  const sounds = useMemo(createSoundEngine, []);
+  const [soundOn, setSoundOn] = useState(readSoundPreference);
+  useEffect(() => sounds.setEnabled(soundOn), [sounds, soundOn]);
+  useEffect(() => {
     if (!soundOn) return;
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    oscillator.type = "square";
-    oscillator.frequency.value = 880; // A5 note
-    gainNode.gain.value = SOUND_GAIN;
-    oscillator.start();
-    setTimeout(() => oscillator.stop(), 100);
-  }, [audioContext, soundOn]);
-  const playFanfare = useCallback(() => {
-    if (!soundOn) return;
-    const notes = [523.25, 659.25, 783.99, 1046.5]; // C E G C
-    notes.forEach((freq, i) => {
-      setTimeout(() => {
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        oscillator.type = "sine";
-        oscillator.frequency.value = freq;
-        gainNode.gain.value = SOUND_GAIN;
-        oscillator.start();
-        setTimeout(() => oscillator.stop(), 200);
-      }, i * 250);
-    });
-  }, [audioContext, soundOn]);
+    // Browsers start audio suspended; the next gesture wakes it.
+    const wake = () => sounds.unlock();
+    window.addEventListener("pointerdown", wake, { once: true });
+    window.addEventListener("keydown", wake, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", wake);
+      window.removeEventListener("keydown", wake);
+    };
+  }, [sounds, soundOn]);
+  const toggleSound = useCallback(() => {
+    const next = !soundOn;
+    sounds.unlock();
+    sounds.setEnabled(next);
+    saveSoundPreference(next);
+    setSoundOn(next);
+    if (next) sounds.place(1, "mine");
+  }, [sounds, soundOn]);
 
   // Tutorial/onboarding
   const [tutorialCompletedThisSession, setTutorialCompletedThisSession] =
@@ -1206,7 +845,6 @@ export const App = ({
           payload.snapshot.board.scoring,
         ),
       );
-      if (payload.events.some((event) => event.type === "move")) playBeep();
       return true;
     } catch (error) {
       if (soloSessionRef.current !== session) return false;
@@ -1227,7 +865,6 @@ export const App = ({
     clearScoreFeedback,
     enqueueScoreFeedback,
     homeSolo,
-    playBeep,
     scoringMode,
     selectedDifficulty,
     soloMode,
@@ -1303,16 +940,6 @@ export const App = ({
             ),
           );
         }
-        if (payload.events.some((event) => event.type === "move")) playBeep();
-        const presentation = getSoloResultPresentation(payload.snapshot);
-        if (
-          shouldRunVictoryEffects(
-            presentation.terminal,
-            presentation.isLocalVictory,
-          )
-        ) {
-          playFanfare();
-        }
         return true;
       } catch (error) {
         if (
@@ -1333,7 +960,7 @@ export const App = ({
         }
       }
     },
-    [adoptSoloSnapshot, enqueueScoreFeedback, playBeep, playFanfare],
+    [adoptSoloSnapshot, enqueueScoreFeedback],
   );
 
   /* === H2H polling helpers === */
@@ -1630,6 +1257,7 @@ export const App = ({
           adoptHomeH2HPresence(j);
           setHomeActionError("");
           if (j.state === "active") {
+            sounds.matchFound();
             if (!enterH2HGame(j)) {
               throw new Error("The multiplayer mapping has no board state.");
             }
@@ -1653,7 +1281,7 @@ export const App = ({
         }
       })();
     }, 1000);
-  }, [adoptHomeH2HPresence, enterH2HGame, stopPolling]);
+  }, [adoptHomeH2HPresence, enterH2HGame, sounds, stopPolling]);
 
   useEffect(() => {
     if (!initState || initState.type !== "init" || mode !== null) return;
@@ -2016,7 +1644,10 @@ export const App = ({
           payload?.message ?? "Unable to join the multiplayer queue.",
         );
       }
-      if (enterH2HGame(payload)) return true;
+      if (enterH2HGame(payload)) {
+        sounds.matchFound();
+        return true;
+      }
       if (payload.state !== "queued") {
         throw new Error("The match response has no board state.");
       }
@@ -2647,16 +2278,6 @@ export const App = ({
           return false;
         }
 
-        playBeep();
-        const localSide: PlayerColor = isPlayer1Ref.current ? 1 : 2;
-        if (
-          shouldRunVictoryEffects(
-            payload.ended,
-            isLocalVictory(payload.victorSide, localSide, false),
-          )
-        ) {
-          playFanfare();
-        }
         return true;
       } catch (error) {
         if (
@@ -2687,13 +2308,7 @@ export const App = ({
         }
       }
     },
-    [
-      adoptH2HState,
-      flushDeferredH2HScoreFeedback,
-      playBeep,
-      playFanfare,
-      refreshStateOnce,
-    ],
+    [adoptH2HState, flushDeferredH2HScoreFeedback, refreshStateOnce],
   );
 
   /* ===== Secret keys + chat hotkey ===== */
@@ -2710,7 +2325,8 @@ export const App = ({
       const snapshot = soloSnapshotRef.current;
       if (
         !snapshot ||
-        !getSoloAssistancePolicy(snapshot.mode).allowSecretAutoMove ||
+        !getSoloAssistancePolicy(snapshot.mode, initState?.username)
+          .allowSecretAutoMove ||
         !isSoloHumanTurn(snapshot) ||
         soloMovePendingRef.current ||
         soloAbandonPendingRef.current
@@ -2755,6 +2371,7 @@ export const App = ({
     board,
     finalReason,
     finalSide,
+    initState?.username,
     isPlayer1,
     mode,
     spectating,
@@ -2950,139 +2567,12 @@ export const App = ({
     stopHomePresenceMonitoring,
   ]);
 
-  /* ===== Rules Overlay ===== */
+  /* ===== Rules and first-game tutorial ===== */
   const RulesOverlay = showRules ? (
-    <div
-      className="anim__animated anim__zoomIn"
-      onClick={() => setShowRules(false)}
-      style={{
-        position: "fixed",
-        inset: 0,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 60,
-        background: "rgba(0,0,0,.55)",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "var(--card-bg)",
-          color: "var(--text)",
-          border: `1px solid var(--card-border)`,
-          borderRadius: 12,
-          padding: "16px 22px",
-          maxWidth: 680,
-          width: "min(92vw, 680px)",
-          maxHeight: "82vh",
-          overflowY: "auto",
-          fontSize: "0.95rem",
-        }}
-      >
-        <div style={{ fontSize: "1.125rem", fontWeight: 800, marginBottom: 8 }}>
-          How to Play — Euclid
-        </div>
-        <ul style={{ paddingLeft: "1.2em", listStyle: "disc" }}>
-          <li>Players take turns placing a dot on a grid.</li>
-          <li>
-            A <b>square</b> is completed when all four of its corner cells are
-            your color. The four corners don't need to be axis-aligned — they
-            can form a rotated square.
-          </li>
-          <li>
-            <b>Scoring ({HUMAN_VS_EUCLID_LABEL} mode configurable):</b>{" "}
-            <i>Grid Footprint</i> counts every grid position in the smallest
-            grid-aligned square containing the four corner dots.{" "}
-            <i>True Area</i> uses the geometric side².
-          </li>
-          <li>One move can complete multiple squares; you score the sum.</li>
-          <li>
-            First to the selected <b>Win Score</b> wins; if the board fills with
-            unequal points, higher total wins.
-          </li>
-        </ul>
-        <div
-          className="mt-3"
-          style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}
-        >
-          <button
-            className="rounded cursor-pointer"
-            style={{
-              background: "#d93900",
-              color: "#fff",
-              padding: "6px 12px",
-            }}
-            onClick={() => setShowRules(false)}
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
+    <HowToPlayDialog variant="rules" onClose={() => setShowRules(false)} />
   ) : null;
-
-  /* ===== Tutorial Modal ===== */
   const TutorialModal = showTutorial ? (
-    <div
-      className="anim__animated anim__zoomIn"
-      onClick={completeTutorial}
-      style={{
-        position: "fixed",
-        inset: 0,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 60,
-        background: "rgba(0,0,0,.55)",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "var(--card-bg)",
-          color: "var(--text)",
-          border: `1px solid var(--card-border)`,
-          borderRadius: 12,
-          padding: "16px 22px",
-          maxWidth: 680,
-          width: "min(92vw, 680px)",
-          maxHeight: "82vh",
-          overflowY: "auto",
-          fontSize: "0.95rem",
-        }}
-      >
-        <div style={{ fontSize: "1.125rem", fontWeight: 800, marginBottom: 8 }}>
-          Welcome to Euclid — Tutorial
-        </div>
-        <ol style={{ paddingLeft: "1.2em", listStyle: "decimal" }}>
-          <li>Place dots on the grid alternately with the other side.</li>
-          <li>
-            Form squares by connecting four dots of your color (can be rotated).
-          </li>
-          <li>
-            Score Grid Footprint points (grid positions²), or choose True Area
-            (geometric side²).
-          </li>
-          <li>Reach the win score first to victory!</li>
-        </ol>
-        <div
-          style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}
-        >
-          <button
-            className="rounded cursor-pointer"
-            style={{
-              background: "#2563eb",
-              color: "#fff",
-              padding: "6px 12px",
-            }}
-            onClick={completeTutorial}
-          >
-            Start Playing
-          </button>
-        </div>
-      </div>
-    </div>
+    <HowToPlayDialog variant="tutorial" onClose={completeTutorial} />
   ) : null;
 
   /* ===== Chat Input Overlay ===== */
@@ -3090,21 +2580,13 @@ export const App = ({
     !chatOpen || chatBlockedByOverlay ? null : (
       <div
         className="euclid-chat-backdrop"
-        style={{
-          position: "fixed",
-          inset: 0,
-          display: "flex",
-          alignItems: "flex-end",
-          justifyContent: "center",
-          zIndex: 100,
-          background: "rgba(0,0,0,.18)",
-        }}
         onClick={() => {
           if (h2hMutation !== "chat") closeChat();
         }}
       >
         <div
           id="euclid-game-chat-dialog"
+          className="chat-sheet"
           role="dialog"
           aria-modal="true"
           aria-labelledby="euclid-game-chat-title"
@@ -3121,16 +2603,6 @@ export const App = ({
             }
             trapDialogTab(event);
           }}
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            width: "min(720px, 96vw)",
-            background: "var(--card-bg)",
-            border: `1px solid var(--card-border)`,
-            borderRadius: 10,
-            padding: 8,
-          }}
         >
           <h2 id="euclid-game-chat-title" className="euclid-sr-only">
             Game chat
@@ -3138,6 +2610,7 @@ export const App = ({
           <div className="euclid-chat-composer">
             <input
               autoFocus
+              className="input"
               aria-label="Message"
               value={chatText}
               readOnly={h2hMutation === "chat"}
@@ -3158,7 +2631,7 @@ export const App = ({
             />
             <button
               type="button"
-              className="euclid-chat-composer__cancel rounded cursor-pointer"
+              className="btn btn--ghost euclid-chat-composer__cancel"
               disabled={h2hMutation === "chat"}
               onClick={() => closeChat()}
             >
@@ -3166,7 +2639,7 @@ export const App = ({
             </button>
             <button
               type="button"
-              className={`euclid-chat-composer__send rounded ${h2hMutation === "chat" ? "" : "cursor-pointer"}`}
+              className="btn btn--primary euclid-chat-composer__send"
               disabled={h2hMutation === "chat"}
               aria-busy={h2hMutation === "chat" || undefined}
               onClick={() => void sendChat()}
@@ -3188,6 +2661,7 @@ export const App = ({
     );
 
   const sharedPost = initState?.type === "share" ? initState.share : null;
+  const soundControl = <SoundToggle on={soundOn} onToggle={toggleSound} />;
 
   /* =========================
      CONTENT ROUTER
@@ -3220,7 +2694,6 @@ export const App = ({
     );
     content = (
       <>
-        {RulesOverlay}
         <HomeScreen
           username={initState?.username ?? ""}
           playEuclidSubtitle={getPlayEuclidSubtitle(
@@ -3241,6 +2714,8 @@ export const App = ({
           busyAction={homeBusyAction}
           status={homeStatus}
           error={homeError}
+          soloMode={soloMode}
+          onSoloModeChange={setSoloMode}
           onPlayEuclid={() => void startSoloFromHome()}
           onPlayRedditor={() => void startMultiplayerQueue()}
           onContinueSolo={() => void continueSoloFromHome()}
@@ -3268,625 +2743,41 @@ export const App = ({
       </>
     );
   } else if (mode === "options") {
-    /* ===== Options Page (mobile scrollable) ===== */
     content = (
-      <div
-        className="flex flex-col items-center"
-        style={{ background: "var(--bg)", height: "100vh", overflow: "hidden" }}
-      >
-        <div style={{ paddingTop: 16, paddingBottom: 8 }}>
-          <h1
-            className="text-2xl font-bold text-center"
-            style={{ color: "var(--text)" }}
-          >
-            Euclid — Options
-          </h1>
-        </div>
-
-        {/* Scrollable content area */}
-        <div
-          className="flex-1 overflow-y-auto w-full flex flex-col items-center"
-          style={{ paddingBottom: 8 }}
-        >
-          <div
-            className="w-[min(760px,96vw)]"
-            style={{
-              background: "var(--card-bg)",
-              border: `1px solid var(--card-border)`,
-              borderRadius: 12,
-              padding: "12px 16px",
-            }}
-          >
-            <div className="font-bold mb-2" style={{ color: "var(--muted)" }}>
-              {HUMAN_VS_EUCLID_LABEL} Settings
-            </div>
-            <div
-              role="radiogroup"
-              aria-label="Solo game type"
-              className="flex gap-2 mb-3"
-            >
-              {(["ranked", "practice"] as const).map((choice) => {
-                const selected = soloMode === choice;
-                return (
-                  <button
-                    key={choice}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    className="rounded cursor-pointer"
-                    style={{
-                      padding: "7px 14px",
-                      background: selected ? "#2563eb" : "var(--card-bg)",
-                      color: selected ? "#fff" : "var(--text)",
-                      border: `1px solid ${selected ? "#2563eb" : "var(--card-border)"}`,
-                    }}
-                    onClick={() => setSoloMode(choice)}
-                  >
-                    {choice === "ranked" ? "Ranked" : "Practice"}
-                  </button>
-                );
-              })}
-            </div>
-            {soloMode === "ranked" && (
-              <div
-                style={{
-                  color: "var(--text)",
-                  background: "var(--bg)",
-                  border: `1px solid var(--card-border)`,
-                  borderRadius: 8,
-                  padding: "10px 12px",
-                }}
-              >
-                Ranked uses one comparable preset: 8×8, Grid Footprint, first to
-                150, you move first, and Brutal Euclid. Assistance is off.
-              </div>
-            )}
-            <div
-              className="grid"
-              style={{
-                display: soloMode === "practice" ? "grid" : "none",
-                gridTemplateColumns: "repeat(auto-fit, minmax(220px,1fr))",
-                gap: 12,
-              }}
-            >
-              <div>
-                <label
-                  htmlFor="practice-difficulty"
-                  className="font-medium block mb-1"
-                  style={{ color: "var(--muted)" }}
-                >
-                  Difficulty
-                </label>
-                <select
-                  id="practice-difficulty"
-                  className="rounded px-3 py-2 w-full"
-                  style={{
-                    background: "var(--card-bg)",
-                    color: "var(--text)",
-                    border: `1px solid var(--card-border)`,
-                  }}
-                  value={selectedDifficulty}
-                  onChange={(event) => {
-                    const difficulty = event.target.value;
-                    if (isAiDifficulty(difficulty)) {
-                      setSelectedDifficulty(difficulty);
-                    }
-                  }}
-                >
-                  {AI_DIFFICULTIES.map((difficulty) => (
-                    <option key={difficulty} value={difficulty}>
-                      {AI_DIFFICULTY_LABELS[difficulty]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label
-                  className="font-medium block mb-1"
-                  style={{ color: "var(--muted)" }}
-                >
-                  Board Width
-                </label>
-                <select
-                  className="rounded px-3 py-2 w-full"
-                  style={{
-                    background: "var(--card-bg)",
-                    color: "var(--text)",
-                    border: `1px solid var(--card-border)`,
-                  }}
-                  value={boardW}
-                  onChange={(e) => setBoardW(Number(e.target.value))}
-                >
-                  {evenSizes.map((n) => (
-                    <option key={"w" + n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label
-                  className="font-medium block mb-1"
-                  style={{ color: "var(--muted)" }}
-                >
-                  Board Height
-                </label>
-                <select
-                  className="rounded px-3 py-2 w-full"
-                  style={{
-                    background: "var(--card-bg)",
-                    color: "var(--text)",
-                    border: `1px solid var(--card-border)`,
-                  }}
-                  value={boardH}
-                  onChange={(e) => setBoardH(Number(e.target.value))}
-                >
-                  {evenSizes.map((n) => (
-                    <option key={"h" + n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label
-                  className="font-medium block mb-1"
-                  style={{ color: "var(--muted)" }}
-                >
-                  Scoring
-                </label>
-                <select
-                  className="rounded px-3 py-2 w-full"
-                  style={{
-                    background: "var(--card-bg)",
-                    color: "var(--text)",
-                    border: `1px solid var(--card-border)`,
-                  }}
-                  value={scoringMode}
-                  onChange={(e) =>
-                    setScoringMode(e.target.value as "bbox" | "true")
-                  }
-                >
-                  <option value="bbox">Grid Footprint (grid positions²)</option>
-                  <option value="true">True Area (side²)</option>
-                </select>
-              </div>
-
-              <div>
-                <label
-                  className="font-medium block mb-1"
-                  style={{ color: "var(--muted)" }}
-                >
-                  Win Score
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={bestCase}
-                  value={winScore}
-                  onChange={(e) =>
-                    setWinScore(
-                      Math.max(
-                        1,
-                        Math.min(bestCase, Number(e.target.value) || 0),
-                      ),
-                    )
-                  }
-                  className="rounded px-3 py-2 w-full"
-                  style={{
-                    background: "var(--card-bg)",
-                    color: "var(--text)",
-                    border: `1px solid var(--card-border)`,
-                  }}
-                />
-                <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>
-                  Best-case per player for {boardW}×{boardH} (
-                  {boardScoringLabel(scoringMode)}): <b>{bestCase}</b>
-                  <br />
-                  Recommended win (8×8→150 scaled): <b>{recommended}</b>
-                </div>
-              </div>
-
-              <div>
-                <label
-                  className="font-medium block mb-1"
-                  style={{ color: "var(--muted)" }}
-                >
-                  Assist Highlights (hover)
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    id="assistChk"
-                    type="checkbox"
-                    checked={assistOn}
-                    onChange={(e) => setAssistOn(e.target.checked)}
-                  />
-                  <label
-                    htmlFor="assistChk"
-                    className="text-sm"
-                    style={{ color: "var(--muted)" }}
-                  >
-                    Show 1–2 move-away spots when hovering your pieces
-                  </label>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div
-            className="w-[min(760px,96vw)]"
-            style={{
-              background: "var(--card-bg)",
-              border: `1px solid var(--card-border)`,
-              borderRadius: 12,
-              padding: "12px 16px",
-              marginTop: 12,
-            }}
-          >
-            <div className="font-bold mb-2" style={{ color: "var(--muted)" }}>
-              About Euclid
-            </div>
-            <div style={{ color: "var(--text)", lineHeight: 1.6 }}>
-              Euclid is a Reddit strategy game about placing dots, completing
-              squares, and outscoring {EUCLID_LABEL} or another redditor.
-              Straight and rotated squares both count, and one move can complete
-              multiple squares at once.
-            </div>
-            <div
-              style={{
-                color: "var(--muted)",
-                fontSize: "0.875rem",
-                marginTop: 10,
-              }}
-            >
-              Version:{" "}
-              <b style={{ color: "var(--text)" }}>
-                {initState?.appVersion || "loading"}
-              </b>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer / OK */}
-        <div style={{ padding: 12 }}>
-          <button
-            className="rounded cursor-pointer"
-            style={{
-              background: "#6b7280",
-              color: "#fff",
-              padding: "8px 16px",
-            }}
-            onClick={returnHome}
-          >
-            Done
-          </button>
-        </div>
-      </div>
+      <SetupScreen
+        soloMode={soloMode}
+        onSoloModeChange={setSoloMode}
+        difficulty={selectedDifficulty}
+        onDifficultyChange={setSelectedDifficulty}
+        width={boardW}
+        height={boardH}
+        onWidthChange={setBoardW}
+        onHeightChange={setBoardH}
+        scoring={scoringMode}
+        onScoringChange={setScoringMode}
+        winScore={winScore}
+        onWinScoreChange={setWinScore}
+        bestCase={bestCase}
+        recommended={recommended}
+        assistOn={assistOn}
+        onAssistChange={setAssistOn}
+        appVersion={initState?.appVersion || "loading"}
+        onDone={returnHome}
+      />
     );
   } else if (mode === "rankings") {
-    /* ===== Rankings ===== */
-    const rankingsSharePending = shareBusy?.startsWith("rankings:") ?? false;
-    const numCell = {
-      color: "var(--text)",
-      textAlign: "right" as const,
-      fontVariantNumeric: "tabular-nums" as const,
-    };
-    const headCell = {
-      color: "var(--muted)",
-      fontWeight: 700,
-      textAlign: "right" as const,
-    };
-    const Section = ({
-      title,
-      subtitle,
-      rows,
-      accent,
-      bucket,
-    }: {
-      title: string;
-      subtitle?: string;
-      rows: RankingsShareRow[];
-      accent: "red" | "blue";
-      bucket: ShareBucket;
-    }) => (
-      <div className="w-[min(720px,92vw)]">
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <h2
-              className="text-xl font-extrabold"
-              style={{ color: "var(--text)" }}
-            >
-              {title}
-            </h2>
-          </div>
-          {subtitle && (
-            <div className="text-sm mb-2" style={{ color: "var(--muted)" }}>
-              {subtitle}
-            </div>
-          )}
-          <div
-            className="rounded-lg overflow-hidden overflow-x-auto"
-            style={{ border: `1px solid var(--card-border)` }}
-          >
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                background: "var(--card-bg)",
-                minWidth: 620,
-              }}
-            >
-              <thead>
-                <tr>
-                  <th
-                    style={{
-                      padding: "8px 12px",
-                      borderBottom: `1px solid var(--card-border)`,
-                      ...headCell,
-                      textAlign: "left" as const,
-                    }}
-                  >
-                    Rank
-                  </th>
-                  <th
-                    style={{
-                      padding: "8px 12px",
-                      borderBottom: `1px solid var(--card-border)`,
-                      ...headCell,
-                      textAlign: "left" as const,
-                    }}
-                  >
-                    Redditor
-                  </th>
-                  <th
-                    style={{
-                      padding: "8px 12px",
-                      borderBottom: `1px solid var(--card-border)`,
-                      ...headCell,
-                    }}
-                  >
-                    Rating
-                  </th>
-                  <th
-                    style={{
-                      padding: "8px 12px",
-                      borderBottom: `1px solid var(--card-border)`,
-                      ...headCell,
-                    }}
-                  >
-                    Games
-                  </th>
-                  <th
-                    style={{
-                      padding: "8px 12px",
-                      borderBottom: `1px solid var(--card-border)`,
-                      ...headCell,
-                    }}
-                  >
-                    Wins
-                  </th>
-                  <th
-                    style={{
-                      padding: "8px 12px",
-                      borderBottom: `1px solid var(--card-border)`,
-                      ...headCell,
-                    }}
-                  >
-                    Losses
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r, i) => {
-                  const top3 = i < 3;
-                  const pill =
-                    accent === "red" ? "var(--pill-red)" : "var(--pill-blue)";
-                  return (
-                    <tr
-                      key={r.userId}
-                      style={{
-                        background: top3 ? pill : "transparent",
-                        borderTop: `1px solid var(--card-border)`,
-                      }}
-                    >
-                      <td
-                        style={{
-                          padding: "8px 12px",
-                          fontWeight: 700,
-                          color: accent === "red" ? "#b91c1c" : "#1d4ed8",
-                        }}
-                      >
-                        {i + 1}
-                      </td>
-                      <td
-                        style={{
-                          padding: "8px 12px",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          color: "var(--text)",
-                        }}
-                      >
-                        {r.avatar ? (
-                          <img
-                            src={r.avatar}
-                            alt=""
-                            crossOrigin="anonymous"
-                            style={{
-                              width: 24,
-                              height: 24,
-                              borderRadius: "50%",
-                            }}
-                          />
-                        ) : (
-                          <span
-                            style={{
-                              width: 24,
-                              height: 24,
-                              borderRadius: "50%",
-                              background: "var(--empty-stroke)",
-                            }}
-                          />
-                        )}
-                        <span className="truncate" title={r.name || r.userId}>
-                          {r.name || r.userId}
-                        </span>
-                      </td>
-                      <td style={{ padding: "8px 12px", ...numCell }}>
-                        {r.rating}
-                      </td>
-                      <td style={{ padding: "8px 12px", ...numCell }}>
-                        {r.games}
-                      </td>
-                      <td style={{ padding: "8px 12px", ...numCell }}>
-                        {r.wins}
-                      </td>
-                      <td style={{ padding: "8px 12px", ...numCell }}>
-                        {r.losses}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {rows.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={6}
-                      style={{
-                        padding: "16px",
-                        color: "var(--muted)",
-                        textAlign: "center",
-                      }}
-                    >
-                      No ranked players yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div
-          style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}
-        >
-          <button
-            className="rounded cursor-pointer"
-            disabled={rankingsSharePending}
-            style={{
-              background: "#16a34a",
-              color: "#fff",
-              padding: "6px 12px",
-              opacity: rankingsSharePending ? 0.7 : 1,
-            }}
-            onClick={() => shareRankings(bucket)}
-          >
-            {shareBusy === `rankings:${bucket}`
-              ? "Sharing…"
-              : `Share ${LEADERBOARD_LABEL}`}
-          </button>
-        </div>
-      </div>
-    );
-
     content = (
-      <div
-        className="flex flex-col items-center"
-        style={{ background: "var(--bg)", height: "100vh", overflow: "hidden" }}
-      >
-        {notice && (
-          <div className="text-sm mb-2" style={{ color: "var(--muted)" }}>
-            {notice}
-          </div>
-        )}
-        <div style={{ paddingTop: 16, paddingBottom: 8 }}>
-          <h1
-            className="text-2xl font-bold text-center"
-            style={{ color: "var(--text)" }}
-          >
-            Euclid — {LEADERBOARD_LABEL}
-          </h1>
-        </div>
-        <div
-          className="flex-1 min-h-0 overflow-y-auto w-full flex flex-col items-center gap-6"
-          role="region"
-          aria-label="Full leaderboard"
-          tabIndex={0}
-          style={{ paddingBottom: 8 }}
-        >
-          {rankingsLoading || (!rankingsLoaded && !rankingsError) ? (
-            <p role="status" style={{ color: "var(--muted)" }}>
-              {rankingsLoaded
-                ? "Refreshing leaderboard…"
-                : "Loading leaderboard…"}
-            </p>
-          ) : null}
-          {rankingsError ? (
-            <div className="w-[min(720px,92vw)]">
-              <p
-                role="alert"
-                style={{ color: "var(--text)", overflowWrap: "anywhere" }}
-              >
-                {rankingsError}
-              </p>
-              {rankingsLoaded ? (
-                <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
-                  Showing the last loaded standings.
-                </p>
-              ) : null}
-              <button
-                type="button"
-                className="rounded cursor-pointer mt-2"
-                style={{
-                  background: "#6b7280",
-                  color: "#fff",
-                  padding: "8px 12px",
-                }}
-                onClick={() => void loadRankings()}
-              >
-                Try again
-              </button>
-            </div>
-          ) : null}
-          {rankingsLoaded ? (
-            <>
-              <Section
-                title={HUMAN_VS_HUMAN_LABEL}
-                rows={rankings.hvh}
-                accent="red"
-                bucket="hvh"
-              />
-              <Section
-                title={`${HUMAN_VS_EUCLID_LABEL} — Ranked`}
-                subtitle={
-                  rankings.hvaRules
-                    ? `${rankings.hvaRules.rules.W}×${rankings.hvaRules.rules.H} • ${boardScoringLabel(rankings.hvaRules.rules.scoring)} • First to ${rankings.hvaRules.rules.winScore} • ${AI_DIFFICULTY_LABELS[rankings.hvaRules.rules.difficulty]}`
-                    : "8×8 • Grid Footprint • First to 150 • Brutal"
-                }
-                rows={rankings.hva}
-                accent="blue"
-                bucket="hva"
-              />
-            </>
-          ) : null}
-        </div>
-        <div style={{ padding: 12 }}>
-          <button
-            className="rounded cursor-pointer"
-            style={{
-              background: "#6b7280",
-              color: "#fff",
-              padding: "6px 12px",
-            }}
-            onClick={returnHome}
-            disabled={rankingsSharePending}
-            aria-busy={rankingsSharePending || undefined}
-          >
-            {rankingsSharePending ? "Sharing…" : "Back"}
-          </button>
-        </div>
-      </div>
+      <RankingsScreen
+        rankings={rankings}
+        loading={rankingsLoading}
+        loaded={rankingsLoaded}
+        error={rankingsError || null}
+        notice={notice}
+        shareBusy={shareBusy}
+        onRetry={() => void loadRankings()}
+        onShare={shareRankings}
+        onBack={returnHome}
+      />
     );
   } else if (mode === "spectate") {
     content = (
@@ -3915,27 +2806,13 @@ export const App = ({
   } else if (mode === "admin") {
     /* ===== Admin ===== */
     content = (
-      <div
-        className="flex flex-col items-center"
-        style={{ background: "var(--bg)", height: "100vh", overflow: "hidden" }}
+      <PageShell
+        title="Admin metrics"
+        titleId="admin-title"
+        back={{ label: "Done", onClick: returnHome }}
+        narrow={false}
       >
-        <div style={{ paddingTop: 16, paddingBottom: 8 }}>
-          <h1
-            className="text-2xl font-bold text-center"
-            style={{ color: "var(--text)" }}
-          >
-            Euclid — Admin Metrics
-          </h1>
-        </div>
-
-        <div
-          className="w-[min(860px,94vw)] rounded-lg flex-1 overflow-y-auto"
-          style={{
-            background: "var(--card-bg)",
-            border: `1px solid var(--card-border)`,
-            padding: "4px 2px",
-          }}
-        >
+        <div className="panel admin-panel">
           <table
             style={{
               width: "100%",
@@ -4367,21 +3244,7 @@ export const App = ({
             </div>
           </div>
         </div>
-
-        <div style={{ padding: 12 }}>
-          <button
-            className="rounded cursor-pointer"
-            style={{
-              background: "#2563eb",
-              color: "#fff",
-              padding: "6px 12px",
-            }}
-            onClick={returnHome}
-          >
-            ok
-          </button>
-        </div>
-      </div>
+      </PageShell>
     );
   } else if (mode === "multiplayer" && spectating && finalReason === "gone") {
     content = (
@@ -4493,7 +3356,7 @@ export const App = ({
           : finalReason
             ? "Game over"
             : spectating
-              ? "Spectating — read only"
+              ? `${board.m_turn === 0 ? p1Name : p2Name} to move`
               : isMyTurn
                 ? "Your move"
                 : `Waiting on ${board.m_turn === 0 ? p1Name : p2Name}…`;
@@ -4547,165 +3410,113 @@ export const App = ({
               ? "Sending message…"
               : "Saving move…";
 
-    const overlay =
+    const showOverlay =
       (notice &&
         !showTerminalResult &&
         !h2hScoreFeedback &&
         !h2hScoreFeedbackSettling) ||
-      (showTerminalResult && !h2hScoreFeedback && !h2hScoreFeedbackSettling) ? (
-        <div
-          className="anim__animated anim__zoomIn"
-          style={{
-            position: "fixed",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 50,
-            background: "rgba(0,0,0,.55)",
-          }}
-        >
-          <Confetti show={shouldRunVictoryEffects(showWinner, youAreWinner)} />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="euclid-h2h-result-title"
-            tabIndex={-1}
-            onKeyDown={trapDialogTab}
-            style={{
-              background: "var(--card-bg)",
-              color: "var(--text)",
-              border: `1px solid var(--card-border)`,
-              borderRadius: 12,
-              padding: "16px 22px",
-              textAlign: "center",
-              maxWidth: 520,
-              width: "calc(100% - 32px)",
-              maxHeight: "calc(100dvh - 32px)",
-              overflowY: "auto",
-              overflowWrap: "anywhere",
-              zIndex: 60,
-            }}
-          >
-            {showWinner ? (
-              <>
-                <div
-                  id="euclid-h2h-result-title"
-                  style={{
-                    fontSize: "1.2rem",
-                    fontWeight: 800,
-                    marginBottom: 8,
-                  }}
-                >
-                  {winnerText}
-                </div>
-                <div style={{ color: "var(--muted)", marginBottom: 12 }}>
-                  Final: {p1Name} {board.m_players[0].m_score} —{" "}
-                  {board.m_players[1].m_score} {p2Name}
-                </div>
-                {notice && (
-                  <div style={{ color: "var(--muted)", marginBottom: 12 }}>
-                    {notice}
-                  </div>
-                )}
-              </>
-            ) : finalReason === "tie" ? (
-              <>
-                <div
-                  id="euclid-h2h-result-title"
-                  style={{
-                    fontSize: "1.2rem",
-                    fontWeight: 800,
-                    marginBottom: 8,
-                  }}
-                >
-                  Tie game!
-                </div>
-                <div style={{ color: "var(--muted)", marginBottom: 12 }}>
-                  Final: {p1Name} {board.m_players[0].m_score} —{" "}
-                  {board.m_players[1].m_score} {p2Name}
-                </div>
-              </>
-            ) : (
-              <div
-                id="euclid-h2h-result-title"
-                style={{ fontSize: "1.1rem", fontWeight: 800, marginBottom: 8 }}
-              >
-                {notice || "Game over."}
-              </div>
-            )}
-            {rematchAvailable && (
-              <H2HRematchButton
-                disabled={h2hExitPending}
-                pending={h2hMutation === "rematch"}
-                onClick={() => void requestH2HRematch()}
-              />
-            )}
-            {spectating && showTerminalResult ? (
-              <WatchActions
-                initialFocus
-                onReplay={
-                  watchRecording ? () => setShowWatchReplay(true) : undefined
-                }
-                onAnother={stopWatching}
-                onPlay={playFromWatch}
-              />
-            ) : (
-              <button
-                autoFocus
-                type="button"
-                className="rounded cursor-pointer"
-                style={{
-                  background: "#ef4444",
-                  color: "#fff",
-                  padding: "6px 12px",
-                  cursor: h2hExitPending ? "wait" : "pointer",
-                  opacity: h2hExitPending ? 0.65 : 1,
-                }}
-                onClick={() => {
-                  if (h2hExitPending) return;
-                  if (showTerminalResult) {
-                    exitMultiplayer();
-                  } else {
-                    setNotice("");
-                  }
-                }}
-                aria-disabled={h2hExitPending || undefined}
-                aria-busy={h2hExitPending || undefined}
-              >
-                {showTerminalResult
-                  ? h2hExitPending && h2hMutation !== "rematch"
-                    ? h2hExitPendingLabel
-                    : "Close"
-                  : "OK"}
-              </button>
-            )}
-            {mode === "multiplayer" &&
-              showWinner &&
-              youAreWinner &&
-              !spectating &&
-              !sharedWins.multiplayer && (
-                <button
-                  className="rounded cursor-pointer ml-2"
+      (showTerminalResult && !h2hScoreFeedback && !h2hScoreFeedbackSettling);
+    const closeLabel = showTerminalResult
+      ? h2hExitPending && h2hMutation !== "rematch"
+        ? h2hExitPendingLabel
+        : "Close"
+      : "OK";
+    const closeButton = (
+      <button
+        autoFocus
+        type="button"
+        className="btn"
+        onClick={() => {
+          if (h2hExitPending) return;
+          if (showTerminalResult) {
+            exitMultiplayer();
+          } else {
+            setNotice("");
+          }
+        }}
+        aria-disabled={h2hExitPending || undefined}
+        aria-busy={h2hExitPending || undefined}
+      >
+        {closeLabel}
+      </button>
+    );
+    const overlay = !showOverlay ? null : showTerminalResult ? (
+      <>
+        <Confetti show={shouldRunVictoryEffects(showWinner, youAreWinner)} />
+        <ResultDialog
+          titleId="euclid-h2h-result-title"
+          headline={
+            showWinner
+              ? winnerText
+              : finalReason === "tie"
+                ? "Tie game!"
+                : notice || "Game over."
+          }
+          tone={
+            youAreWinner
+              ? "win"
+              : showWinner && !spectating
+                ? "loss"
+                : "neutral"
+          }
+          detail={`${spectating ? "Spectated match" : "Redditor match"} · ${rulesSummary(board)}`}
+          players={
+            showWinner || finalReason === "tie"
+              ? resultPlayers(board, [p1Name, p2Name], decided)
+              : undefined
+          }
+          actions={
+            <>
+              {rematchAvailable && (
+                <H2HRematchButton
                   disabled={h2hExitPending}
-                  style={{
-                    background: "#16a34a",
-                    color: "#fff",
-                    padding: "6px 12px",
-                    opacity: h2hExitPending ? 0.7 : 1,
-                  }}
-                  onClick={shareMultiplayerWin}
-                >
-                  {shareBusy === "multiplayer"
-                    ? "Sharing…"
-                    : h2hExitPending
-                      ? "Please wait…"
-                      : "Share Win"}
-                </button>
+                  pending={h2hMutation === "rematch"}
+                  onClick={() => void requestH2HRematch()}
+                />
               )}
-          </div>
-        </div>
-      ) : null;
+              {showWinner &&
+                youAreWinner &&
+                !spectating &&
+                !sharedWins.multiplayer && (
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    disabled={h2hExitPending}
+                    onClick={shareMultiplayerWin}
+                  >
+                    <Icon name="share" size={18} />
+                    {shareBusy === "multiplayer"
+                      ? "Sharing…"
+                      : h2hExitPending
+                        ? "Please wait…"
+                        : "Share win"}
+                  </button>
+                )}
+              {spectating ? (
+                <WatchActions
+                  initialFocus
+                  onReplay={
+                    watchRecording ? () => setShowWatchReplay(true) : undefined
+                  }
+                  onAnother={stopWatching}
+                  onPlay={playFromWatch}
+                />
+              ) : (
+                closeButton
+              )}
+            </>
+          }
+        >
+          {showWinner && notice ? (
+            <p className="result__notice">{notice}</p>
+          ) : null}
+        </ResultDialog>
+      </>
+    ) : (
+      <NoticeDialog titleId="euclid-h2h-result-title" message={notice}>
+        {closeButton}
+      </NoticeDialog>
+    );
 
     // Chat items for display (H2H from board.chat)
     const chatItems: { id: number; sender: string; text: string }[] = (() => {
@@ -4733,30 +3544,22 @@ export const App = ({
         onLeave={exitMultiplayer}
         exitPending={h2hExitPending}
         exitPendingLabel={h2hExitPendingLabel}
+        modeLabel={spectating ? "Spectating" : "Redditor match"}
         p1Name={p1Name}
         p2Name={p2Name}
         midText={midText}
-        glowSide={
-          finalSide
-            ? null
-            : spectating
-              ? null
-              : isMyTurn
-                ? isPlayer1
-                  ? "red"
-                  : "blue"
-                : null
+        activeSide={
+          finalSide || finalReason ? null : board.m_turn === 0 ? 1 : 2
         }
-        dimSide={
-          finalSide
-            ? null
-            : spectating
-              ? null
-              : isMyTurn
-                ? isPlayer1
-                  ? "blue"
-                  : "red"
-                : null
+        placingSide={
+          !spectating &&
+          isMyTurn &&
+          !winner &&
+          !finalSide &&
+          !finalReason &&
+          h2hMutation === null
+            ? localSide
+            : null
         }
         overlay={overlay}
         p1Avatar={avatars[p1Id]}
@@ -4769,26 +3572,45 @@ export const App = ({
         myColor={localSide}
         scoreFeedback={h2hScoreFeedback}
         futureScoreFeedback={h2hScoreFeedbackQueue.slice(1)}
+        acceptPlacementKey={(event) => !event.repeat}
+        onRules={() => setShowRules(true)}
+        toolbar={
+          <>
+            {!chatOpen && h2hChatAvailable && (
+              <H2HChatTrigger
+                ref={chatTriggerRef}
+                disabled={h2hMutation !== null}
+                onClick={() => {
+                  openChat();
+                }}
+              />
+            )}
+            {!spectating && (
+              <AssistToggle
+                on={assistOn}
+                onToggle={() => setAssistOn(!assistOn)}
+              />
+            )}
+            {soundControl}
+          </>
+        }
       />
     );
   } else if (mode === "ai" && (!isBoardValid(board) || !soloSnapshot)) {
     content = (
-      <div
-        className="flex flex-col justify-center items-center gap-4"
-        style={{ background: "var(--bg)", height: "100vh", overflow: "hidden" }}
-      >
-        <h1 className="text-2xl font-bold" style={{ color: "var(--text)" }}>
-          Euclid
-        </h1>
-        <div style={{ color: "var(--muted)" }}>
-          {status || "Loading your solo game…"}
-        </div>
-      </div>
+      <HomeStatusScreen
+        heading="Setting up the board"
+        detail={status || "Loading your solo game…"}
+        busy
+      />
     );
   } else if (mode === "ai" && isBoardValid(board) && soloSnapshot) {
     /* ===== Canonical Ranked / Practice solo ===== */
     const presentation = getSoloResultPresentation(soloSnapshot);
-    const assistance = getSoloAssistancePolicy(soloSnapshot.mode);
+    const assistance = getSoloAssistancePolicy(
+      soloSnapshot.mode,
+      initState?.username,
+    );
     const soloExitPending = soloPending !== null || shareBusy === "ai";
     const soloExitPendingLabel =
       shareBusy === "ai"
@@ -4822,93 +3644,80 @@ export const App = ({
       soloPending === "moving"
         ? `${EUCLID_LABEL} is thinking…`
         : presentation.headline;
+    const ratingDelta = soloSnapshot.rating
+      ? soloSnapshot.rating.after - soloSnapshot.rating.before
+      : 0;
     const overlay =
       presentation.terminal && !soloScoreFeedback ? (
-        <div
-          className="anim__animated anim__zoomIn"
-          style={{
-            position: "fixed",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 50,
-            background: "rgba(0,0,0,.55)",
-          }}
-        >
+        <>
           <Confetti
             show={shouldRunVictoryEffects(
               presentation.terminal,
               presentation.isLocalVictory,
             )}
           />
-          <div
-            style={{
-              background: "var(--card-bg)",
-              color: "var(--text)",
-              border: `1px solid var(--card-border)`,
-              borderRadius: 12,
-              padding: "16px 22px",
-              textAlign: "center",
-            }}
-          >
-            <div
-              style={{ fontSize: "1.2rem", fontWeight: 800, marginBottom: 8 }}
-            >
-              {presentation.headline}
-            </div>
-            <div style={{ color: "var(--muted)", marginBottom: 10 }}>
-              {soloSnapshot.mode === "ranked" ? "Ranked" : "Practice"} •{" "}
-              {board.W}×{board.H} • {boardScoringLabel(board.scoring)} • First
-              to {board.winScore}
-            </div>
-            {soloSnapshot.rating && (
-              <div style={{ color: "var(--muted)", marginBottom: 10 }}>
-                Rating: {soloSnapshot.rating.before} →{" "}
-                {soloSnapshot.rating.after}
-              </div>
+          <ResultDialog
+            titleId="euclid-solo-result-title"
+            headline={presentation.headline}
+            tone={
+              presentation.isLocalVictory
+                ? "win"
+                : presentation.result === "loss"
+                  ? "loss"
+                  : "neutral"
+            }
+            detail={`${soloSnapshot.mode === "ranked" ? "Ranked" : "Practice"} · ${rulesSummary(board)}`}
+            players={resultPlayers(
+              board,
+              [p1Name, p2Name],
+              presentation.winnerSide,
             )}
-            {notice && (
-              <div style={{ color: "var(--muted)", marginBottom: 12 }}>
-                {notice}
-              </div>
-            )}
-            <button
-              className="rounded cursor-pointer"
-              style={{
-                background: "#ef4444",
-                color: "#fff",
-                padding: "6px 12px",
-              }}
-              onClick={() => void exitSoloGame()}
-              disabled={soloExitPending}
-              aria-busy={soloExitPending || undefined}
-            >
-              {soloExitPending ? soloExitPendingLabel : "Close"}
-            </button>
-            {soloSnapshot.canShare &&
-              presentation.isLocalVictory &&
-              !sharedWins.ai && (
+            actions={
+              <>
+                {soloSnapshot.canShare &&
+                  presentation.isLocalVictory &&
+                  !sharedWins.ai && (
+                    <button
+                      type="button"
+                      className="btn btn--primary"
+                      disabled={soloExitPending}
+                      onClick={() => void shareAiWin()}
+                    >
+                      <Icon name="share" size={18} />
+                      {shareBusy === "ai"
+                        ? "Sharing…"
+                        : soloExitPending
+                          ? "Please wait…"
+                          : "Share win"}
+                    </button>
+                  )}
                 <button
-                  className="rounded cursor-pointer ml-2"
+                  autoFocus
+                  type="button"
+                  className="btn"
+                  onClick={() => void exitSoloGame()}
                   disabled={soloExitPending}
-                  style={{
-                    background: "#16a34a",
-                    color: "#fff",
-                    padding: "6px 12px",
-                    opacity: soloExitPending ? 0.7 : 1,
-                  }}
-                  onClick={() => void shareAiWin()}
+                  aria-busy={soloExitPending || undefined}
                 >
-                  {shareBusy === "ai"
-                    ? "Sharing…"
-                    : soloExitPending
-                      ? "Please wait…"
-                      : "Share Win"}
+                  {soloExitPending ? soloExitPendingLabel : "Close"}
                 </button>
-              )}
-          </div>
-        </div>
+              </>
+            }
+          >
+            {soloSnapshot.rating && (
+              <p className="result__rating num">
+                Rating {soloSnapshot.rating.before} →{" "}
+                {soloSnapshot.rating.after}
+                <span
+                  className={`result__rating-delta${ratingDelta < 0 ? " result__rating-delta--down" : ""}`}
+                >
+                  {ratingDelta >= 0 ? `+${ratingDelta}` : ratingDelta}
+                </span>
+              </p>
+            )}
+            {notice && <p className="result__notice">{notice}</p>}
+          </ResultDialog>
+        </>
       ) : null;
 
     content = (
@@ -4920,15 +3729,19 @@ export const App = ({
         onLeave={() => void exitSoloGame()}
         exitPending={soloExitPending}
         exitPendingLabel={soloExitPendingLabel}
-        p1Name={p1Name}
-        p2Name={p2Name}
+        modeLabel={soloSnapshot.mode === "ranked" ? "Ranked" : "Practice"}
+        p1Name={humanIsPlayerOne ? "You" : EUCLID_LABEL}
+        p2Name={humanIsPlayerOne ? EUCLID_LABEL : "You"}
+        p1Tag={humanIsPlayerOne ? undefined : difficultyName}
+        p2Tag={humanIsPlayerOne ? difficultyName : undefined}
         midText={midText}
-        glowSide={
-          presentation.terminal ? null : board.m_turn === 0 ? "red" : "blue"
+        activeSide={presentation.terminal ? null : board.m_turn === 0 ? 1 : 2}
+        placingSide={
+          isSoloHumanTurn(soloSnapshot) && soloPending === null
+            ? presentation.humanSide
+            : null
         }
-        dimSide={
-          presentation.terminal ? null : board.m_turn === 0 ? "blue" : "red"
-        }
+        thinking={soloPending === "moving"}
         overlay={overlay}
         chatItems={localChat.slice(-8)}
         chatCanCompose={soloChatAvailable}
@@ -4936,23 +3749,35 @@ export const App = ({
         myColor={presentation.humanSide}
         scoreFeedback={soloScoreFeedback}
         futureScoreFeedback={soloScoreFeedbackQueue.slice(1)}
+        acceptPlacementKey={(event) =>
+          isFreshSoloGameplayKey(
+            event.nativeEvent,
+            soloKeyboardTurnStartedAtRef.current,
+          )
+        }
+        onRules={() => setShowRules(true)}
+        toolbar={
+          <>
+            {assistance.allowAssistHighlights && !presentation.terminal && (
+              <AssistToggle
+                on={assistOn}
+                onToggle={() => setAssistOn(!assistOn)}
+              />
+            )}
+            {soundControl}
+          </>
+        }
       />
     );
   }
 
   // Defensive fallback for a transient mode/state combination not routed above.
   else {
-    content = (
-      <div
-        className="flex flex-col justify-center items-center gap-5"
-        style={{ background: "var(--bg)", height: "100vh", overflow: "hidden" }}
-      >
-        <div style={{ color: "var(--text)" }}>Loading…</div>
-      </div>
-    );
+    content = <HomeStatusScreen heading="Loading" detail="One moment…" busy />;
   }
 
-  const showH2HChatTrigger = !chatOpen && h2hChatAvailable;
+  // The game bar hosts chat and sound controls; other screens float sound.
+  const onGameScreen = content.type === GameScreen;
   const globalControlsBlocked =
     chatOpen ||
     showRules ||
@@ -4960,892 +3785,49 @@ export const App = ({
     notice !== "" ||
     winner !== null ||
     finalReason !== "";
+  const appReady = !sharedPost && !!initState && !initError;
 
-  /* ===== Unconditional globals + content + chat overlay ===== */
+  /* ===== Unconditional globals + content + overlays ===== */
   return (
-    <>
-      <GlobalStyles />
+    <SoundContext.Provider value={sounds}>
       <VersionStamp version={initState?.appVersion} />
       {content}
-      {!sharedPost && !!initState && !initError && ChatOverlay}
-      {!sharedPost && !!initState && !initError && TutorialModal}
-      {!sharedPost && !!initState && !initError && showH2HChatTrigger && (
-        <H2HChatTrigger
-          ref={chatTriggerRef}
-          disabled={h2hMutation !== null}
-          onClick={() => {
-            openChat();
-          }}
-        />
+      {appReady && ChatOverlay}
+      {appReady && RulesOverlay}
+      {appReady && TutorialModal}
+      {appReady && !onGameScreen && !globalControlsBlocked && (
+        <SoundToggle floating on={soundOn} onToggle={toggleSound} />
       )}
-      {!sharedPost && !!initState && !initError && !globalControlsBlocked && (
-        <button
-          type="button"
-          className="euclid-sound-toggle"
-          aria-label={soundOn ? "Mute game sounds" : "Turn on game sounds"}
-          aria-pressed={soundOn}
-          title={soundOn ? "Mute game sounds" : "Turn on game sounds"}
-          onClick={() => setSoundOn(!soundOn)}
-        >
-          <span aria-hidden="true">{soundOn ? "🔊" : "🔇"}</span>
-        </button>
-      )}
-    </>
-  );
-};
-
-/* ===== Screen (board renderer) ===== */
-const GameScreen: React.FC<{
-  exitLabel:
-    | "Back"
-    | "Leave Game"
-    | "Stop Watching"
-    | "Close"
-    | "End Practice"
-    | "Cancel Ranked"
-    | "Abandon Ranked";
-  viewport: ViewportSize;
-  board: Board;
-  onCellClick: (x: number, y: number) => void;
-  onLeave: () => void;
-  exitPending?: boolean;
-  exitPendingLabel?: string;
-  p1Name: string;
-  p2Name: string;
-  midText: string;
-  glowSide?: "red" | "blue" | null;
-  dimSide?: "red" | "blue" | null;
-  overlay: React.ReactNode;
-  p1Avatar?: string | undefined;
-  p2Avatar?: string | undefined;
-  chatItems: Array<Pick<ShareChatItem, "id" | "sender" | "text">>;
-  chatReadOnly?: boolean;
-  chatCanCompose?: boolean;
-  chatHasVisibleTrigger?: boolean;
-  assistOn: boolean;
-  myColor: PlayerColor | null;
-  scoreFeedback: ScoreFeedbackEvent | null;
-  futureScoreFeedback: readonly ScoreFeedbackEvent[];
-}> = ({
-  exitLabel,
-  viewport,
-  board,
-  onCellClick,
-  onLeave,
-  exitPending = false,
-  exitPendingLabel = "Finishing action…",
-  p1Name,
-  p2Name,
-  midText,
-  glowSide,
-  dimSide,
-  overlay,
-  p1Avatar,
-  p2Avatar,
-  chatItems,
-  chatReadOnly = false,
-  chatCanCompose = false,
-  chatHasVisibleTrigger = false,
-  assistOn,
-  myColor,
-  scoreFeedback,
-  futureScoreFeedback,
-}) => {
-  const screenRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const boardRef = useRef<HTMLDivElement>(null);
-  const [boardSpace, setBoardSpace] = useState({ width: 0, height: 0 });
-  // Keep score arrangement independent of board size so measurement cannot
-  // alternate between stacked and side-by-side layouts.
-  const isMobile = viewport.width <= 768;
-  const layout = useMemo(
-    () =>
-      calculateBoardLayout(
-        boardSpace.width,
-        boardSpace.height,
-        board.W,
-        board.H,
-      ),
-    [board.H, board.W, boardSpace.height, boardSpace.width],
-  );
-  const {
-    cellSize: cell,
-    dotSize: DOT,
-    boardWidth: bw,
-    boardHeight: bh,
-  } = layout;
-
-  useLayoutEffect(() => {
-    const screen = screenRef.current;
-    const content = contentRef.current;
-    const boardElement = boardRef.current;
-    if (!screen || !content || !boardElement) return;
-
-    const measure = () => {
-      const style = getComputedStyle(screen);
-      const horizontalPadding =
-        parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
-      const verticalPadding =
-        parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
-      // Subtract the actual title, scores, chat, controls and gaps. Their height
-      // changes with wrapping, fonts and chat; a fixed allowance cannot fit them.
-      const reservedHeight =
-        content.getBoundingClientRect().height -
-        boardElement.getBoundingClientRect().height;
-      const width = Math.max(
-        0,
-        Math.floor(screen.clientWidth - horizontalPadding),
-      );
-      const height = Math.max(
-        0,
-        Math.floor(screen.clientHeight - verticalPadding - reservedHeight),
-      );
-      setBoardSpace((current) =>
-        current.width === width && current.height === height
-          ? current
-          : { width, height },
-      );
-    };
-
-    measure();
-    const observer = new ResizeObserver(measure);
-    for (const element of [screen, content, boardElement])
-      observer.observe(element);
-    return () => observer.disconnect();
-  }, [viewport.width, viewport.height]);
-
-  const [showHistoricalSquares, setShowHistoricalSquares] = useState(true);
-
-  const orderByAngle = (
-    points: readonly [SharePoint, SharePoint, SharePoint, SharePoint],
-  ) => {
-    const centerX =
-      points.reduce((sum, point) => sum + point.x, 0) / points.length;
-    const centerY =
-      points.reduce((sum, point) => sum + point.y, 0) / points.length;
-    return points
-      .slice()
-      .sort(
-        (left, right) =>
-          Math.atan2(left.y - centerY, left.x - centerX) -
-          Math.atan2(right.y - centerY, right.x - centerX),
-      );
-  };
-
-  const squarePolygonPoints = (square: ShareSquare): string =>
-    orderByAngle([square.p1, square.p2, square.p3, square.p4])
-      .map((point) => `${(point.x + 0.5) * cell},${(point.y + 0.5) * cell}`)
-      .join(" ");
-
-  const historicalEdges = (
-    squares: readonly ShareSquare[],
-    player: PlayerIndex,
-    rgbVar: "--line-red" | "--line-blue",
-  ): React.ReactElement[] => {
-    const edges: React.ReactElement[] = [];
-    const minAlpha = 0.14,
-      maxAlpha = 0.9;
-    for (const [squareIndex, square] of squares.entries()) {
-      const alpha =
-        squares.length <= 1
-          ? maxAlpha
-          : minAlpha +
-            (squareIndex / (squares.length - 1)) * (maxAlpha - minAlpha);
-      const ordered = orderByAngle([
-        square.p1,
-        square.p2,
-        square.p3,
-        square.p4,
-      ]).map((point) => ({
-        x: (point.x + 0.5) * cell,
-        y: (point.y + 0.5) * cell,
-      }));
-      for (let pointIndex = 0; pointIndex < ordered.length; pointIndex++) {
-        const start = ordered[pointIndex];
-        const end = ordered[(pointIndex + 1) % ordered.length];
-        if (!start || !end) continue;
-        edges.push(
-          <line
-            key={`history-${player}-${squareSignature(square)}-${pointIndex}`}
-            x1={start.x}
-            y1={start.y}
-            x2={end.x}
-            y2={end.y}
-            stroke={`rgba(var(${rgbVar}), ${alpha})`}
-            strokeWidth="2"
-          />,
-        );
-      }
-    }
-    return edges;
-  };
-
-  const firstActiveSquares =
-    scoreFeedback?.player === 0 ? scoreFeedback.completedSquares : [];
-  const secondActiveSquares =
-    scoreFeedback?.player === 1 ? scoreFeedback.completedSquares : [];
-  const futureSquareSignatures = new Set(
-    futureScoreFeedback.flatMap((feedback) =>
-      feedback.completedSquares.map(squareSignature),
-    ),
-  );
-  const firstHistoricalSquares = board.m_players[0].m_squares.filter(
-    (square) => !futureSquareSignatures.has(squareSignature(square)),
-  );
-  const secondHistoricalSquares = board.m_players[1].m_squares.filter(
-    (square) => !futureSquareSignatures.has(squareSignature(square)),
-  );
-  const firstSquareLayers = selectSquareLines(
-    firstHistoricalSquares,
-    firstActiveSquares,
-    showHistoricalSquares,
-  );
-  const secondSquareLayers = selectSquareLines(
-    secondHistoricalSquares,
-    secondActiveSquares,
-    showHistoricalSquares,
-  );
-  const lines = [
-    ...historicalEdges(firstSquareLayers.historical, 0, "--line-red"),
-    ...historicalEdges(secondSquareLayers.historical, 1, "--line-blue"),
-  ];
-  const activePolygons = [
-    ...firstSquareLayers.active.map((square) => (
-      <polygon
-        key={`active-${scoreFeedback?.id ?? "none"}-0-${squareSignature(square)}`}
-        className="euclid-score-square euclid-score-square--red"
-        points={squarePolygonPoints(square)}
-        vectorEffect="non-scaling-stroke"
-      />
-    )),
-    ...secondSquareLayers.active.map((square) => (
-      <polygon
-        key={`active-${scoreFeedback?.id ?? "none"}-1-${squareSignature(square)}`}
-        className="euclid-score-square euclid-score-square--blue"
-        points={squarePolygonPoints(square)}
-        vectorEffect="non-scaling-stroke"
-      />
-    )),
-  ];
-  const footprintRects =
-    board.scoring === "bbox" && scoreFeedback
-      ? scoreFeedback.footprintBounds.map((bounds, index) => (
-          <rect
-            key={`${scoreFeedback.id}-footprint-${index}`}
-            className={`euclid-score-footprint euclid-score-footprint--${scoreFeedback.player === 0 ? "red" : "blue"}`}
-            x={bounds.x * cell + 2}
-            y={bounds.y * cell + 2}
-            width={Math.max(0, bounds.width * cell - 4)}
-            height={Math.max(0, bounds.height * cell - 4)}
-            rx={Math.max(3, Math.min(8, cell * 0.15))}
-            vectorEffect="non-scaling-stroke"
-          />
-        ))
-      : [];
-
-  const leftGlow = glowSide === "red" ? "red" : null;
-  const rightGlow = glowSide === "blue" ? "blue" : null;
-  const leftDim = dimSide === "red" ? 0.5 : 1;
-  const rightDim = dimSide === "blue" ? 0.5 : 1;
-  const scoreBadgePosition = scoreFeedback
-    ? {
-        left: Math.min(
-          bw - Math.min(30, bw / 2),
-          Math.max(Math.min(30, bw / 2), (scoreFeedback.point.x + 0.5) * cell),
-        ),
-        top: Math.max(4, (scoreFeedback.point.y + 0.5) * cell - DOT / 2),
-      }
-    : null;
-
-  // ===== Assist highlight logic (hover over your placed piece) =====
-  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
-
-  const { oneMoveTargets, twoMoveTargets } = useMemo(() => {
-    const one = new Set<number>();
-    const two = new Set<number>();
-    if (!assistOn || hoverIdx == null || myColor == null)
-      return { oneMoveTargets: one, twoMoveTargets: two };
-    const W = board.W,
-      H = board.H,
-      arr = board.m_board;
-    if (arr[hoverIdx] !== myColor)
-      return { oneMoveTargets: one, twoMoveTargets: two };
-    const opp = myColor === 1 ? 2 : 1;
-    const x0 = hoverIdx % W,
-      y0 = Math.floor(hoverIdx / W);
-
-    for (let row = 0; row < H; row++) {
-      for (let col = 0; col < W; col++) {
-        const dx = col - x0,
-          dy = row - y0;
-        const x1 = x0 - dy,
-          y1 = y0 + dx;
-        const x2 = col - dy,
-          y2 = row + dx;
-        if (
-          x1 < 0 ||
-          x1 >= W ||
-          y1 < 0 ||
-          y1 >= H ||
-          x2 < 0 ||
-          x2 >= W ||
-          y2 < 0 ||
-          y2 >= H
-        )
-          continue;
-        if (col === x0 && row === y0) continue;
-
-        const idxA = row * W + col;
-        const idxB = y1 * W + x1;
-        const idxC = y2 * W + x2;
-
-        const vA = arr[idxA];
-        const vB = arr[idxB];
-        const vC = arr[idxC];
-        if (vA === undefined || vB === undefined || vC === undefined) continue;
-
-        // Any opponent piece in the corners blocks this square for us
-        if (vA === opp || vB === opp || vC === opp) continue;
-
-        // Count empties among the three others (v0 is ours)
-        const emptiesCount =
-          (vA === 0 ? 1 : 0) + (vB === 0 ? 1 : 0) + (vC === 0 ? 1 : 0);
-
-        // One or two moves away
-        if (emptiesCount === 1) {
-          if (vA === 0) one.add(idxA);
-          if (vB === 0) one.add(idxB);
-          if (vC === 0) one.add(idxC);
-        } else if (emptiesCount === 2) {
-          if (vA === 0) two.add(idxA);
-          if (vB === 0) two.add(idxB);
-          if (vC === 0) two.add(idxC);
-        }
-      }
-    }
-    return { oneMoveTargets: one, twoMoveTargets: two };
-  }, [assistOn, hoverIdx, myColor, board.W, board.H, board.m_board]);
-
-  const onCellEnter = (idx: number, v: number) => {
-    if (!assistOn || myColor == null) return;
-    if (v === myColor) setHoverIdx(idx);
-    else setHoverIdx(null);
-  };
-  const clearHover = () => setHoverIdx(null);
-
-  // Mobile touch for assist
-  useEffect(() => {
-    if (!assistOn || !isMobile || !boardRef.current) return;
-    const boardElement = boardRef.current;
-    const handleTouchMove = (e: TouchEvent) => {
-      const touch = e.touches.item(0);
-      if (!touch) return;
-      const rect = boardElement.getBoundingClientRect();
-      const tx = Math.floor((touch.clientX - rect.left) / cell);
-      const ty = Math.floor((touch.clientY - rect.top) / cell);
-      const idx = ty * board.W + tx;
-      if (
-        idx >= 0 &&
-        idx < board.m_board.length &&
-        board.m_board[idx] === myColor
-      ) {
-        setHoverIdx(idx);
-      } else {
-        clearHover();
-      }
-    };
-    const handleTouchStart = (e: TouchEvent) => {
-      e.preventDefault();
-      handleTouchMove(e);
-    };
-    const handleTouchEnd = () => clearHover();
-    boardElement.addEventListener("touchstart", handleTouchStart);
-    boardElement.addEventListener("touchmove", handleTouchMove);
-    boardElement.addEventListener("touchend", handleTouchEnd);
-    boardElement.addEventListener("touchcancel", handleTouchEnd);
-    return () => {
-      boardElement.removeEventListener("touchstart", handleTouchStart);
-      boardElement.removeEventListener("touchmove", handleTouchMove);
-      boardElement.removeEventListener("touchend", handleTouchEnd);
-      boardElement.removeEventListener("touchcancel", handleTouchEnd);
-    };
-  }, [assistOn, isMobile, cell, board.W, board.m_board, myColor]);
-
-  const chatLogRef = useRef<HTMLDivElement>(null);
-  const newestChatId = chatItems.at(-1)?.id ?? null;
-  useEffect(() => {
-    if (newestChatId === null || !chatLogRef.current) return;
-    chatLogRef.current.scrollTop = chatLogRef.current.scrollHeight;
-  }, [newestChatId]);
-
-  return (
-    <div
-      ref={screenRef}
-      className="euclid-game-screen"
-      role="region"
-      aria-label="Euclid game"
-      tabIndex={overlay ? -1 : 0}
-      style={{ maxHeight: viewport.height }}
-    >
-      {/* overlay (winner/notice) */}
-      {overlay}
-      <div
-        ref={contentRef}
-        className="euclid-game-screen__content"
-        style={{ minWidth: bw }}
-        inert={overlay ? true : undefined}
-        aria-hidden={overlay ? true : undefined}
-      >
-        <h1
-          className="text-2xl font-bold text-center"
-          style={{ color: "var(--text)", marginTop: -4 }}
-        >
-          Euclid
-        </h1>
-
-        {/* Scoreboard */}
-        {p1Name && p2Name && (
-          <div
-            className={`euclid-game-scores${isMobile ? " euclid-game-scores--stacked" : ""}`}
-          >
-            {(
-              [
-                {
-                  name: p1Name,
-                  score: board.m_players[0].m_score,
-                  avatar: p1Avatar,
-                  glow: leftGlow,
-                  dim: leftDim,
-                },
-                {
-                  name: p2Name,
-                  score: board.m_players[1].m_score,
-                  avatar: p2Avatar,
-                  glow: rightGlow,
-                  dim: rightDim,
-                },
-              ] as const
-            ).map((player, index) => (
-              <div
-                key={index}
-                style={{
-                  gridArea: `player${index + 1}`,
-                  justifySelf: isMobile
-                    ? "center"
-                    : index === 0
-                      ? "start"
-                      : "end",
-                  opacity: scoreFeedback?.player === index ? 1 : player.dim,
-                }}
-              >
-                <ScoreCard
-                  label={player.name}
-                  score={player.score}
-                  align={index === 1 && !isMobile ? "right" : "left"}
-                  glow={player.glow}
-                  avatar={player.avatar}
-                  compact={isMobile}
-                  feedback={
-                    scoreFeedback?.player === index ? scoreFeedback : null
-                  }
-                />
-              </div>
-            ))}
-            <div className="euclid-game-scores__turn">{midText}</div>
-          </div>
-        )}
-
-        {/* Board */}
-        <div
-          ref={boardRef}
-          className="relative"
-          style={{ width: bw, height: bh, margin: "0 auto" }}
-          onMouseLeave={clearHover}
-        >
-          {scoreFeedback && scoreBadgePosition && (
-            <div
-              key={scoreFeedback.id}
-              className={`euclid-score-pop euclid-score-pop--${scoreFeedback.player === 0 ? "red" : "blue"}`}
-              style={scoreBadgePosition}
-              aria-hidden="true"
-            >
-              <strong>+{scoreFeedback.pointsScored}</strong>
-              <span>
-                {scoreFeedback.completedSquares.length}{" "}
-                {scoreFeedback.completedSquares.length === 1
-                  ? "square"
-                  : "squares"}
-              </span>
-            </div>
-          )}
-
-          {/* Overlay lines — do not intercept clicks */}
-          <svg
-            className="absolute top-0 left-0 w-full h-full z-10"
-            style={{ pointerEvents: "none" }}
-            viewBox={`0 0 ${bw} ${bh}`}
-          >
-            {footprintRects}
-            {lines}
-            {activePolygons}
-          </svg>
-
-          <div
-            className="grid"
-            style={{
-              gridTemplateColumns: `repeat(${board.W}, ${cell}px)`,
-              gridAutoRows: `${cell}px`,
-              gap: 0,
-            }}
-          >
-            {Array.from({ length: board.H }, (_, y) =>
-              Array.from({ length: board.W }, (_, x) => {
-                const idx = y * board.W + x;
-                const v = board.m_board[idx] ?? 0;
-                const isLast =
-                  v > 0 && board.m_last.x === x && board.m_last.y === y;
-
-                let fill = "var(--empty-fill)",
-                  stroke = "var(--empty-stroke)",
-                  extraClass = "";
-                let inlineShadow: string | undefined = undefined;
-
-                if (v === 1) {
-                  fill = "var(--dot-red-fill)";
-                  stroke = "var(--dot-red-stroke)";
-                  if (isLast) {
-                    inlineShadow =
-                      "0 0 0 5px var(--last-red-ring), 0 0 18px var(--last-red-glow)";
-                    extraClass = "last__pulse";
-                  }
-                } else if (v === 2) {
-                  fill = "var(--dot-blue-fill)";
-                  stroke = "var(--dot-blue-stroke)";
-                  if (isLast) {
-                    inlineShadow =
-                      "0 0 0 5px var(--last-blue-ring), 0 0 18px var(--last-blue-glow)";
-                    extraClass = "last__pulse";
-                  }
-                } else if (v === 0) {
-                  // Assist overlays for empty spots
-                  if (assistOn && hoverIdx !== null) {
-                    if (oneMoveTargets.has(idx)) {
-                      extraClass +=
-                        myColor === 1
-                          ? " hint-red-bright"
-                          : " hint-blue-bright";
-                    } else if (twoMoveTargets.has(idx)) {
-                      extraClass +=
-                        myColor === 1 ? " hint-red-dim" : " hint-blue-dim";
-                    } else {
-                      extraClass += " assist__dim";
-                    }
-                  }
-                }
-
-                const onEnter = () => onCellEnter(idx, v);
-
-                return (
-                  <div
-                    key={`${y}-${x}`}
-                    className="flex items-center justify-center"
-                    onClick={() => onCellClick(x, y)}
-                    onMouseEnter={onEnter}
-                  >
-                    <div
-                      className={`rounded-full ${extraClass}`}
-                      style={{
-                        width: DOT,
-                        height: DOT,
-                        background: fill,
-                        border: `2px solid ${stroke}`,
-                        ...(inlineShadow ? { boxShadow: inlineShadow } : {}),
-                      }}
-                      aria-label={isLast ? "Last move" : undefined}
-                      title={isLast ? "Last move" : undefined}
-                    />
-                  </div>
-                );
-              }),
-            )}
-          </div>
-        </div>
-
-        {/* Chat log (if provided) */}
-        {chatItems && chatItems.length > 0 && (
-          <div
-            className="relative w-full max-w-[720px]"
-            style={{
-              background: "var(--card-bg)",
-              border: `1px solid var(--card-border)`,
-              borderRadius: 10,
-              padding: "6px 8px",
-              color: "var(--text)",
-            }}
-          >
-            <div
-              ref={chatLogRef}
-              role="log"
-              aria-label="Game chat messages"
-              aria-live="polite"
-              aria-relevant="additions text"
-              style={{ maxHeight: "calc(30vh - 1.5rem)", overflowY: "auto" }}
-            >
-              {chatItems.slice(-8).map((it) => (
-                <div
-                  key={it.id}
-                  className="euclid-chat-log__message"
-                  style={{ lineHeight: 1.5 }}
-                >
-                  <b style={{ color: "var(--muted)" }}>{it.sender}:</b>{" "}
-                  <span>{it.text}</span>
-                </div>
-              ))}
-            </div>
-            <div className="text-xs" style={{ color: "var(--muted)" }}>
-              {chatReadOnly
-                ? "Chat is read only while spectating."
-                : !chatCanCompose
-                  ? "Chat is unavailable after the game ends."
-                  : chatHasVisibleTrigger
-                    ? 'Use the Chat button or press "\\".'
-                    : 'Press "\\" to chat.'}
-            </div>
-          </div>
-        )}
-
-        {/* Leave/Back */}
-        <div className="euclid-game-actions">
-          <button
-            type="button"
-            className="euclid-square-toggle rounded cursor-pointer"
-            onClick={() => setShowHistoricalSquares((visible) => !visible)}
-          >
-            {showHistoricalSquares ? "Hide past squares" : "Show past squares"}
-          </button>
-          <button
-            type="button"
-            className={`rounded ${exitPending ? "" : "cursor-pointer"}`}
-            style={{
-              background: "#ef4444",
-              color: "#fff",
-              padding: "6px 12px",
-              cursor: exitPending ? "wait" : "pointer",
-              opacity: exitPending ? 0.65 : 1,
-            }}
-            disabled={exitPending}
-            aria-busy={exitPending || undefined}
-            onClick={onLeave}
-          >
-            {exitPending ? exitPendingLabel : exitLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+    </SoundContext.Provider>
   );
 };
 
 const SharedPostView: React.FC<{ share: SharedPostPayload }> = ({ share }) => {
-  const panelStyle: React.CSSProperties = {
-    background: "rgba(16, 27, 45, 0.94)",
-    border: "1px solid #294466",
-    borderRadius: 32,
-    padding: "28px 28px 32px",
-    boxShadow: "0 24px 60px rgba(0, 0, 0, 0.32)",
-  };
-
   if (share.kind === "rankings") {
-    const accent = share.bucket === "hvh" ? "#ef4444" : "#2563eb";
-    const soft =
-      share.bucket === "hvh" ? "rgba(127,29,29,0.82)" : "rgba(19,42,70,0.88)";
-
     return (
-      <div
+      <PageShell
+        title={share.title}
+        titleId="shared-rankings-title"
         role="region"
-        aria-label="Shared leaderboard snapshot"
         tabIndex={0}
-        style={{
-          height: "100dvh",
-          overflowY: "auto",
-          background:
-            "radial-gradient(circle at top right, #17304f 0%, #09111d 48%)",
-        }}
       >
-        <div
-          style={{
-            maxWidth: 1200,
-            margin: "0 auto",
-            padding: "32px 20px 64px",
-          }}
-        >
-          <div style={panelStyle}>
-            <div style={{ color: "#cbd5e1", fontSize: 18, fontWeight: 700 }}>
-              r/{share.subredditName}
-            </div>
-            <div
-              style={{
-                marginTop: 12,
-                color: "#f8fafc",
-                fontSize: 42,
-                fontWeight: 800,
-              }}
-            >
-              {share.title}
-            </div>
-            <div style={{ marginTop: 10, color: "#94a3b8", fontSize: 20 }}>
-              {share.subtitle}
-            </div>
-
-            <div
-              style={{
-                marginTop: 24,
-                display: "flex",
-                flexWrap: "wrap",
-                justifyContent: "space-between",
-                gap: 12,
-                background: "#132b46",
-                border: "1px solid #315781",
-                borderRadius: 24,
-                padding: "18px 22px",
-              }}
-            >
-              <div style={{ color: "#93c5fd", fontSize: 20, fontWeight: 700 }}>
-                Top players right now
-              </div>
-              <div style={{ color: "#60a5fa", fontSize: 16 }}>
-                Shared from Euclid on {formatDisplayDate(share.sharedAt)}
-              </div>
-            </div>
-
-            <div style={{ marginTop: 28, overflowX: "auto" }}>
-              <table
-                style={{
-                  width: "100%",
-                  minWidth: 720,
-                  borderCollapse: "separate",
-                  borderSpacing: "0 16px",
-                }}
-              >
-                <thead>
-                  <tr
-                    style={{
-                      color: "#94a3b8",
-                      fontSize: 14,
-                      textAlign: "left",
-                    }}
-                  >
-                    <th style={{ padding: "0 12px" }}>Rank</th>
-                    <th style={{ padding: "0 12px" }}>Player</th>
-                    <th style={{ padding: "0 12px" }}>Rating</th>
-                    <th style={{ padding: "0 12px" }}>Games</th>
-                    <th style={{ padding: "0 12px" }}>Win–loss</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {share.rows.map((row, index) => (
-                    <tr
-                      key={`${row.userId}-${index}`}
-                      style={{ background: index === 0 ? soft : "#111f33" }}
-                    >
-                      <td
-                        style={{
-                          padding: "18px 16px",
-                          color: index < 3 ? accent : "#94a3b8",
-                          fontSize: 28,
-                          fontWeight: 800,
-                          borderTopLeftRadius: 22,
-                          borderBottomLeftRadius: 22,
-                        }}
-                      >
-                        {index + 1}
-                      </td>
-                      <td
-                        style={{
-                          padding: "18px 12px",
-                          color: "#f8fafc",
-                          fontSize: 24,
-                          fontWeight: 700,
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 12,
-                          }}
-                        >
-                          {row.avatar ? (
-                            <img
-                              src={row.avatar}
-                              alt=""
-                              crossOrigin="anonymous"
-                              style={{
-                                width: 42,
-                                height: 42,
-                                borderRadius: "50%",
-                                border: `2px solid ${accent}`,
-                              }}
-                            />
-                          ) : (
-                            <div
-                              style={{
-                                width: 42,
-                                height: 42,
-                                borderRadius: "50%",
-                                background: accent,
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                color: "#fff",
-                                fontWeight: 800,
-                              }}
-                            >
-                              {(row.name || row.userId || "?")
-                                .slice(0, 1)
-                                .toUpperCase()}
-                            </div>
-                          )}
-                          <span>{row.name || row.userId}</span>
-                        </div>
-                      </td>
-                      <td
-                        style={{
-                          padding: "18px 12px",
-                          color: "#f8fafc",
-                          fontSize: 24,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {row.rating}
-                      </td>
-                      <td
-                        style={{
-                          padding: "18px 12px",
-                          color: "#e2e8f0",
-                          fontSize: 22,
-                        }}
-                      >
-                        {row.games}
-                      </td>
-                      <td
-                        style={{
-                          padding: "18px 16px",
-                          color: "#e2e8f0",
-                          fontSize: 22,
-                          borderTopRightRadius: 22,
-                          borderBottomRightRadius: 22,
-                        }}
-                      >
-                        {row.wins}-{row.losses}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
+        <header className="shared-rankings__head">
+          <p className="eyebrow">r/{share.subredditName}</p>
+          <p className="muted">{share.subtitle}</p>
+          <p className="field__hint">
+            Top players right now · shared from Euclid on{" "}
+            {formatDisplayDate(share.sharedAt)}
+          </p>
+        </header>
+        <section className="panel">
+          <StandingsList
+            rows={share.rows}
+            label="Shared leaderboard"
+            size="lg"
+            empty="No ranked players in this snapshot."
+          />
+        </section>
+      </PageShell>
     );
   }
 

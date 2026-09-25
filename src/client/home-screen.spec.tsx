@@ -68,8 +68,9 @@ function completeButtonMarkup(markup: string, className: string): string {
 
 describe("home dashboard structure", () => {
   it("offers difficulty settings beside solo play and locks them during requests", () => {
-    const render = (busyAction: Exclude<HomeScreenProps["busyAction"], undefined>) =>
-      renderToStaticMarkup(<HomeScreen {...homeProps({ busyAction })} />);
+    const render = (
+      busyAction: Exclude<HomeScreenProps["busyAction"], undefined>,
+    ) => renderToStaticMarkup(<HomeScreen {...homeProps({ busyAction })} />);
     const ready = render(null);
     expect(ready).toContain("Change difficulty");
     expect(ready.indexOf("Change difficulty")).toBeLessThan(
@@ -82,7 +83,18 @@ describe("home dashboard structure", () => {
     ).toContain("disabled");
   });
 
-  it("keeps the home and status headers text-only", () => {
+  it("offers difficulty only for Practice, since Ranked rules are fixed", () => {
+    const render = (soloMode: "practice" | "ranked") =>
+      renderToStaticMarkup(
+        <HomeScreen
+          {...homeProps({ soloMode, onSoloModeChange: () => undefined })}
+        />,
+      );
+    expect(render("practice")).toContain("Change difficulty");
+    expect(render("ranked")).not.toContain("Change difficulty");
+  });
+
+  it("titles the home and status headers with a decorative-only mark", () => {
     const screens = [
       <HomeScreen {...homeProps()} />,
       <HomeStatusScreen heading="Loading" detail="Preparing your game" />,
@@ -95,8 +107,11 @@ describe("home dashboard structure", () => {
         markup.indexOf("</header>"),
       );
       expect(header).toContain("Euclid</h1>");
-      expect(header).not.toContain("euclid-home__brand-mark");
-      expect(header).not.toMatch(/<(?:img|svg)\b/);
+      // Brand art is hidden from assistive technology; the heading is the name.
+      for (const svg of header.match(/<svg\b[^>]*>/g) ?? []) {
+        expect(svg).toContain('aria-hidden="true"');
+      }
+      expect(header).not.toMatch(/<img\b/);
     }
   });
 

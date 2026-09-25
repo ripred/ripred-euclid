@@ -1,0 +1,102 @@
+.lessons {
+  display: grid;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lesson {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.lesson__board {
+  width: 96px;
+}
+
+.lesson h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0 0 4px;
+  font-size: var(--fs-md);
+  font-weight: 800;
+}
+
+.lesson p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.lesson__step {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--bg);
+  font-size: var(--fs-2xs);
+  font-weight: 900;
+}
+
+.how-to-play__finish {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.how-to-play__finish strong {
+  color: var(--text);
+}
+
+@media (max-width: 420px) {
+  .lesson {
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: var(--sp-3);
+  }
+  .lesson__board {
+    width: 72px;
+  }
+}
+
+/* Home strip: the same lessons side by side. */
+.how-to-play--strip .lessons {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.how-to-play--strip .lesson {
+  grid-template-columns: 1fr;
+  align-content: start;
+  justify-items: start;
+  padding: var(--sp-4);
+  background: linear-gradient(180deg, var(--surface-top), var(--surface));
+  box-shadow: var(--panel-shadow);
+}
+
+.how-to-play--strip .lesson__board {
+  width: 100%;
+  max-width: 180px;
+  justify-self: center;
+}
+
+@media (max-width: 720px) {
+  .how-to-play--strip .lessons {
+    grid-template-columns: 1fr;
+  }
+  .how-to-play--strip .lesson {
+    grid-template-columns: 88px minmax(0, 1fr);
+    align-items: center;
+  }
+  .how-to-play--strip .lesson__board {
+    max-width: 88px;
+  }
+}

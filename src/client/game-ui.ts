@@ -1,4 +1,5 @@
 import type { H2HCanonicalState, H2HEndReason } from "../shared/types/api";
+import { isFreshSoloGameplayKey } from "./solo-keyboard";
 
 export type PlayerSide = 1 | 2;
 
@@ -21,7 +22,7 @@ export type H2HExitAction =
   | { label: "Stop Watching"; notifyServer: false };
 
 const MINIMUM_CELL_SIZE = 16;
-const MAXIMUM_CELL_SIZE = 64;
+const MAXIMUM_CELL_SIZE = 88;
 
 export function isLocalVictory(
   winnerSide: PlayerSide | null | undefined,
@@ -213,4 +214,17 @@ export function calculateBoardLayout(
     boardWidth,
     boardHeight,
   };
+}
+
+/**
+ * Board keystrokes never queue ahead of a move: a key places only while a
+ * placement is allowed, and only if it was pressed after that began and is
+ * not an auto-repeat.
+ */
+export function shouldPlaceFromKey(
+  event: Pick<KeyboardEvent, "repeat" | "timeStamp">,
+  placeableSince: number,
+  placing: boolean,
+): boolean {
+  return placing && isFreshSoloGameplayKey(event, placeableSince);
 }

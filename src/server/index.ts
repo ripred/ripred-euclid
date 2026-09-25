@@ -575,7 +575,7 @@ function buildShareFallbackText(payload: SharedPostPayload) {
 function buildShareSplash(payload: SharedPostPayload) {
   return {
     appDisplayName: "Euclid",
-    backgroundUri: "snoo.png",
+    backgroundUri: "splash.jpg",
     buttonLabel: "Open Post",
     heading: payload.title,
     description:

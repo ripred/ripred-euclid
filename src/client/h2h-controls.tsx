@@ -1,5 +1,7 @@
 import { forwardRef } from "react";
 
+import { Icon } from "./ui/Icon";
+
 export const H2HChatTrigger = forwardRef<
   HTMLButtonElement,
   {
@@ -11,14 +13,14 @@ export const H2HChatTrigger = forwardRef<
     <button
       ref={ref}
       type="button"
-      className="euclid-chat-trigger"
+      className="icon-btn euclid-chat-trigger"
       aria-haspopup="dialog"
       aria-controls="euclid-game-chat-dialog"
       aria-label="Open game chat"
       disabled={disabled}
       onClick={onClick}
     >
-      <span aria-hidden="true">💬</span>
+      <Icon name="chat" size={18} />
       <span>Chat</span>
     </button>
   );
@@ -36,7 +38,7 @@ export function H2HRematchButton({
   return (
     <button
       type="button"
-      className="euclid-rematch-button rounded cursor-pointer"
+      className="btn btn--blue euclid-rematch-button"
       disabled={disabled}
       aria-busy={pending || undefined}
       onClick={onClick}

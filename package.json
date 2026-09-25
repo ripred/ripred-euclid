@@ -1,12 +1,13 @@
 {
   "private": true,
   "name": "ripred-euclid",
-  "version": "0.1.109",
+  "version": "0.2.5",
   "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "npm run build:client && npm run build:server",
     "build:client": "cd src/client && vite build",
+    "build:local-server": "cd src/server && vite build --config ../../tools/local-devvit/vite.server.config.mjs",
     "build:server": "cd src/server && vite build",
     "check": "npm run type-check && npm run lint:fix && npm run prettier",
     "check:devvit": "node tools/check-devvit.mjs",
@@ -14,13 +15,14 @@
     "dev": "concurrently -k -p \"[{name}]\" -n \"CLIENT,SERVER,DEVVIT\" -c \"blue,green,magenta\" \"npm run dev:client\" \"npm run dev:server\" \"npm run dev:devvit\"",
     "dev:client": "cd src/client && vite build --watch",
     "dev:devvit": "devvit playtest",
+    "dev:local": "npm run build:local-server && concurrently -k -p \"[{name}]\" -n \"API-BUILD,API,CLIENT\" -c \"green,yellow,blue\" \"npm run build:local-server -- --watch\" \"node --watch dist/local-server/index.cjs\" \"cd src/client && vite --port 7474 --config ../../tools/local-devvit/vite.client.config.mjs\"",
     "dev:server": "cd src/server && vite build --watch",
     "dev:vite": "cd src/client && vite --port 7474",
-    "postinstall": "npm run build",
     "launch": "npm run build && npm run deploy && devvit publish",
     "lint": "eslint ./src",
     "lint:fix": "eslint --fix ./src",
     "login": "devvit login",
+    "postinstall": "npm run build",
     "prettier": "prettier-package-json --write ./package.json && prettier --write .",
     "test": "vitest run",
     "test:dependencies": "node --test tools/dependency-security.mjs",
@@ -28,6 +30,7 @@
   },
   "dependencies": {
     "@devvit/web": "0.14.2",
+    "@fontsource-variable/archivo": "5.3.0",
     "express": "5.1.0",
     "react": "19.1.0",
     "react-dom": "19.1.0"

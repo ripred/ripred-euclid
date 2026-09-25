@@ -88,11 +88,13 @@ describe("shared victory presentation", () => {
         expect(markup).toContain('dateTime="2026-09-05T22:00:00.000Z"');
       }
       expect(result).toContain(share.footer);
-      expect(result).toContain("Real Game Replay");
+      expect(result).toContain("Real game replay");
       expect(result).toContain("<svg");
       expect(inline).toContain('aria-label="View full result &amp; replay"');
-      expect(inline).not.toContain("Real Game Replay");
-      expect(inline).not.toContain("<svg");
+      expect(inline).not.toContain("Real game replay");
+      // Inline shows the still final board, never the animated replay.
+      expect(inline.match(/<svg\b/g) ?? []).toHaveLength(1);
+      expect(inline).toContain('aria-label="Final board"');
       expect(inline).not.toContain(share.footer);
       expect(inline).not.toContain('tabindex="0"');
     },
@@ -180,7 +182,7 @@ describe("inline shared leaderboard snapshots", () => {
       expect(markup).toContain(share.title);
       expect(markup).toContain(share.subtitle);
       expect(markup).toContain('dateTime="2026-09-05T22:00:00.000Z"');
-      expect(markup.match(/<li>/g)).toHaveLength(3);
+      expect(markup.match(/<li\b/g)).toHaveLength(3);
       expect(markup.indexOf("Frozen player 1")).toBeLessThan(
         markup.indexOf("Frozen player 2"),
       );
@@ -198,7 +200,7 @@ describe("inline shared leaderboard snapshots", () => {
     const markup = renderToStaticMarkup(
       <SharePreview share={share} theme="dark" onExpand={noOp} />,
     );
-    expect(markup.match(/<li>/g) ?? []).toHaveLength(Math.min(count, 3));
+    expect(markup.match(/<li\b/g) ?? []).toHaveLength(Math.min(count, 3));
     expect(markup.includes("No ranked players in this snapshot.")).toBe(
       count === 0,
     );
