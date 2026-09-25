@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Euclid — Breeze</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,300;1,9..144,400&amp;family=Figtree:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F7F3EC;font-family:"Figtree",system-ui,sans-serif;color:#34405A}
+a{color:#5E7FC4}a:hover{color:#3E5C9E}
+.stripe-a{background:repeating-linear-gradient(90deg,#F6C9C0 0 14px,#FDF9F4 14px 28px)}
+.stripe-b{background:repeating-linear-gradient(90deg,#BFD7EA 0 14px,#FDF9F4 14px 28px)}
+.pill{font-family:"Figtree",system-ui,sans-serif;font-size:15px;font-weight:600;min-height:48px;padding:0 24px;border-radius:999px;border:0;color:#34405A;cursor:pointer}
+</style>
+</helmet>
+<div style="position: relative; width: 1200px; height: 800px; box-sizing: border-box; padding: 56px 64px; background: #F7F3EC; display: flex; gap: 60px; overflow: hidden">
+  <!-- drifting ribbons -->
+  <div style="position: absolute; left: 760px; top: -30px; width: 760px; height: 26px; border-radius: 999px; background: #F8E3A0; transform: rotate(-9deg); opacity: .85"></div>
+  <div style="position: absolute; left: 820px; top: 20px; width: 520px; height: 12px; border-radius: 999px; background: #CFE6D8; transform: rotate(-9deg)"></div>
+  <div style="position: absolute; left: 960px; top: 30px; width: 400px; height: 8px; border-radius: 999px; background: #F6C9C0; transform: rotate(-9deg)"></div>
+  <div style="position: absolute; left: -140px; top: 712px; width: 720px; height: 22px; border-radius: 999px; background: #DCD4F2; transform: rotate(-9deg)"></div>
+  <div style="position: absolute; left: -80px; top: 758px; width: 520px; height: 12px; border-radius: 999px; background: #F6C9C0; transform: rotate(-9deg)"></div>
+
+  <!-- board -->
+  <div style="position: relative; width: 600px; height: 600px; flex-shrink: 0; align-self: center; border-radius: 40px; background: #FFFFFF; box-shadow: 0 30px 70px rgba(94,127,196,.14), 0 4px 12px rgba(94,127,196,.06)">
+    <sc-for list="{{squares}}" as="q" hint-placeholder-count="5">
+      <sc-if value="{{q.a}}" hint-placeholder-val="{{ true }}">
+        <div style="position: absolute; box-sizing: border-box; left: {{q.left}}px; top: {{q.top}}px; width: {{q.size}}px; height: {{q.size}}px; transform: rotate({{q.angle}}deg); border-radius: 12px; border: 2px solid #F08F7E; background: {{q.fillA}}"></div>
+      </sc-if>
+      <sc-if value="{{q.b}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; box-sizing: border-box; left: {{q.left}}px; top: {{q.top}}px; width: {{q.size}}px; height: {{q.size}}px; transform: rotate({{q.angle}}deg); border-radius: 12px; border: 2px solid #5E7FC4; background: rgba(191,215,234,.5)"></div>
+      </sc-if>
+    </sc-for>
+    <sc-for list="{{cells}}" as="c" hint-placeholder-count="64">
+      <sc-if value="{{c.empty}}" hint-placeholder-val="{{ true }}">
+        <div style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: #E4E0EE"></div>
+      </sc-if>
+      <sc-if value="{{c.a}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #FFE1D8, #F08F7E 62%); box-shadow: 0 6px 14px rgba(240,143,126,.38)"></div>
+      </sc-if>
+      <sc-if value="{{c.b}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #C9D7F6, #5E7FC4 64%); box-shadow: 0 6px 14px rgba(94,127,196,.35); display: flex; align-items: center; justify-content: center">
+          <div style="width: 9px; height: 9px; border-radius: 50%; background: #FFFFFF; opacity: .92"></div>
+        </div>
+      </sc-if>
+      <sc-if value="{{c.last}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%; border: 2px dashed #5E7FC4; box-sizing: border-box"></div>
+      </sc-if>
+    </sc-for>
+  </div>
+
+  <!-- side -->
+  <div style="position: relative; flex-grow: 1; display: flex; flex-direction: column; gap: 18px; padding-top: 16px">
+    <div style="font-size: 13px; font-weight: 600; letter-spacing: .22em; text-transform: uppercase; color: #6B7486">Practice · 8 × 8 · first to 150</div>
+    <div style="font-family: 'Fraunces', Georgia, serif; font-style: italic; font-weight: 300; font-size: 96px; line-height: .9; color: #34405A">Euclid</div>
+    <div style="font-size: 18px; line-height: 1.5; color: #56607A; max-width: 380px">Take your time. Place a point; close a square; let the board fill slowly.</div>
+
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 6px">
+      <div style="border-radius: 28px; background: #FFFFFF; overflow: hidden; box-shadow: 0 14px 34px rgba(240,143,126,.14)">
+        <div class="stripe-a" style="height: 16px"></div>
+        <div style="padding: 18px 22px 22px; display: flex; flex-direction: column; gap: 6px">
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600"><div style="width: 12px; height: 12px; border-radius: 50%; background: #F08F7E"></div>You</div>
+          <div style="font-family: 'Fraunces', Georgia, serif; font-size: 64px; line-height: 1; font-weight: 400">27</div>
+          <div style="height: 8px; border-radius: 999px; background: #F4EEE6"><div style="width: 18%; height: 8px; border-radius: 999px; background: #F08F7E"></div></div>
+        </div>
+      </div>
+      <div style="border-radius: 28px; background: #FFFFFF; overflow: hidden; box-shadow: 0 14px 34px rgba(94,127,196,.12)">
+        <div class="stripe-b" style="height: 16px"></div>
+        <div style="padding: 18px 22px 22px; display: flex; flex-direction: column; gap: 6px">
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600"><div style="width: 12px; height: 12px; border-radius: 50%; background: #5E7FC4"></div>Euclid</div>
+          <div style="font-family: 'Fraunces', Georgia, serif; font-size: 64px; line-height: 1; font-weight: 400">29</div>
+          <div style="height: 8px; border-radius: 999px; background: #F4EEE6"><div style="width: 19%; height: 8px; border-radius: 999px; background: #5E7FC4"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 10px">
+      <div style="padding: 10px 18px; border-radius: 999px; background: #CFE8D8; color: #2F5A44; font-size: 15px; font-weight: 600">Your turn</div>
+      <div style="font-size: 15px; color: #6B7486">Euclid just played H6</div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <sc-for list="{{recent}}" as="r" hint-placeholder-count="4">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-radius: 18px; background: rgba(255,255,255,.7); font-size: 15px">
+          <div style="width: 10px; height: 10px; border-radius: 50%; background: {{r.dot}}"></div>
+          <div style="width: 60px; font-weight: 600">{{r.cell}}</div>
+          <div style="flex-grow: 1; color: #6B7486">{{r.who}}</div>
+          <sc-if value="{{r.pts}}" hint-placeholder-val="{{ false }}">
+            <div style="padding: 3px 12px; border-radius: 999px; background: #F8E7A6; font-weight: 600; font-size: 14px">{{r.plus}}</div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display: flex; gap: 12px; margin-top: auto">
+      <button class="pill" style="background: #CFE8D8">Hint</button>
+      <button class="pill" style="background: #DCD4F2">Hide squares</button>
+      <button class="pill" style="background: transparent; box-shadow: inset 0 0 0 2px #34405A">New game</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":800}}'>
+var EU_POS = {
+  p: [[0,0,2],[5,0,1],[1,1,1],[2,1,2],[3,1,1],[6,1,1],[5,2,2],[7,2,2],[1,3,1],[2,3,2],[3,3,1],[6,3,1],[4,4,1],[1,5,1],[3,5,1],[5,5,1],[6,5,2],[0,6,2],[3,6,2],[4,6,1],[6,6,2],[7,6,2],[6,7,2],[7,7,2]],
+  s: [[[[3,3],[3,1],[1,1],[1,3]],1,7,3],[[[2,3],[5,2],[6,5],[3,6]],2,8,5],[[[4,6],[3,5],[4,4],[5,5]],1,17,3],[[[6,6],[7,6],[7,7],[6,7]],2,20,2],[[[1,5],[1,3],[3,3],[3,5]],1,21,3]],
+  log: [[1,1,1,0],[2,5,2,0],[1,1,3,0],[2,6,5,0],[1,3,1,0],[2,3,6,0],[1,3,3,9],[2,2,3,25],[1,6,1,0],[2,0,6,0],[1,5,5,0],[2,7,7,0],[1,4,4,0],[2,0,0,0],[1,3,5,0],[2,6,7,0],[1,4,6,9],[2,7,6,0],[1,6,3,0],[2,6,6,4],[1,1,5,9],[2,2,1,0],[1,5,0,0],[2,7,2,0]]
+};
+function euLayout(P, M, T) {
+  var cols = 'ABCDEFGH', occ = {}, cells = [], lines = [], labels = [];
+  EU_POS.p.forEach(function (q) { occ[q[0] + ',' + q[1]] = q[2]; });
+  for (var y = 0; y < 8; y++) for (var x = 0; x < 8; x++) {
+    var o = occ[x + ',' + y] || 0;
+    cells.push({ x: M + x * P, y: M + y * P, a: o === 1, b: o === 2, empty: !o, last: x === 7 && y === 2 });
+  }
+  for (var k = 0; k < 8; k++) {
+    lines.push({ left: M, top: M + k * P - T / 2, w: 7 * P, h: T });
+    lines.push({ left: M + k * P - T / 2, top: M, w: T, h: 7 * P });
+    labels.push({ pos: M + k * P, col: cols.charAt(k), row: String(8 - k) });
+  }
+  var squares = EU_POS.s.map(function (q) {
+    var c = q[0], cx = 0, cy = 0;
+    c.forEach(function (p) { cx += p[0] / 4; cy += p[1] / 4; });
+    var dx = c[1][0] - c[0][0], dy = c[1][1] - c[0][1], size = Math.sqrt(dx * dx + dy * dy) * P;
+    return { left: M + cx * P - size / 2, top: M + cy * P - size / 2, size: size, angle: Math.atan2(dy, dx) * 180 / Math.PI, a: q[1] === 1, b: q[1] === 2, fresh: q[2] === 21, side: q[3], pts: q[3] * q[3], cx: M + cx * P, cy: M + cy * P };
+  });
+  var log = EU_POS.log.map(function (e, i) { return { n: i + 1, a: e[0] === 1, b: e[0] === 2, cell: cols.charAt(e[1]) + (8 - e[2]), pts: e[3], plus: e[3] ? '+' + e[3] : '' }; }).reverse();
+  return { cells: cells, lines: lines, squares: squares, log: log, labels: labels };
+}
+class Component extends DCLogic {
+  renderVals() {
+    var L = euLayout(70, 55, 1);
+    L.squares.forEach(function (q) { q.fillA = q.fresh ? 'rgba(248,231,166,.75)' : 'rgba(246,201,192,.45)'; });
+    var recent = L.log.slice(0, 3).map(function (r) { return { cell: r.cell, who: r.a ? 'You' : 'Euclid', dot: r.a ? '#F08F7E' : '#5E7FC4', pts: !!r.pts, plus: r.plus }; });
+    return { cells: L.cells, squares: L.squares, recent: recent };
+  }
+}
+</script>
+</body>
+</html>

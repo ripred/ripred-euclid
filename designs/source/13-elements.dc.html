@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Euclid — game</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Display&amp;family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F3EAD3;font-family:"Libre Caslon Text",Georgia,serif;color:#1B1A17}
+a{color:#C8321F}a:hover{color:#8E2114}
+.pt{position:absolute;width:48px;height:48px;margin:0;padding:0;border:0;background:transparent;cursor:pointer;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.pt:focus-visible{outline:2px solid #1B1A17;outline-offset:2px}
+.pt .ghost{position:absolute;width:26px;height:26px;border-radius:50%;background:#C8321F;opacity:0;transform:scale(.6);transition:opacity .15s,transform .2s cubic-bezier(.34,1.56,.64,1)}
+.pt:hover .ghost{opacity:.35;transform:scale(1)}
+.pt:hover .cross{opacity:0}
+.piece{animation:ink .38s cubic-bezier(.34,1.56,.64,1)}
+@keyframes ink{from{transform:scale(.2);opacity:0}to{transform:scale(1);opacity:1}}
+.sq{animation:rise .6s ease-out}
+@keyframes rise{from{opacity:0}to{opacity:1}}
+.btn{font-family:"Libre Caslon Text",Georgia,serif;font-size:14px;letter-spacing:.14em;text-transform:uppercase;min-height:44px;padding:0 18px;border:1.5px solid #1B1A17;background:transparent;color:#1B1A17;cursor:pointer}
+.btn:hover{background:#1B1A17;color:#F3EAD3}
+.btn:focus-visible{outline:2px solid #C8321F;outline-offset:3px}
+.btn-red{background:#C8321F;border-color:#C8321F;color:#FFFFFF}
+.btn-red:hover{background:#8E2114;border-color:#8E2114;color:#FFFFFF}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; padding: 38px 42px; background: #F3EAD3; display: flex; gap: 48px; position: relative; overflow: hidden">
+
+  <!-- Left column: title plate and the two players -->
+  <div style="width: 330px; flex-shrink: 0; display: flex; flex-direction: column; gap: 26px">
+    <div style="display: flex; justify-content: space-between; font-size: 12px; letter-spacing: .24em; text-transform: uppercase; color: #4A4538; border-bottom: 1px solid #1B1A17; padding-bottom: 10px">
+      <span>Book I</span>
+      <span>Proposition {{propNo}}</span>
+    </div>
+    <div style="display: flex; align-items: flex-start; gap: 6px">
+      <div style="font-family: 'Libre Caslon Display', Georgia, serif; font-size: 132px; line-height: .78; color: #C8321F; padding-top: 6px">E</div>
+      <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 4px">
+        <div style="font-family: 'Libre Caslon Display', Georgia, serif; font-size: 58px; line-height: .9; letter-spacing: .02em">UCLID</div>
+        <div style="font-style: italic; font-size: 15px; line-height: 1.35; color: #4A4538">A game of points &amp; squares, in which colours are employed instead of letters.</div>
+      </div>
+    </div>
+
+    <!-- Red player -->
+    <div style="display: flex; flex-direction: column; gap: 10px; padding: 18px 0 16px; border-top: 3px solid #C8321F; border-bottom: 1px solid #C9B98F">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <div style="width: 22px; height: 22px; border-radius: 50%; background: #C8321F"></div>
+        <div style="flex-grow: 1; font-size: 13px; letter-spacing: .2em; text-transform: uppercase">Red · You</div>
+        <sc-if value="{{redTurn}}" hint-placeholder-val="{{ true }}">
+          <div style="font-size: 12px; font-style: italic; color: #C8321F">to move</div>
+        </sc-if>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 10px">
+        <div style="font-family: 'Libre Caslon Display', Georgia, serif; font-size: 76px; line-height: 1; color: #C8321F">{{red.score}}</div>
+        <div style="font-size: 14px; color: #4A4538">of 150 · {{red.sq}}</div>
+      </div>
+      <div style="position: relative; height: 10px">
+        <div style="position: absolute; left: 0; right: 0; top: 4px; height: 1px; background: #1B1A17"></div>
+        <div style="position: absolute; left: 0; top: 2px; height: 5px; width: {{red.pct}}%; background: #C8321F; transition: width .5s ease-out"></div>
+        <div style="position: absolute; right: 0; top: -2px; width: 1.5px; height: 13px; background: #1B1A17"></div>
+      </div>
+    </div>
+
+    <!-- Blue player -->
+    <div style="display: flex; flex-direction: column; gap: 10px; padding: 18px 0 16px; border-top: 3px solid #1D4E89; border-bottom: 1px solid #C9B98F">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <div style="width: 22px; height: 22px; border-radius: 50%; background: #1D4E89; display: flex; align-items: center; justify-content: center">
+          <div style="width: 7px; height: 7px; border-radius: 50%; background: #F3EAD3"></div>
+        </div>
+        <div style="flex-grow: 1; font-size: 13px; letter-spacing: .2em; text-transform: uppercase">Blue · Euclid</div>
+        <sc-if value="{{blueTurn}}" hint-placeholder-val="{{ false }}">
+          <div style="font-size: 12px; font-style: italic; color: #1D4E89">considering…</div>
+        </sc-if>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 10px">
+        <div style="font-family: 'Libre Caslon Display', Georgia, serif; font-size: 76px; line-height: 1; color: #1D4E89">{{blue.score}}</div>
+        <div style="font-size: 14px; color: #4A4538">of 150 · {{blue.sq}}</div>
+      </div>
+      <div style="position: relative; height: 10px">
+        <div style="position: absolute; left: 0; right: 0; top: 4px; height: 1px; background: #1B1A17"></div>
+        <div style="position: absolute; left: 0; top: 2px; height: 5px; width: {{blue.pct}}%; background: #1D4E89; transition: width .5s ease-out"></div>
+        <div style="position: absolute; right: 0; top: -2px; width: 1.5px; height: 13px; background: #1B1A17"></div>
+      </div>
+    </div>
+
+    <div style="font-size: 13px; line-height: 1.5; color: #4A4538">Ranked · 8 × 8 · Grid Footprint · first to 150 · Euclid plays at <span style="font-style: italic">Tenderfoot</span></div>
+  </div>
+
+  <!-- Centre: the figure -->
+  <div style="width: 600px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 18px">
+    <div style="font-size: 20px; font-style: italic; min-height: 26px; color: {{statusColor}}">{{status}}</div>
+    <div style="position: relative; width: 600px; height: 600px; background: #EDE2C6; box-shadow: 0 0 0 1.5px #1B1A17, 0 0 0 7px #F3EAD3, 0 0 0 8px #1B1A17">
+      <sc-for list="{{lines}}" as="ln" hint-placeholder-count="16">
+        <div style="position: absolute; left: {{ln.left}}px; top: {{ln.top}}px; width: {{ln.w}}px; height: {{ln.h}}px; background: #1B1A17; opacity: .16"></div>
+      </sc-for>
+      <sc-for list="{{colLabels}}" as="lb" hint-placeholder-count="8">
+        <div style="position: absolute; top: 12px; left: {{lb.pos}}px; width: 20px; margin-left: -10px; text-align: center; font-size: 12px; font-style: italic; color: #6B6350">{{lb.text}}</div>
+      </sc-for>
+      <sc-for list="{{rowLabels}}" as="lb" hint-placeholder-count="8">
+        <div style="position: absolute; left: 12px; top: {{lb.pos}}px; height: 20px; margin-top: -10px; line-height: 20px; font-size: 12px; font-style: italic; color: #6B6350">{{lb.text}}</div>
+      </sc-for>
+      <sc-if value="{{showSquares}}" hint-placeholder-val="{{ true }}">
+        <sc-for list="{{squares}}" as="sq" hint-placeholder-count="2">
+          <div class="sq" style="position: absolute; box-sizing: border-box; left: {{sq.left}}px; top: {{sq.top}}px; width: {{sq.size}}px; height: {{sq.size}}px; transform: rotate({{sq.angle}}deg); background: {{sq.fill}}; border: 2.5px solid {{sq.stroke}}; pointer-events: none"></div>
+        </sc-for>
+      </sc-if>
+      <sc-for list="{{cells}}" as="c" hint-placeholder-count="64">
+        <button class="pt" aria-label="{{c.label}}" onClick="{{c.pick}}" style="left: {{c.left}}px; top: {{c.top}}px">
+          <sc-if value="{{c.isEmpty}}" hint-placeholder-val="{{ true }}">
+            <div class="ghost"></div>
+            <div class="cross" style="position: relative; width: 12px; height: 12px">
+              <div style="position: absolute; left: 0; top: 5.25px; width: 12px; height: 1.5px; background: #1B1A17"></div>
+              <div style="position: absolute; left: 5.25px; top: 0; width: 1.5px; height: 12px; background: #1B1A17"></div>
+            </div>
+          </sc-if>
+          <sc-if value="{{c.isHint}}" hint-placeholder-val="{{ false }}">
+            <div style="position: absolute; width: 38px; height: 38px; border-radius: 50%; border: 2.5px dashed #E3A82B; box-sizing: border-box"></div>
+          </sc-if>
+          <sc-if value="{{c.isRed}}" hint-placeholder-val="{{ false }}">
+            <div class="piece" style="width: 26px; height: 26px; border-radius: 50%; background: #C8321F; box-shadow: 0 0 0 {{c.ring}}px #E3A82B"></div>
+          </sc-if>
+          <sc-if value="{{c.isBlue}}" hint-placeholder-val="{{ false }}">
+            <div class="piece" style="width: 26px; height: 26px; border-radius: 50%; background: #1D4E89; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 {{c.ring}}px #E3A82B">
+              <div style="width: 8px; height: 8px; border-radius: 50%; background: #F3EAD3"></div>
+            </div>
+          </sc-if>
+        </button>
+      </sc-for>
+      <sc-if value="{{over}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: rgba(243, 234, 211, .86)">
+          <div style="font-family: 'Libre Caslon Display', Georgia, serif; font-size: 120px; line-height: 1; color: {{verdictColor}}">Q.E.D.</div>
+          <div style="font-size: 20px; font-style: italic">{{verdict}}</div>
+          <button class="btn btn-red" onClick="{{newGame}}" style="margin-top: 18px">Begin anew</button>
+        </div>
+      </sc-if>
+    </div>
+    <div style="font-size: 14px; font-style: italic; color: #4A4538; text-align: center; max-width: 560px">{{caption}}</div>
+  </div>
+
+  <!-- Right column: the proof -->
+  <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 16px; min-width: 0">
+    <div style="display: flex; justify-content: space-between; font-size: 12px; letter-spacing: .24em; text-transform: uppercase; color: #4A4538; border-bottom: 1px solid #1B1A17; padding-bottom: 10px">
+      <span>The Proof</span>
+      <span>{{moveCount}} moves</span>
+    </div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 0; overflow: hidden">
+      <sc-for list="{{proof}}" as="p" hint-placeholder-count="8">
+        <div style="display: flex; gap: 14px; padding: 11px 0; border-bottom: 1px solid #DCCDA6; opacity: {{p.fade}}">
+          <div style="width: 46px; flex-shrink: 0; font-family: 'Libre Caslon Display', Georgia, serif; font-size: 18px; color: {{p.color}}">{{p.num}}</div>
+          <div style="flex-grow: 1; font-size: 15px; line-height: 1.4">
+            <span style="color: {{p.color}}; font-weight: 700">{{p.who}}</span> places at <span style="font-style: italic">{{p.cell}}</span>.<span>{{p.detail}}</span>
+          </div>
+          <div style="width: 44px; text-align: right; font-family: 'Libre Caslon Display', Georgia, serif; font-size: 18px; color: {{p.color}}">{{p.pts}}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px">
+      <button class="btn" onClick="{{hint}}">Hint</button>
+      <button class="btn" onClick="{{toggleSquares}}">{{squaresLabel}}</button>
+      <button class="btn" onClick="{{newGame}}">New game</button>
+    </div>
+    <div style="font-size: 12px; line-height: 1.5; color: #6B6350">Red pieces are solid; blue pieces carry a pale centre, so ownership reads without colour.</div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+var EU_N = 8, EU_TARGET = 150, EU_P = 72, EU_M = 48;
+var EU_SEED = [[1,1],[5,2],[1,3],[6,5],[3,1],[3,6],[3,3],[2,3],[6,1],[0,6],[5,5],[7,7],[4,4],[0,0]];
+var EU_COLS = 'ABCDEFGH';
+
+function euRoman(n) {
+  var m = [[1000,'M'],[900,'CM'],[500,'D'],[400,'CD'],[100,'C'],[90,'XC'],[50,'L'],[40,'XL'],[10,'X'],[9,'IX'],[5,'V'],[4,'IV'],[1,'I']];
+  var r = '';
+  for (var i = 0; i < m.length; i++) { while (n >= m[i][0]) { r += m[i][1]; n -= m[i][0]; } }
+  return r;
+}
+function euCell(x, y) { return EU_COLS.charAt(x) + (EU_N - y); }
+function euFootprint(c) {
+  var xs = c.map(function (p) { return p[0]; }), ys = c.map(function (p) { return p[1]; });
+  var s = Math.max(Math.max.apply(null, xs) - Math.min.apply(null, xs), Math.max.apply(null, ys) - Math.min.apply(null, ys)) + 1;
+  return { side: s, pts: s * s };
+}
+function euFind(b, x, y, o) {
+  var out = [], seen = {};
+  for (var qy = 0; qy < EU_N; qy++) for (var qx = 0; qx < EU_N; qx++) {
+    if (b[qy * EU_N + qx] !== o || (qx === x && qy === y)) continue;
+    var dx = qx - x, dy = qy - y;
+    for (var s = -1; s <= 1; s += 2) {
+      var rx = -dy * s, ry = dx * s;
+      var c = [[x, y], [qx, qy], [qx + rx, qy + ry], [x + rx, y + ry]];
+      var ok = c.every(function (p) { return p[0] >= 0 && p[1] >= 0 && p[0] < EU_N && p[1] < EU_N && b[p[1] * EU_N + p[0]] === o; });
+      if (!ok) continue;
+      var key = c.map(function (p) { return p[0] + ',' + p[1]; }).sort().join('|');
+      if (seen[key]) continue;
+      seen[key] = true;
+      out.push(c);
+    }
+  }
+  return out;
+}
+function euGain(b, i, o) {
+  var t = b.slice(); t[i] = o;
+  return euFind(t, i % EU_N, Math.floor(i / EU_N), o).reduce(function (a, c) { return a + euFootprint(c).pts; }, 0);
+}
+function euBest(b, o) {
+  var best = -1, bestV = -1e9, foe = 3 - o;
+  for (var i = 0; i < b.length; i++) {
+    if (b[i]) continue;
+    var x = i % EU_N, y = Math.floor(i / EU_N);
+    var centre = -(Math.abs(x - 3.5) + Math.abs(y - 3.5)) * 0.15;
+    var v = euGain(b, i, o) * 1.0 + euGain(b, i, foe) * 0.8 + centre + Math.random() * 0.4;
+    if (v > bestV) { bestV = v; best = i; }
+  }
+  return best;
+}
+function euApply(s, x, y) {
+  var o = s.turn, b = s.board.slice();
+  b[y * EU_N + x] = o;
+  var found = euFind(b, x, y, o);
+  var gained = 0, sides = [];
+  var squares = s.squares.map(function (q) { return Object.assign({}, q, { fresh: false }); });
+  found.forEach(function (c) {
+    var f = euFootprint(c);
+    gained += f.pts; sides.push(f.side);
+    squares.push({ corners: c, owner: o, fresh: true, side: f.side, pts: f.pts });
+  });
+  var scores = s.scores.slice(); scores[o - 1] += gained;
+  var log = s.log.concat([{ owner: o, x: x, y: y, pts: gained, sides: sides }]);
+  var winner = 0;
+  if (scores[o - 1] >= EU_TARGET) winner = o;
+  else if (b.every(function (v) { return v; })) winner = scores[0] === scores[1] ? 3 : (scores[0] > scores[1] ? 1 : 2);
+  return { board: b, squares: squares, scores: scores, log: log, turn: 3 - o, last: y * EU_N + x, winner: winner, busy: false, hintAt: -1, hide: s.hide };
+}
+function euFresh(seeded) {
+  var s = { board: new Array(EU_N * EU_N).fill(0), squares: [], scores: [0, 0], log: [], turn: 1, last: -1, winner: 0, busy: false, hintAt: -1, hide: false };
+  if (seeded) EU_SEED.forEach(function (m) { s = euApply(s, m[0], m[1]); });
+  s.squares = s.squares.map(function (q) { return Object.assign({}, q, { fresh: false }); });
+  return s;
+}
+
+class Component extends DCLogic {
+  cur() {
+    if (this.state && this.state.board) return this.state;
+    if (!this._seed) this._seed = euFresh(true);
+    return this._seed;
+  }
+  componentWillUnmount() { clearTimeout(this._t); }
+  play(i) {
+    var s = this.cur();
+    if (s.turn !== 1 || s.winner || s.busy || s.board[i]) return;
+    var n = euApply(s, i % EU_N, Math.floor(i / EU_N));
+    if (n.winner) { this.setState(n); return; }
+    n.busy = true;
+    this.setState(n);
+    var self = this;
+    clearTimeout(this._t);
+    this._t = setTimeout(function () {
+      var s2 = self.cur();
+      var j = euBest(s2.board, 2);
+      if (j < 0) return;
+      self.setState(euApply(s2, j % EU_N, Math.floor(j / EU_N)));
+    }, 700);
+  }
+  renderVals() {
+    var self = this, s = this.cur();
+    var cells = s.board.map(function (v, i) {
+      var x = i % EU_N, y = Math.floor(i / EU_N);
+      return {
+        left: EU_M + x * EU_P - 24, top: EU_M + y * EU_P - 24,
+        label: euCell(x, y) + (v === 1 ? ', red' : v === 2 ? ', blue' : ', open'),
+        isEmpty: !v, isRed: v === 1, isBlue: v === 2, isHint: s.hintAt === i,
+        ring: s.last === i ? 4 : 0,
+        pick: function () { self.play(i); }
+      };
+    });
+    var span = (EU_N - 1) * EU_P, lines = [];
+    for (var k = 0; k < EU_N; k++) {
+      lines.push({ left: EU_M, top: EU_M + k * EU_P, w: span, h: 1 });
+      lines.push({ left: EU_M + k * EU_P, top: EU_M, w: 1, h: span });
+    }
+    var colLabels = [], rowLabels = [];
+    for (var j = 0; j < EU_N; j++) {
+      colLabels.push({ pos: EU_M + j * EU_P, text: EU_COLS.charAt(j) });
+      rowLabels.push({ pos: EU_M + j * EU_P, text: String(EU_N - j) });
+    }
+    var squares = s.squares.map(function (q) {
+      var c = q.corners;
+      var cx = (c[0][0] + c[1][0] + c[2][0] + c[3][0]) / 4, cy = (c[0][1] + c[1][1] + c[2][1] + c[3][1]) / 4;
+      var dx = c[1][0] - c[0][0], dy = c[1][1] - c[0][1];
+      var size = Math.sqrt(dx * dx + dy * dy) * EU_P;
+      var red = q.owner === 1;
+      return {
+        left: EU_M + cx * EU_P - size / 2, top: EU_M + cy * EU_P - size / 2, size: size,
+        angle: Math.atan2(dy, dx) * 180 / Math.PI,
+        stroke: red ? '#C8321F' : '#1D4E89',
+        fill: q.fresh ? 'rgba(227,168,43,.42)' : (red ? 'rgba(200,50,31,.13)' : 'rgba(29,78,137,.13)')
+      };
+    });
+    var proof = s.log.map(function (e, n) {
+      var red = e.owner === 1;
+      var detail = e.pts ? ' Completing ' + (e.sides.length > 1 ? e.sides.length + ' squares' : 'a ' + e.sides[0] + ' × ' + e.sides[0] + ' square') + '.' : '';
+      return { num: euRoman(n + 1), who: red ? 'Red' : 'Blue', cell: euCell(e.x, e.y), detail: detail, pts: e.pts ? '+' + e.pts : '', color: red ? '#C8321F' : '#1D4E89' };
+    }).reverse().slice(0, 12);
+    proof.forEach(function (p, n) { p.fade = n < 8 ? 1 : 1 - (n - 7) * 0.2; });
+    var lastScore = null;
+    for (var z = s.log.length - 1; z >= 0; z--) { if (s.log[z].pts) { lastScore = { e: s.log[z], n: z + 1 }; break; } }
+    var caption = lastScore
+      ? 'Fig. ' + euRoman(lastScore.n) + ' — ' + (lastScore.e.owner === 1 ? 'Red' : 'Blue') + ' closes a square on ' + euCell(lastScore.e.x, lastScore.e.y) + '. Its footprint, ' + lastScore.e.sides[0] + ' × ' + lastScore.e.sides[0] + ', squared: ' + lastScore.e.pts + ' points.'
+      : 'Place points. Four of your own at the corners of any square — upright or turned — score the square of its footprint.';
+    var status = s.winner ? '' : s.busy ? 'Euclid is considering…' : 'Your move — place a point.';
+    var verdict = s.winner === 1 ? 'Red reaches the target. The proposition is proved.' : s.winner === 2 ? 'Blue reaches the target first. Euclid prevails.' : 'The board is full and the scores are equal.';
+    var pct = function (v) { return Math.min(100, v / EU_TARGET * 100); };
+    var counts = [0, 0];
+    s.squares.forEach(function (q) { counts[q.owner - 1] += 1; });
+    return {
+      cells: cells, lines: lines, colLabels: colLabels, rowLabels: rowLabels, squares: squares, proof: proof,
+      red: { score: s.scores[0], pct: pct(s.scores[0]), sq: counts[0] + (counts[0] === 1 ? ' square' : ' squares') },
+      blue: { score: s.scores[1], pct: pct(s.scores[1]), sq: counts[1] + (counts[1] === 1 ? ' square' : ' squares') },
+      redTurn: !s.winner && !s.busy, blueTurn: !s.winner && s.busy,
+      status: status, statusColor: s.busy ? '#1D4E89' : '#C8321F',
+      caption: caption, propNo: euRoman(s.log.length + 1), moveCount: s.log.length,
+      over: !!s.winner, verdict: verdict, verdictColor: s.winner === 2 ? '#1D4E89' : '#C8321F',
+      showSquares: !s.hide, squaresLabel: s.hide ? 'Show squares' : 'Hide squares',
+      hint: function () { var c = self.cur(); if (c.turn !== 1 || c.busy || c.winner) return; self.setState(Object.assign({}, c, { hintAt: euBest(c.board, 1) })); },
+      toggleSquares: function () { var c = self.cur(); self.setState(Object.assign({}, c, { hide: !c.hide })); },
+      newGame: function () { clearTimeout(self._t); self.setState(euFresh(false)); }
+    };
+  }
+}
+</script>
+</body>
+</html>

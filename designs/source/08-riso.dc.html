@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Euclid — Riso</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&amp;family=Courier+Prime:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F3EEE2;font-family:"Courier Prime",ui-monospace,monospace;color:#004E7C}
+a{color:#0078BF}a:hover{color:#004E7C}
+.paper{background-color:#F3EEE2;background-image:radial-gradient(rgba(90,70,40,.08) 1px,transparent 1.4px),radial-gradient(rgba(90,70,40,.05) 1px,transparent 1.4px);background-size:5px 5px,11px 11px;background-position:0 0,3px 2px}
+.ink{mix-blend-mode:multiply}
+.ht-pink{background-image:radial-gradient(#FF48B0 42%,transparent 44%);background-size:7px 7px}
+.ht-blue{background-image:radial-gradient(#0078BF 42%,transparent 44%);background-size:6px 6px}
+.rb{font-family:"Courier Prime",ui-monospace,monospace;font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;min-height:48px;padding:0 20px;border:3px solid #FF48B0;background:transparent;color:#0068A6;cursor:pointer;mix-blend-mode:multiply}
+</style>
+</helmet>
+<div class="paper" style="position: relative; width: 1200px; height: 800px; overflow: hidden">
+  <!-- crop marks -->
+  <div style="position: absolute; left: 18px; top: 30px; width: 22px; height: 1px; background: #0078BF"></div>
+  <div style="position: absolute; left: 30px; top: 18px; width: 1px; height: 22px; background: #0078BF"></div>
+  <div style="position: absolute; right: 18px; bottom: 30px; width: 22px; height: 1px; background: #0078BF"></div>
+  <div style="position: absolute; right: 30px; bottom: 18px; width: 1px; height: 22px; background: #0078BF"></div>
+
+  <!-- title, printed twice, out of register -->
+  <div class="ink" style="position: absolute; left: 52px; top: 10px; font-family: 'Bebas Neue', sans-serif; font-size: 230px; line-height: .86; letter-spacing: .01em; color: #0078BF">EUCLID</div>
+  <div class="ink" style="position: absolute; left: 58px; top: 15px; font-family: 'Bebas Neue', sans-serif; font-size: 230px; line-height: .86; letter-spacing: .01em; color: #FF48B0; opacity: .85">EUCLID</div>
+  <div style="position: absolute; left: 640px; top: 58px; width: 240px; font-size: 14px; line-height: 1.45; color: #0068A6">Issue 25 — a pocket game of points &amp; squares. Two inks, one board, first to 150.</div>
+
+  <!-- registration target -->
+  <div class="ink" style="position: absolute; left: 1080px; top: 50px; width: 56px; height: 56px; border-radius: 50%; border: 2px solid #0078BF; box-sizing: border-box"></div>
+  <div class="ink" style="position: absolute; left: 1083px; top: 53px; width: 56px; height: 56px; border-radius: 50%; border: 2px solid #FF48B0; box-sizing: border-box"></div>
+  <div class="ink" style="position: absolute; left: 1068px; top: 77px; width: 80px; height: 2px; background: #0078BF"></div>
+  <div class="ink" style="position: absolute; left: 1107px; top: 38px; width: 2px; height: 80px; background: #FF48B0"></div>
+
+  <!-- board -->
+  <div style="position: absolute; left: 60px; top: 222px; width: 548px; height: 548px; transform: rotate(-2deg); background: #F7F3EA; box-shadow: 0 0 0 2px #0078BF">
+    <sc-for list="{{lines}}" as="l" hint-placeholder-count="16">
+      <div class="ink" style="position: absolute; left: {{l.left}}px; top: {{l.top}}px; width: {{l.w}}px; height: {{l.h}}px; background: #0078BF; opacity: .5"></div>
+    </sc-for>
+    <sc-for list="{{squares}}" as="q" hint-placeholder-count="5">
+      <div class="{{q.cls}}" style="position: absolute; box-sizing: border-box; left: {{q.left}}px; top: {{q.top}}px; width: {{q.size}}px; height: {{q.size}}px; transform: rotate({{q.angle}}deg); border: 3px solid {{q.color}}; opacity: {{q.op}}"></div>
+    </sc-for>
+    <sc-for list="{{cells}}" as="c" hint-placeholder-count="64">
+      <sc-if value="{{c.empty}}" hint-placeholder-val="{{ true }}">
+        <div class="ink" style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; background: #FF48B0"></div>
+      </sc-if>
+      <sc-if value="{{c.a}}" hint-placeholder-val="{{ false }}">
+        <div class="ink" style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%; background: #FF48B0"></div>
+      </sc-if>
+      <sc-if value="{{c.b}}" hint-placeholder-val="{{ false }}">
+        <div class="ink ht-blue" style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%; border: 3px solid #0078BF; box-sizing: border-box"></div>
+      </sc-if>
+      <sc-if value="{{c.last}}" hint-placeholder-val="{{ false }}">
+        <div class="ink" style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; border: 2px dashed #FF48B0; box-sizing: border-box"></div>
+      </sc-if>
+    </sc-for>
+  </div>
+
+  <!-- scores, overprinted -->
+  <div style="position: absolute; left: 660px; top: 190px; width: 500px; height: 300px">
+    <div class="ink" style="position: absolute; left: 0; top: 0; font-family: 'Bebas Neue', sans-serif; font-size: 260px; line-height: 1; color: #FF48B0">27</div>
+    <div class="ink" style="position: absolute; left: 196px; top: 40px; font-family: 'Bebas Neue', sans-serif; font-size: 260px; line-height: 1; color: #0078BF">29</div>
+    <div style="position: absolute; left: 6px; top: 214px; font-size: 15px; font-weight: 700; color: #C2177A">YOU · PINK</div>
+    <div style="position: absolute; left: 206px; top: 256px; font-size: 15px; font-weight: 700; color: #0068A6">EUCLID · BLUE</div>
+  </div>
+
+  <div style="position: absolute; left: 666px; top: 540px; width: 470px; display: flex; flex-direction: column; gap: 16px">
+    <div style="font-size: 16px; line-height: 1.55; color: #0068A6"><span style="font-weight: 700; background: #FF48B0; color: #FFFFFF; padding: 0 6px">YOUR MOVE.</span> Euclid just inked H6. Close four of your own corners to print a square — score its footprint, squared.</div>
+    <div style="display: flex; gap: 12px">
+      <button class="rb">Hint</button>
+      <button class="rb">Squares</button>
+      <button class="rb" style="background: #FF48B0; color: #FFFFFF">New game</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":800}}'>
+var EU_POS = {
+  p: [[0,0,2],[5,0,1],[1,1,1],[2,1,2],[3,1,1],[6,1,1],[5,2,2],[7,2,2],[1,3,1],[2,3,2],[3,3,1],[6,3,1],[4,4,1],[1,5,1],[3,5,1],[5,5,1],[6,5,2],[0,6,2],[3,6,2],[4,6,1],[6,6,2],[7,6,2],[6,7,2],[7,7,2]],
+  s: [[[[3,3],[3,1],[1,1],[1,3]],1,7,3],[[[2,3],[5,2],[6,5],[3,6]],2,8,5],[[[4,6],[3,5],[4,4],[5,5]],1,17,3],[[[6,6],[7,6],[7,7],[6,7]],2,20,2],[[[1,5],[1,3],[3,3],[3,5]],1,21,3]],
+  log: [[1,1,1,0],[2,5,2,0],[1,1,3,0],[2,6,5,0],[1,3,1,0],[2,3,6,0],[1,3,3,9],[2,2,3,25],[1,6,1,0],[2,0,6,0],[1,5,5,0],[2,7,7,0],[1,4,4,0],[2,0,0,0],[1,3,5,0],[2,6,7,0],[1,4,6,9],[2,7,6,0],[1,6,3,0],[2,6,6,4],[1,1,5,9],[2,2,1,0],[1,5,0,0],[2,7,2,0]]
+};
+function euLayout(P, M, T) {
+  var cols = 'ABCDEFGH', occ = {}, cells = [], lines = [], labels = [];
+  EU_POS.p.forEach(function (q) { occ[q[0] + ',' + q[1]] = q[2]; });
+  for (var y = 0; y < 8; y++) for (var x = 0; x < 8; x++) {
+    var o = occ[x + ',' + y] || 0;
+    cells.push({ x: M + x * P, y: M + y * P, a: o === 1, b: o === 2, empty: !o, last: x === 7 && y === 2 });
+  }
+  for (var k = 0; k < 8; k++) {
+    lines.push({ left: M, top: M + k * P - T / 2, w: 7 * P, h: T });
+    lines.push({ left: M + k * P - T / 2, top: M, w: T, h: 7 * P });
+    labels.push({ pos: M + k * P, col: cols.charAt(k), row: String(8 - k) });
+  }
+  var squares = EU_POS.s.map(function (q) {
+    var c = q[0], cx = 0, cy = 0;
+    c.forEach(function (p) { cx += p[0] / 4; cy += p[1] / 4; });
+    var dx = c[1][0] - c[0][0], dy = c[1][1] - c[0][1], size = Math.sqrt(dx * dx + dy * dy) * P;
+    return { left: M + cx * P - size / 2, top: M + cy * P - size / 2, size: size, angle: Math.atan2(dy, dx) * 180 / Math.PI, a: q[1] === 1, b: q[1] === 2, fresh: q[2] === 21, side: q[3], pts: q[3] * q[3], cx: M + cx * P, cy: M + cy * P };
+  });
+  var log = EU_POS.log.map(function (e, i) { return { n: i + 1, a: e[0] === 1, b: e[0] === 2, cell: cols.charAt(e[1]) + (8 - e[2]), pts: e[3], plus: e[3] ? '+' + e[3] : '' }; }).reverse();
+  return { cells: cells, lines: lines, squares: squares, log: log, labels: labels };
+}
+class Component extends DCLogic {
+  renderVals() {
+    var L = euLayout(68, 36, 1.5);
+    L.squares.forEach(function (q) {
+      q.cls = q.a ? 'ink ht-pink' : 'ink ht-blue';
+      q.color = q.a ? '#FF48B0' : '#0078BF';
+      q.op = q.fresh ? 0.95 : 0.5;
+    });
+    return { cells: L.cells, lines: L.lines, squares: L.squares };
+  }
+}
+</script>
+</body>
+</html>

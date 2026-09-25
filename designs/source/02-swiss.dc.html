@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Euclid — Swiss</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700;800;900&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F2F1EC;font-family:"Hanken Grotesk",Helvetica,sans-serif;color:#111111}
+a{color:#E4221B}a:hover{color:#A8150F}
+.sb{font-family:"Hanken Grotesk",Helvetica,sans-serif;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;min-height:48px;padding:0 22px;border:2px solid #111111;background:transparent;color:#111111;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 1200px; height: 800px; box-sizing: border-box; padding: 44px 48px; background: #F2F1EC; display: flex; flex-direction: column; gap: 26px; overflow: hidden">
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; border-top: 4px solid #111111; padding-top: 12px; font-size: 14px; line-height: 1.35">
+    <div style="font-weight: 900; font-size: 22px; letter-spacing: -.01em">Euclid</div>
+    <div>Practice<br>8 × 8 grid</div>
+    <div>Grid Footprint<br>First to 150</div>
+    <div style="text-align: right">Move 25<br><span style="color: #E4221B; font-weight: 700">Your turn</span></div>
+  </div>
+
+  <div style="display: flex; gap: 48px; flex-grow: 1; min-height: 0">
+    <div style="width: 520px; flex-shrink: 0; display: flex; flex-direction: column">
+      <div style="display: flex; align-items: flex-start; gap: 18px">
+        <div style="font-size: 270px; line-height: .78; font-weight: 900; letter-spacing: -.07em; color: #E4221B">27</div>
+        <div style="padding-top: 8px; font-size: 16px; line-height: 1.3"><span style="font-weight: 800">You</span><br>red</div>
+      </div>
+      <div style="height: 4px; background: #111111; margin: 26px 0 22px; position: relative">
+        <div style="position: absolute; left: 0; top: -6px; width: 18%; height: 16px; background: #E4221B"></div>
+      </div>
+      <div style="display: flex; align-items: flex-start; gap: 18px">
+        <div style="font-size: 270px; line-height: .78; font-weight: 900; letter-spacing: -.07em">29</div>
+        <div style="padding-top: 8px; font-size: 16px; line-height: 1.3"><span style="font-weight: 800">Euclid</span><br>black</div>
+      </div>
+      <div style="margin-top: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; font-size: 14px; line-height: 1.4; border-top: 1px solid #111111; padding-top: 12px">
+        <div><span style="font-weight: 800">Last move</span><br>Euclid, H6</div>
+        <div><span style="font-weight: 800">Last square</span><br>You, B3<br>3 × 3 = 9</div>
+        <div><span style="font-weight: 800">To win</span><br>123 more<br>points</div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 20px; align-items: flex-end; flex-grow: 1">
+      <div style="position: relative; width: 560px; height: 560px">
+        <sc-for list="{{squares}}" as="q" hint-placeholder-count="5">
+          <div style="position: absolute; box-sizing: border-box; left: {{q.left}}px; top: {{q.top}}px; width: {{q.size}}px; height: {{q.size}}px; transform: rotate({{q.angle}}deg); border: 5px solid {{q.color}}; background: {{q.fill}}"></div>
+        </sc-for>
+        <sc-for list="{{cells}}" as="c" hint-placeholder-count="64">
+          <sc-if value="{{c.empty}}" hint-placeholder-val="{{ true }}">
+            <div style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; background: #111111"></div>
+          </sc-if>
+          <sc-if value="{{c.a}}" hint-placeholder-val="{{ false }}">
+            <div style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: #E4221B"></div>
+          </sc-if>
+          <sc-if value="{{c.b}}" hint-placeholder-val="{{ false }}">
+            <div style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: #111111"></div>
+          </sc-if>
+          <sc-if value="{{c.last}}" hint-placeholder-val="{{ false }}">
+            <div style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: #F2F1EC"></div>
+          </sc-if>
+        </sc-for>
+      </div>
+      <div style="display: flex; gap: 10px">
+        <button class="sb">Hint</button>
+        <button class="sb">Hide squares</button>
+        <button class="sb" style="background: #111111; color: #F2F1EC">New game</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":800}}'>
+var EU_POS = {
+  p: [[0,0,2],[5,0,1],[1,1,1],[2,1,2],[3,1,1],[6,1,1],[5,2,2],[7,2,2],[1,3,1],[2,3,2],[3,3,1],[6,3,1],[4,4,1],[1,5,1],[3,5,1],[5,5,1],[6,5,2],[0,6,2],[3,6,2],[4,6,1],[6,6,2],[7,6,2],[6,7,2],[7,7,2]],
+  s: [[[[3,3],[3,1],[1,1],[1,3]],1,7,3],[[[2,3],[5,2],[6,5],[3,6]],2,8,5],[[[4,6],[3,5],[4,4],[5,5]],1,17,3],[[[6,6],[7,6],[7,7],[6,7]],2,20,2],[[[1,5],[1,3],[3,3],[3,5]],1,21,3]],
+  log: [[1,1,1,0],[2,5,2,0],[1,1,3,0],[2,6,5,0],[1,3,1,0],[2,3,6,0],[1,3,3,9],[2,2,3,25],[1,6,1,0],[2,0,6,0],[1,5,5,0],[2,7,7,0],[1,4,4,0],[2,0,0,0],[1,3,5,0],[2,6,7,0],[1,4,6,9],[2,7,6,0],[1,6,3,0],[2,6,6,4],[1,1,5,9],[2,2,1,0],[1,5,0,0],[2,7,2,0]]
+};
+function euLayout(P, M, T) {
+  var cols = 'ABCDEFGH', occ = {}, cells = [], lines = [], labels = [];
+  EU_POS.p.forEach(function (q) { occ[q[0] + ',' + q[1]] = q[2]; });
+  for (var y = 0; y < 8; y++) for (var x = 0; x < 8; x++) {
+    var o = occ[x + ',' + y] || 0;
+    cells.push({ x: M + x * P, y: M + y * P, a: o === 1, b: o === 2, empty: !o, last: x === 7 && y === 2 });
+  }
+  for (var k = 0; k < 8; k++) {
+    lines.push({ left: M, top: M + k * P - T / 2, w: 7 * P, h: T });
+    lines.push({ left: M + k * P - T / 2, top: M, w: T, h: 7 * P });
+    labels.push({ pos: M + k * P, col: cols.charAt(k), row: String(8 - k) });
+  }
+  var squares = EU_POS.s.map(function (q) {
+    var c = q[0], cx = 0, cy = 0;
+    c.forEach(function (p) { cx += p[0] / 4; cy += p[1] / 4; });
+    var dx = c[1][0] - c[0][0], dy = c[1][1] - c[0][1], size = Math.sqrt(dx * dx + dy * dy) * P;
+    return { left: M + cx * P - size / 2, top: M + cy * P - size / 2, size: size, angle: Math.atan2(dy, dx) * 180 / Math.PI, a: q[1] === 1, b: q[1] === 2, fresh: q[2] === 21, side: q[3], pts: q[3] * q[3], cx: M + cx * P, cy: M + cy * P };
+  });
+  var log = EU_POS.log.map(function (e, i) { return { n: i + 1, a: e[0] === 1, b: e[0] === 2, cell: cols.charAt(e[1]) + (8 - e[2]), pts: e[3], plus: e[3] ? '+' + e[3] : '' }; }).reverse();
+  return { cells: cells, lines: lines, squares: squares, log: log, labels: labels };
+}
+class Component extends DCLogic {
+  renderVals() {
+    var L = euLayout(74, 21, 1);
+    L.squares.forEach(function (q) {
+      q.color = q.a ? '#E4221B' : '#111111';
+      q.fill = q.fresh ? 'rgba(228,34,27,.14)' : 'transparent';
+    });
+    return { cells: L.cells, squares: L.squares };
+  }
+}
+</script>
+</body>
+</html>

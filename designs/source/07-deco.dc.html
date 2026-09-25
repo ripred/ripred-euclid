@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Euclid — Deco</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Limelight&amp;family=Josefin+Sans:wght@300;400;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0F0E0C;font-family:"Josefin Sans",system-ui,sans-serif;color:#F1E6CF}
+a{color:#C9A45C}a:hover{color:#E6C98A}
+.rays{-webkit-mask-image:linear-gradient(#000 45%,transparent 100%);mask-image:linear-gradient(#000 45%,transparent 100%);background:repeating-conic-gradient(from -90deg at 50% 100%,rgba(201,164,92,.13) 0deg 3deg,transparent 3deg 7deg)}
+.db{font-family:"Josefin Sans",system-ui,sans-serif;font-size:14px;font-weight:600;letter-spacing:.3em;text-transform:uppercase;min-height:46px;padding:4px 26px 0;border:1px solid #C9A45C;background:transparent;color:#E6C98A;cursor:pointer}
+</style>
+</helmet>
+<div style="position: relative; width: 1200px; height: 800px; background: #0F0E0C; overflow: hidden">
+  <div class="rays" style="position: absolute; left: 0; top: -60px; width: 1200px; height: 620px"></div>
+
+  <!-- title -->
+  <div style="position: absolute; left: 0; top: 34px; width: 1200px; display: flex; align-items: center; justify-content: center; gap: 26px">
+    <div style="width: 150px; height: 1px; background: #C9A45C"></div>
+    <div style="width: 10px; height: 10px; background: #C9A45C; transform: rotate(45deg)"></div>
+    <div style="font-family: 'Limelight', serif; font-size: 62px; letter-spacing: .28em; color: #E6C98A; line-height: 1; padding-left: .28em">EUCLID</div>
+    <div style="width: 10px; height: 10px; background: #C9A45C; transform: rotate(45deg)"></div>
+    <div style="width: 150px; height: 1px; background: #C9A45C"></div>
+  </div>
+
+  <!-- board frame -->
+  <div style="position: absolute; left: 322px; top: 142px; width: 556px; height: 556px; border: 2px solid #C9A45C; box-sizing: border-box"></div>
+  <div style="position: absolute; left: 330px; top: 150px; width: 540px; height: 540px; border: 1px solid rgba(201,164,92,.6); box-sizing: border-box"></div>
+  <div style="position: absolute; left: 311px; top: 131px; width: 22px; height: 22px; background: #0F0E0C; border: 2px solid #C9A45C; transform: rotate(45deg)"></div>
+  <div style="position: absolute; left: 867px; top: 131px; width: 22px; height: 22px; background: #0F0E0C; border: 2px solid #C9A45C; transform: rotate(45deg)"></div>
+  <div style="position: absolute; left: 311px; top: 687px; width: 22px; height: 22px; background: #0F0E0C; border: 2px solid #C9A45C; transform: rotate(45deg)"></div>
+  <div style="position: absolute; left: 867px; top: 687px; width: 22px; height: 22px; background: #0F0E0C; border: 2px solid #C9A45C; transform: rotate(45deg)"></div>
+
+  <div style="position: absolute; left: 340px; top: 160px; width: 520px; height: 520px; background: #16140F; box-shadow: inset 0 0 0 3px #7E6027">
+    <sc-for list="{{lines}}" as="l" hint-placeholder-count="16">
+      <div style="position: absolute; left: {{l.left}}px; top: {{l.top}}px; width: {{l.w}}px; height: {{l.h}}px; background: rgba(201,164,92,.28)"></div>
+    </sc-for>
+    <sc-for list="{{squares}}" as="q" hint-placeholder-count="5">
+      <div style="position: absolute; box-sizing: border-box; left: {{q.left}}px; top: {{q.top}}px; width: {{q.size}}px; height: {{q.size}}px; transform: rotate({{q.angle}}deg); border: 4px double {{q.color}}; background: {{q.fill}}"></div>
+    </sc-for>
+    <sc-for list="{{cells}}" as="c" hint-placeholder-count="64">
+      <sc-if value="{{c.empty}}" hint-placeholder-val="{{ true }}">
+        <div style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; background: #7E6027; transform: rotate(45deg)"></div>
+      </sc-if>
+      <sc-if value="{{c.a}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #FBEBC0, #C9A45C 55%, #7E6027); box-shadow: inset 0 0 0 4px rgba(126,96,39,.55), 0 3px 8px rgba(0,0,0,.6)"></div>
+      </sc-if>
+      <sc-if value="{{c.b}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #8FD4BD, #2E6B5A 55%, #173A30); border: 2px solid #C9A45C; box-sizing: border-box; box-shadow: 0 3px 8px rgba(0,0,0,.6)"></div>
+      </sc-if>
+      <sc-if value="{{c.last}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 50px; height: 50px; margin: -25px 0 0 -25px; border: 1px solid #E6C98A; transform: rotate(45deg); box-sizing: border-box"></div>
+      </sc-if>
+    </sc-for>
+  </div>
+
+  <!-- cartouches -->
+  <div style="position: absolute; left: 70px; top: 220px; width: 200px; height: 400px; border: 1.5px solid #C9A45C; border-radius: 100px 100px 0 0; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px">
+    <div style="width: 30px; height: 30px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #FBEBC0, #C9A45C 55%, #7E6027)"></div>
+    <div style="font-size: 14px; letter-spacing: .34em; padding-left: .34em">YOU</div>
+    <div style="font-family: 'Limelight', serif; font-size: 96px; line-height: 1; color: #E6C98A">27</div>
+    <div style="width: 60px; height: 1px; background: #C9A45C"></div>
+    <div style="font-size: 12px; letter-spacing: .3em; color: #B8AA8C; padding-left: .3em">OF 150</div>
+  </div>
+  <div style="position: absolute; left: 930px; top: 220px; width: 200px; height: 400px; border: 1.5px solid #5FA38C; border-radius: 100px 100px 0 0; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px">
+    <div style="width: 30px; height: 30px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #8FD4BD, #2E6B5A 55%, #173A30); border: 2px solid #C9A45C; box-sizing: border-box"></div>
+    <div style="font-size: 14px; letter-spacing: .34em; padding-left: .34em">EUCLID</div>
+    <div style="font-family: 'Limelight', serif; font-size: 96px; line-height: 1; color: #8FD4BD">29</div>
+    <div style="width: 60px; height: 1px; background: #5FA38C"></div>
+    <div style="font-size: 12px; letter-spacing: .3em; color: #B8AA8C; padding-left: .3em">OF 150</div>
+  </div>
+  <div style="position: absolute; left: 70px; top: 640px; width: 200px; text-align: center; font-size: 13px; letter-spacing: .3em; color: #E6C98A">YOUR MOVE</div>
+  <div style="position: absolute; left: 930px; top: 640px; width: 200px; text-align: center; font-size: 13px; letter-spacing: .2em; color: #B8AA8C">PLAYED H6</div>
+
+  <!-- controls -->
+  <div style="position: absolute; left: 0; top: 724px; width: 1200px; display: flex; justify-content: center; align-items: center; gap: 18px">
+    <button class="db">Hint</button>
+    <div style="width: 8px; height: 8px; background: #C9A45C; transform: rotate(45deg)"></div>
+    <button class="db">Squares</button>
+    <div style="width: 8px; height: 8px; background: #C9A45C; transform: rotate(45deg)"></div>
+    <button class="db" style="background: #C9A45C; color: #0F0E0C">New game</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":800}}'>
+var EU_POS = {
+  p: [[0,0,2],[5,0,1],[1,1,1],[2,1,2],[3,1,1],[6,1,1],[5,2,2],[7,2,2],[1,3,1],[2,3,2],[3,3,1],[6,3,1],[4,4,1],[1,5,1],[3,5,1],[5,5,1],[6,5,2],[0,6,2],[3,6,2],[4,6,1],[6,6,2],[7,6,2],[6,7,2],[7,7,2]],
+  s: [[[[3,3],[3,1],[1,1],[1,3]],1,7,3],[[[2,3],[5,2],[6,5],[3,6]],2,8,5],[[[4,6],[3,5],[4,4],[5,5]],1,17,3],[[[6,6],[7,6],[7,7],[6,7]],2,20,2],[[[1,5],[1,3],[3,3],[3,5]],1,21,3]],
+  log: [[1,1,1,0],[2,5,2,0],[1,1,3,0],[2,6,5,0],[1,3,1,0],[2,3,6,0],[1,3,3,9],[2,2,3,25],[1,6,1,0],[2,0,6,0],[1,5,5,0],[2,7,7,0],[1,4,4,0],[2,0,0,0],[1,3,5,0],[2,6,7,0],[1,4,6,9],[2,7,6,0],[1,6,3,0],[2,6,6,4],[1,1,5,9],[2,2,1,0],[1,5,0,0],[2,7,2,0]]
+};
+function euLayout(P, M, T) {
+  var cols = 'ABCDEFGH', occ = {}, cells = [], lines = [], labels = [];
+  EU_POS.p.forEach(function (q) { occ[q[0] + ',' + q[1]] = q[2]; });
+  for (var y = 0; y < 8; y++) for (var x = 0; x < 8; x++) {
+    var o = occ[x + ',' + y] || 0;
+    cells.push({ x: M + x * P, y: M + y * P, a: o === 1, b: o === 2, empty: !o, last: x === 7 && y === 2 });
+  }
+  for (var k = 0; k < 8; k++) {
+    lines.push({ left: M, top: M + k * P - T / 2, w: 7 * P, h: T });
+    lines.push({ left: M + k * P - T / 2, top: M, w: T, h: 7 * P });
+    labels.push({ pos: M + k * P, col: cols.charAt(k), row: String(8 - k) });
+  }
+  var squares = EU_POS.s.map(function (q) {
+    var c = q[0], cx = 0, cy = 0;
+    c.forEach(function (p) { cx += p[0] / 4; cy += p[1] / 4; });
+    var dx = c[1][0] - c[0][0], dy = c[1][1] - c[0][1], size = Math.sqrt(dx * dx + dy * dy) * P;
+    return { left: M + cx * P - size / 2, top: M + cy * P - size / 2, size: size, angle: Math.atan2(dy, dx) * 180 / Math.PI, a: q[1] === 1, b: q[1] === 2, fresh: q[2] === 21, side: q[3], pts: q[3] * q[3], cx: M + cx * P, cy: M + cy * P };
+  });
+  var log = EU_POS.log.map(function (e, i) { return { n: i + 1, a: e[0] === 1, b: e[0] === 2, cell: cols.charAt(e[1]) + (8 - e[2]), pts: e[3], plus: e[3] ? '+' + e[3] : '' }; }).reverse();
+  return { cells: cells, lines: lines, squares: squares, log: log, labels: labels };
+}
+class Component extends DCLogic {
+  renderVals() {
+    var L = euLayout(64, 36, 1);
+    L.squares.forEach(function (q) {
+      q.color = q.a ? '#C9A45C' : '#5FA38C';
+      q.fill = q.fresh ? 'rgba(230,201,138,.20)' : 'transparent';
+    });
+    return { cells: L.cells, lines: L.lines, squares: L.squares };
+  }
+}
+</script>
+</body>
+</html>
