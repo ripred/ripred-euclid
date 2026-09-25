@@ -49,7 +49,6 @@ export interface HomeScreenProps {
   onLeaderboard: () => void;
   onOptions: () => void;
   onRules: () => void;
-  onChallenges?: (() => void) | undefined;
 }
 
 interface HomeActionButtonProps {
@@ -323,7 +322,6 @@ const UTILITIES: readonly {
  */
 export function HomeScreen(props: HomeScreenProps) {
   const {
-    onChallenges,
     username,
     playEuclidSubtitle,
     records,
@@ -539,6 +537,25 @@ export function HomeScreen(props: HomeScreenProps) {
             />
           </div>
 
+          <nav className="home-nav" aria-label="More Euclid options">
+            <ul>
+              {UTILITIES.map((item) => (
+                <li key={item.label}>
+                  <button
+                    type="button"
+                    className="home-nav__item"
+                    disabled={navigationLocked}
+                    aria-describedby={lockDescriptionId}
+                    onClick={props[item.action]}
+                  >
+                    <Icon name={item.icon} />
+                    <span>{item.label}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </nav>
+
           <aside
             className="panel home-records"
             aria-labelledby="home-records-title"
@@ -570,45 +587,6 @@ export function HomeScreen(props: HomeScreenProps) {
           </div>
           <HowToPlay layout="strip" />
         </section>
-
-        <nav className="home-nav" aria-label="More Euclid options">
-          <ul>
-            {[
-              ...UTILITIES.map((item) => ({
-                label: item.label,
-                name: undefined,
-                icon: item.icon,
-                onClick: props[item.action],
-              })),
-              // Moderator-only; the server decides whether this is offered.
-              ...(onChallenges
-                ? [
-                    {
-                      label: "Challenges",
-                      name: "Challenge playground",
-                      icon: "challenge" as const,
-                      onClick: onChallenges,
-                    },
-                  ]
-                : []),
-            ].map((item) => (
-              <li key={item.label}>
-                <button
-                  type="button"
-                  className="home-nav__item"
-                  disabled={navigationLocked}
-                  aria-describedby={lockDescriptionId}
-                  aria-label={item.name}
-                  title={item.name}
-                  onClick={item.onClick}
-                >
-                  <Icon name={item.icon} />
-                  <span>{item.label}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </nav>
       </div>
     </main>
   );

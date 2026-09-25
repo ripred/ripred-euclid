@@ -113,7 +113,7 @@ API reference: [RedditClient.getSnoovatarUrl](https://developers.reddit.com/docs
 
 ## Challenge playground details
 
-The challenge feature branch adds private moderator testing on the standard 8×8 board. Open **Challenge playground** from the home screen. Configure minimum moves and target squares (1–4 each), construction geometry, shared corners, and optional multiple optimal solutions. Any valid square counts during play. The minimum is certified, not a move limit; there is no undo or hint action.
+The challenge feature branch includes a private moderator playground on the standard 8×8 board. Its home-screen entry is currently hidden; the screen, engine, and protected endpoints remain in the code. The playground supports minimum moves and target squares (1–4 each), construction geometry, shared corners, and optional multiple optimal solutions. Any valid square counts during play. The minimum is certified, not a move limit; there is no undo or hint action.
 
 The **Daily starting point** preset selects 3 mixed squares in 2 moves; **Weekly starting point** selects 4 oblique squares in 3 moves. Suggested ranges are 2–3 daily squares or 3–4 weekly squares, each in 2–4 moves. Presets remain editable and do not enable a schedule.
 
@@ -127,7 +127,7 @@ To test locally:
 npm run dev:local
 ```
 
-Open `http://127.0.0.1:7474/index.html?as=local_moderator`. That fixture is a moderator only in the local adapter. Other local identities cannot use the playground. Published builds check current subreddit moderator membership on the server for every challenge request. A separate tab using the same identity shares one private session and must reconcile stale revisions.
+The `local_moderator` fixture grants moderator permission in the local adapter, but does not restore the hidden playground entry. Other local identities cannot use the challenge endpoints. Published builds check current subreddit moderator membership on the server for every challenge request. A separate tab using the same identity shares one private session and must reconcile stale revisions.
 
 ## Devvit operation
 
@@ -175,7 +175,7 @@ Before installing a release beyond the test subreddit:
 6. Watch the full splash rotation in Reddit desktop card/compact views and the native mobile app. Check theme changes, pointer hover, keyboard focus, Pause/Resume, reduced motion, hidden tabs, orientation, height-only resizing, and increased zoom. Keep **Play now**, **Watch live**, and **Full leaderboard** visible through every phase. Verify that solo/Redditor choices expand correctly and respect existing games and queues. Inline content must leave the parent feed's scrolling available; expanded views must keep all controls reachable.
 7. Verify leaderboard shares render their canonical frozen snapshot and result shares retain their exact terminal-revision replay, including when a rematch has already begun. Inline summaries must fit without scrolling and keep their expansion action visible at desktop/mobile widths and increased zoom. After expansion, every snapshot row and the entire replay and footer must remain reachable, including by scrolling and keyboard navigation where needed.
 
-8. Use a moderator account to generate and play puzzles, restart attempts, mark blocked points, and exercise stale revisions from two tabs. Check that an ordinary account cannot reach the playground endpoints. Verify timing and best-result ordering, and confirm that attempts never appear in watch lists, rankings, or shares.
+8. Before restoring the playground entry, use a moderator account to generate and play puzzles, restart attempts, mark blocked points, and exercise stale revisions from two tabs. Check that an ordinary account cannot reach the playground endpoints. Verify timing and best-result ordering, and confirm that attempts never appear in watch lists, rankings, or shares.
 9. Check winner-card and current-player Snoovatars in a Devvit runtime, including missing images and failed lookups. Local sample avatars only establish the adapter and display behavior.
 
 The full real-surface checklist requires three distinct Reddit identities, simultaneous player sessions, a fresh browser-storage context, and a physical Reddit mobile-app session. Ranked win, loss, and tie outcomes also cannot be selected deterministically from the release surface; use naturally completed games unless an isolated, non-production QA fixture is designed and approved.

@@ -2727,15 +2727,6 @@ export const App = ({
     content = (
       <>
         <HomeScreen
-          onChallenges={
-            initState?.type === "init" && initState.canManageChallenges
-              ? () => {
-                  if (navigationLocked) return;
-                  stopHomePresenceMonitoring();
-                  setMode("challenge");
-                }
-              : undefined
-          }
           username={initState?.username ?? ""}
           playEuclidSubtitle={getPlayEuclidSubtitle(
             soloMode,

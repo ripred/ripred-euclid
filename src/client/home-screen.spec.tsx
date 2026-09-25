@@ -67,17 +67,13 @@ function completeButtonMarkup(markup: string, className: string): string {
 }
 
 describe("home dashboard structure", () => {
-  it("offers the playground only when the server grants moderator access", () => {
-    expect(renderToStaticMarkup(<HomeScreen {...homeProps()} />)).not.toContain(
-      "Challenge playground",
-    );
-    const markup = renderToStaticMarkup(
-      <HomeScreen {...homeProps({ onChallenges: () => undefined })} />,
-    );
-    // It joins the utility row as a peer, named in full for assistive tech.
-    const tag = openingButtonTag(markup, 'aria-label="Challenge playground"');
-    expect(tag).toContain('class="home-nav__item"');
-    expect(markup).toContain("<span>Challenges</span>");
+  it("offers the four utility actions without a challenge button", () => {
+    const markup = renderToStaticMarkup(<HomeScreen {...homeProps()} />);
+    expect(markup.match(/class="home-nav__item"/g)).toHaveLength(4);
+    for (const label of ["Live games", "Leaderboard", "Options", "Rules"])
+      expect(markup).toContain(`<span>${label}</span>`);
+    expect(markup).not.toContain("Challenges");
+    expect(markup).not.toContain("Challenge playground");
   });
 
   it("offers difficulty settings beside solo play and locks them during requests", () => {

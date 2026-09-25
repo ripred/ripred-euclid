@@ -34,7 +34,8 @@
 /* Choreography: hero, then each card in reading order. */
 .home > *,
 .home-grid__play > *,
-.home-records {
+.home-records,
+.home-nav {
   animation: rise-in 560ms var(--ease-out) both;
 }
 
@@ -103,12 +104,16 @@
 .home-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.55fr) minmax(280px, 1fr);
+  grid-template-areas:
+    "play records"
+    "navigation navigation";
   align-items: stretch;
   gap: var(--sp-4);
 }
 
 /* Both columns end together: the last play card grows to fill. */
 .home-grid__play {
+  grid-area: play;
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
@@ -190,8 +195,14 @@
 }
 
 @keyframes tokens-float {
+  25% {
+    transform: rotate(-10deg) translate(3px, 2px);
+  }
   50% {
-    transform: rotate(-4deg) translateY(6px);
+    transform: rotate(-2deg) translate(-2px, 8px);
+  }
+  75% {
+    transform: rotate(-6deg) translate(-3px, 3px);
   }
 }
 
@@ -282,6 +293,7 @@
 /* Records */
 
 .home-records {
+  grid-area: records;
   display: grid;
   gap: var(--sp-4);
 }
@@ -369,10 +381,13 @@
 
 /* Utility navigation */
 
+.home-nav {
+  grid-area: navigation;
+}
+
 .home-nav ul {
   display: grid;
-  grid-auto-columns: minmax(0, 1fr);
-  grid-auto-flow: column;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--sp-3);
   margin: 0;
   padding: 0;
@@ -479,6 +494,10 @@
 @media (max-width: 860px) {
   .home-grid {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "play"
+      "navigation"
+      "records";
   }
 }
 
@@ -508,12 +527,7 @@
     width: 100%;
   }
   .home-nav ul {
-    grid-auto-flow: row;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  /* An odd item out spans the row instead of leaving a hole. */
-  .home-nav li:last-child:nth-child(odd) {
-    grid-column: 1 / -1;
   }
   .home-hero__tagline {
     font-size: var(--fs-md);

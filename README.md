@@ -8,7 +8,7 @@ Euclid is a turn-based strategy game you play right inside Reddit. Place a dot, 
 
 Play against Euclid, challenge another Redditor, or watch a match and see what you would have done differently. Practice lets you try different boards and difficulty levels without putting your rating on the line.
 
-[Visit r/EuclidTheGame](https://www.reddit.com/r/EuclidTheGame/) · [Run it locally](#try-it-locally) · [Try the challenge playground](#a-few-pieces-a-few-squares)
+[Visit r/EuclidTheGame](https://www.reddit.com/r/EuclidTheGame/) · [Run it locally](#try-it-locally) · [Challenge development](#a-few-pieces-a-few-squares)
 
 The Reddit community is the beta home. This README describes the code in this checkout, which can be ahead of the version installed there.
 
@@ -36,7 +36,7 @@ The splash screen walks through a complete teaching sequence, then rotates throu
 | **Practice vs Euclid**   | Choose an even board width and height from 4 through 16, scoring, target, and one of nine difficulty levels. Hints are available. | Unrated         |
 | **Redditor vs Redditor** | An 8×8 board, Grid Footprint scoring, first to 150. Includes matchmaking, chat, rematches, and live spectators.                   | Multiplayer Elo |
 
-**Change difficulty** appears in Practice. Ranked keeps the same preset for everyone. Reloading resumes a saved solo game; canceling Ranked before your first move is unrated, while leaving after play begins records a loss.
+**Change difficulty** appears in Practice. Its slider has a tick for each of the nine levels and shows the selected level as you move it. Ranked keeps the same preset for everyone. Reloading resumes a saved solo game; canceling Ranked before your first move is unrated, while leaving after play begins records a loss.
 
 You can place pieces with a mouse or keyboard (arrow keys to move, Enter or Space to place). On touch screens with small board points, the first tap aims and the second tap on that point places. Completed squares light up so you can see exactly where the points came from.
 
@@ -50,7 +50,7 @@ The challenge playground starts with some pieces already on the standard 8×8 bo
 
 _A fixed example puzzle. Crossed points are blocked; the solution isn't drawn._
 
-This is currently a **private moderator playground** for testing the puzzle engine. Choose 1–4 target squares and 1–4 minimum moves, adjust the geometry and blocked points, then select **Generate** and give it a go!
+The **private moderator playground** remains in the code for testing the puzzle engine, but its home-screen button is currently hidden. It supports 1–4 target squares and 1–4 minimum moves, with configurable geometry and blocked points.
 
 The generator checks that the puzzle really needs the requested minimum number of moves. That minimum is something to aim for, not a limit: you can use extra pieces. There's no undo or hint button. You can abandon an attempt or restart the same puzzle and try to beat your best result.
 
@@ -76,7 +76,7 @@ npm run dev:local
 
 Open [the game](http://127.0.0.1:7474/index.html) or [the splash carousel](http://127.0.0.1:7474/preview.html). The local adapter runs the real client and server with in-memory substitutes for the Reddit services, so you can play without a Reddit login. Restarting the server resets local games and results.
 
-To open the playground, use [the local moderator account](http://127.0.0.1:7474/index.html?as=local_moderator), then select **Challenge playground** on the home screen. That moderator identity exists only in the local adapter; Reddit builds check actual subreddit moderator membership on the server.
+The local `local_moderator` identity has permission to test the challenge endpoints, but there is currently no home-screen entry to the playground. That moderator identity exists only in the local adapter; Reddit builds check actual subreddit moderator membership on the server.
 
 For a multiplayer test, open `index.html?as=alice` and `index.html?as=bob` in separate tabs. Each tab keeps its own local identity. A third tab can watch through `watch.html`.
 
@@ -102,7 +102,7 @@ git diff --check
 
 `npm run check` applies formatting and lint fixes, so use the individual commands above when you only want to inspect a worktree. Tests live beside the source in `*.spec.ts` and `*.spec.tsx` files.
 
-The package version is **0.2.6** and Devvit is pinned to **0.14.2**. `npm run dev` starts the Reddit playtest workflow for `r/ripred_euclid_dev`; `npm run dev:local` is the standalone workflow above. Building, pushing to GitHub, uploading to Devvit, and installing on a subreddit are separate steps. The [deployment commands](docs/engineering.md#devvit-operation) cover the Reddit side.
+The package version is **0.2.11** and Devvit is pinned to **0.14.2**. `npm run dev` starts the Reddit playtest workflow for `r/ripred_euclid_dev`; `npm run dev:local` is the standalone workflow above. Building, pushing to GitHub, uploading to Devvit, and installing on a subreddit are separate steps. The [deployment commands](docs/engineering.md#devvit-operation) cover the Reddit side.
 
 ### Keeping the pictures current
 

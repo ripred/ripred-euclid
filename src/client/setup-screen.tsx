@@ -36,7 +36,7 @@ export interface SetupScreenProps {
   onDone: () => void;
 }
 
-/** A radio group of pill choices; one pattern for every discrete setting. */
+/** A radio group of pill choices for board dimensions. */
 function ChoiceGroup<T extends string | number>({
   label,
   options,
@@ -188,17 +188,45 @@ export function SetupScreen(props: SetupScreenProps) {
           </div>
         ) : (
           <div className="setup-practice">
-            <div className="field">
-              <span className="field__label" id="setup-difficulty">
-                Euclid's difficulty
-              </span>
-              <ChoiceGroup
-                label="Difficulty"
-                options={AI_DIFFICULTIES}
-                value={difficulty}
-                onChange={onDifficultyChange}
-                format={(value) => AI_DIFFICULTY_LABELS[value]}
+            <div className="field setup-difficulty">
+              <div className="setup-difficulty__label">
+                <label className="field__label" htmlFor="setup-difficulty">
+                  Euclid's difficulty
+                </label>
+                <output htmlFor="setup-difficulty">
+                  {AI_DIFFICULTY_LABELS[difficulty]}
+                </output>
+              </div>
+              <input
+                id="setup-difficulty"
+                className="setup-difficulty__slider"
+                type="range"
+                min={0}
+                max={AI_DIFFICULTIES.length - 1}
+                step={1}
+                value={AI_DIFFICULTIES.indexOf(difficulty)}
+                aria-valuetext={AI_DIFFICULTY_LABELS[difficulty]}
+                onChange={(event) => {
+                  const selected =
+                    AI_DIFFICULTIES[event.currentTarget.valueAsNumber];
+                  if (selected) onDifficultyChange(selected);
+                }}
               />
+              <div className="setup-difficulty__ticks" aria-hidden="true">
+                {AI_DIFFICULTIES.map((level) => (
+                  <span key={level} data-selected={level === difficulty} />
+                ))}
+              </div>
+              <div className="setup-difficulty__ends" aria-hidden="true">
+                <span>{AI_DIFFICULTY_LABELS[AI_DIFFICULTIES[0]]}</span>
+                <span>
+                  {
+                    AI_DIFFICULTY_LABELS[
+                      AI_DIFFICULTIES[AI_DIFFICULTIES.length - 1]!
+                    ]
+                  }
+                </span>
+              </div>
             </div>
 
             <div className="setup-board">

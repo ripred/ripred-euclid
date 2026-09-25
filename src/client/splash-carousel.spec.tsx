@@ -122,6 +122,8 @@ describe("splash carousel", () => {
         );
     });
     await advance(3000);
+    expect(active()).toBe("rules");
+    await advance(2000);
     expect(active()).toBe("leaderboard");
     await advance(10000);
     expect(active()).toBe("daily");
@@ -135,7 +137,7 @@ describe("splash carousel", () => {
     await advance(5000);
     expect(active()).toBe("rules");
     expect(host.textContent).toContain("Move 1 of 33");
-    await advance(35000);
+    await advance(37000);
     expect(active()).toBe("leaderboard");
     for (const next of ["daily", "weekly", "play", "rules"]) {
       await advance(10000);
