@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Euclid — Kaya</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600;800&amp;family=Zen+Kaku+Gothic+New:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#EDE6D8;font-family:"Zen Kaku Gothic New",system-ui,sans-serif;color:#2A241C}
+a{color:#B63A24}a:hover{color:#8A2A18}
+.grain{background-color:#DFB272;background-image:repeating-linear-gradient(97deg,rgba(140,86,34,.10) 0 2px,transparent 2px 9px),repeating-linear-gradient(92deg,rgba(110,64,22,.08) 0 1px,transparent 1px 27px),repeating-linear-gradient(99deg,rgba(255,236,200,.18) 0 3px,transparent 3px 41px)}
+.washi{background-color:#F4EFE4;background-image:radial-gradient(rgba(120,100,70,.06) 1px,transparent 1.5px);background-size:7px 7px}
+.kb{font-family:"Zen Kaku Gothic New",system-ui,sans-serif;font-size:14px;letter-spacing:.12em;min-height:46px;padding:0 20px;border:1px solid #2A241C;background:transparent;color:#2A241C;cursor:pointer}
+</style>
+</helmet>
+<div class="washi" style="width: 1200px; height: 800px; box-sizing: border-box; padding: 60px 64px; display: flex; gap: 64px; overflow: hidden">
+  <!-- the board -->
+  <div class="grain" style="position: relative; width: 680px; height: 680px; flex-shrink: 0; border-radius: 4px; box-shadow: 0 2px 0 #B98A4C, 0 26px 50px rgba(60,40,15,.35), inset 0 0 0 1px rgba(120,70,20,.3)">
+    <sc-for list="{{lines}}" as="l" hint-placeholder-count="16">
+      <div style="position: absolute; left: {{l.left}}px; top: {{l.top}}px; width: {{l.w}}px; height: {{l.h}}px; background: #3B2A18; opacity: .78"></div>
+    </sc-for>
+    <sc-for list="{{squares}}" as="q" hint-placeholder-count="5">
+      <div style="position: absolute; box-sizing: border-box; left: {{q.left}}px; top: {{q.top}}px; width: {{q.size}}px; height: {{q.size}}px; transform: rotate({{q.angle}}deg); border: {{q.border}}; background: {{q.fill}}"></div>
+    </sc-for>
+    <sc-for list="{{cells}}" as="c" hint-placeholder-count="64">
+      <sc-if value="{{c.a}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 66px; height: 66px; margin: -33px 0 0 -33px; border-radius: 50%; background: radial-gradient(circle at 34% 28%, #74726E, #1C1C1C 42%, #070707); box-shadow: 3px 5px 7px rgba(40,24,6,.5)"></div>
+      </sc-if>
+      <sc-if value="{{c.b}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 66px; height: 66px; margin: -33px 0 0 -33px; border-radius: 50%; background: radial-gradient(circle at 34% 28%, #FFFFFF, #F1EEE6 50%, #CEC7B6); box-shadow: 3px 5px 7px rgba(40,24,6,.42)"></div>
+      </sc-if>
+      <sc-if value="{{c.last}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%; border: 2.5px solid #B63A24; box-sizing: border-box"></div>
+      </sc-if>
+    </sc-for>
+  </div>
+
+  <!-- the side -->
+  <div style="flex-grow: 1; display: flex; gap: 28px; min-width: 0">
+    <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 26px; padding-top: 6px">
+      <div style="display: flex; align-items: center; gap: 16px">
+        <div style="width: 30px; height: 30px; border-radius: 50%; background: radial-gradient(circle at 34% 28%, #74726E, #1C1C1C 42%, #070707)"></div>
+        <div style="flex-grow: 1; font-size: 14px; letter-spacing: .14em">YOU · BLACK</div>
+        <div style="font-family: 'Shippori Mincho', serif; font-size: 58px; font-weight: 600; line-height: 1">27</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 16px">
+        <div style="width: 30px; height: 30px; border-radius: 50%; background: radial-gradient(circle at 34% 28%, #FFFFFF, #F1EEE6 50%, #CEC7B6); box-shadow: 0 0 0 1px rgba(0,0,0,.15)"></div>
+        <div style="flex-grow: 1; font-size: 14px; letter-spacing: .14em">EUCLID · WHITE</div>
+        <div style="font-family: 'Shippori Mincho', serif; font-size: 58px; font-weight: 600; line-height: 1">29</div>
+      </div>
+      <div style="height: 2px; border-radius: 2px; background: #2A241C; opacity: .75"></div>
+      <div style="font-family: 'Shippori Mincho', serif; font-size: 24px; line-height: 1.5">Black to play.<br><span style="font-size: 17px; color: #5C5245">The game is played to one hundred and fifty.</span></div>
+      <div style="display: flex; flex-direction: column; gap: 10px">
+        <sc-for list="{{recent}}" as="r" hint-placeholder-count="5">
+          <div style="display: flex; align-items: center; gap: 14px; font-size: 15px">
+            <div style="width: 28px; font-family: 'Shippori Mincho', serif; color: #5C5245">{{r.n}}</div>
+            <div style="width: 14px; height: 14px; border-radius: 50%; background: {{r.stone}}; box-shadow: 0 0 0 1px rgba(0,0,0,.25)"></div>
+            <div style="flex-grow: 1">{{r.cell}}</div>
+            <div style="font-family: 'Shippori Mincho', serif; color: #B63A24">{{r.plus}}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display: flex; gap: 10px; margin-top: auto">
+        <button class="kb">Hint</button>
+        <button class="kb">Lines</button>
+        <button class="kb">Resign</button>
+      </div>
+    </div>
+    <div style="width: 70px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 22px">
+      <div style="writing-mode: vertical-rl; font-family: 'Shippori Mincho', serif; font-weight: 800; font-size: 60px; letter-spacing: .32em; line-height: 1">EUCLID</div>
+      <div style="width: 58px; height: 58px; border-radius: 8px; background: #B63A24; display: flex; align-items: center; justify-content: center; font-family: 'Shippori Mincho', serif; font-weight: 800; font-size: 36px; color: #F4EFE4; transform: rotate(-4deg)">E</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":800}}'>
+var EU_POS = {
+  p: [[0,0,2],[5,0,1],[1,1,1],[2,1,2],[3,1,1],[6,1,1],[5,2,2],[7,2,2],[1,3,1],[2,3,2],[3,3,1],[6,3,1],[4,4,1],[1,5,1],[3,5,1],[5,5,1],[6,5,2],[0,6,2],[3,6,2],[4,6,1],[6,6,2],[7,6,2],[6,7,2],[7,7,2]],
+  s: [[[[3,3],[3,1],[1,1],[1,3]],1,7,3],[[[2,3],[5,2],[6,5],[3,6]],2,8,5],[[[4,6],[3,5],[4,4],[5,5]],1,17,3],[[[6,6],[7,6],[7,7],[6,7]],2,20,2],[[[1,5],[1,3],[3,3],[3,5]],1,21,3]],
+  log: [[1,1,1,0],[2,5,2,0],[1,1,3,0],[2,6,5,0],[1,3,1,0],[2,3,6,0],[1,3,3,9],[2,2,3,25],[1,6,1,0],[2,0,6,0],[1,5,5,0],[2,7,7,0],[1,4,4,0],[2,0,0,0],[1,3,5,0],[2,6,7,0],[1,4,6,9],[2,7,6,0],[1,6,3,0],[2,6,6,4],[1,1,5,9],[2,2,1,0],[1,5,0,0],[2,7,2,0]]
+};
+function euLayout(P, M, T) {
+  var cols = 'ABCDEFGH', occ = {}, cells = [], lines = [], labels = [];
+  EU_POS.p.forEach(function (q) { occ[q[0] + ',' + q[1]] = q[2]; });
+  for (var y = 0; y < 8; y++) for (var x = 0; x < 8; x++) {
+    var o = occ[x + ',' + y] || 0;
+    cells.push({ x: M + x * P, y: M + y * P, a: o === 1, b: o === 2, empty: !o, last: x === 7 && y === 2 });
+  }
+  for (var k = 0; k < 8; k++) {
+    lines.push({ left: M, top: M + k * P - T / 2, w: 7 * P, h: T });
+    lines.push({ left: M + k * P - T / 2, top: M, w: T, h: 7 * P });
+    labels.push({ pos: M + k * P, col: cols.charAt(k), row: String(8 - k) });
+  }
+  var squares = EU_POS.s.map(function (q) {
+    var c = q[0], cx = 0, cy = 0;
+    c.forEach(function (p) { cx += p[0] / 4; cy += p[1] / 4; });
+    var dx = c[1][0] - c[0][0], dy = c[1][1] - c[0][1], size = Math.sqrt(dx * dx + dy * dy) * P;
+    return { left: M + cx * P - size / 2, top: M + cy * P - size / 2, size: size, angle: Math.atan2(dy, dx) * 180 / Math.PI, a: q[1] === 1, b: q[1] === 2, fresh: q[2] === 21, side: q[3], pts: q[3] * q[3], cx: M + cx * P, cy: M + cy * P };
+  });
+  var log = EU_POS.log.map(function (e, i) { return { n: i + 1, a: e[0] === 1, b: e[0] === 2, cell: cols.charAt(e[1]) + (8 - e[2]), pts: e[3], plus: e[3] ? '+' + e[3] : '' }; }).reverse();
+  return { cells: cells, lines: lines, squares: squares, log: log, labels: labels };
+}
+class Component extends DCLogic {
+  renderVals() {
+    var L = euLayout(84, 46, 1.2);
+    L.squares.forEach(function (q) {
+      q.border = q.fresh ? '3px solid #B63A24' : q.a ? '3px solid rgba(20,16,10,.62)' : '3px solid rgba(255,252,244,.95)';
+      q.fill = q.fresh ? 'rgba(182,58,36,.10)' : q.a ? 'rgba(20,16,10,.07)' : 'rgba(255,252,244,.16)';
+    });
+    var recent = L.log.slice(0, 6).map(function (r) { return { n: r.n, cell: (r.a ? 'Black ' : 'White ') + r.cell, stone: r.a ? '#1C1C1C' : '#F4F1EA', plus: r.plus }; });
+    return { cells: L.cells, lines: L.lines, squares: L.squares, recent: recent };
+  }
+}
+</script>
+</body>
+</html>

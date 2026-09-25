@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Euclid — Great Wave</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#E9DDC0;font-family:"Shippori Mincho B1",Georgia,serif;color:#1C3765}
+a{color:#1C3765}a:hover{color:#B23A28}
+.washi{background-color:#E9DDC0;background-image:repeating-linear-gradient(88deg,rgba(120,90,40,.05) 0 1px,transparent 1px 7px),radial-gradient(rgba(120,90,40,.07) 1px,transparent 1.6px);background-size:auto,9px 9px}
+.seigaiha{background-color:#1C3765;background-image:radial-gradient(circle at 50% 100%,#1C3765 5px,#E9DDC0 6px 7px,#1C3765 8px 11px,#E9DDC0 12px 13px,#1C3765 14px 17px,#E9DDC0 18px 19px,transparent 20px),radial-gradient(circle at 50% 100%,#1C3765 5px,#E9DDC0 6px 7px,#1C3765 8px 11px,#E9DDC0 12px 13px,#1C3765 14px 17px,#E9DDC0 18px 19px,transparent 20px);background-size:40px 20px;background-position:0 0,20px 10px}
+.wb{font-family:"Shippori Mincho B1",Georgia,serif;font-size:17px;font-weight:700;letter-spacing:.14em;min-height:48px;padding:0 22px;border:2px solid #1C3765;background:#F1E7CE;color:#1C3765;cursor:pointer}
+</style>
+</helmet>
+<div class="washi" style="position: relative; width: 1200px; height: 800px; overflow: hidden">
+  <!-- sky -->
+  <div style="position: absolute; left: 0; top: 0; width: 1200px; height: 26px; background: #8E8A7C; opacity: .55"></div>
+
+  <!-- the wave: curl, foam, body, and Fuji through the hollow -->
+  <div style="position: absolute; left: 862px; top: 226px; width: 120px; height: 66px; background: #4A6F9A; clip-path: polygon(50% 0, 100% 100%, 0 100%)"></div>
+  <div style="position: absolute; left: 896px; top: 226px; width: 52px; height: 22px; background: #F4ECD8; clip-path: polygon(50% 0, 100% 100%, 78% 70%, 62% 100%, 42% 72%, 22% 100%, 0 100%)"></div>
+
+  <div style="position: absolute; left: 700px; top: -40px; width: 420px; height: 420px; border-radius: 50%; box-sizing: border-box; border: 64px solid #1C3765; border-bottom-color: transparent; border-left-color: transparent; transform: rotate(-24deg)"></div>
+  <div style="position: absolute; left: 752px; top: 12px; width: 316px; height: 316px; border-radius: 50%; box-sizing: border-box; border: 22px solid #4A6F9A; border-bottom-color: transparent; border-left-color: transparent; transform: rotate(-24deg)"></div>
+  <div style="position: absolute; left: 782px; top: 42px; width: 256px; height: 256px; border-radius: 50%; box-sizing: border-box; border: 8px solid #A9BFCF; border-bottom-color: transparent; border-left-color: transparent; transform: rotate(-24deg)"></div>
+
+  <div style="position: absolute; left: 610px; top: 296px; width: 600px; height: 210px; border-radius: 50% 50% 0 0; background: #1C3765"></div>
+  <div style="position: absolute; left: 650px; top: 320px; width: 520px; height: 180px; border-radius: 50% 50% 0 0; box-sizing: border-box; border: 3px solid #4A6F9A; border-bottom: 0"></div>
+  <div style="position: absolute; left: 700px; top: 350px; width: 420px; height: 150px; border-radius: 50% 50% 0 0; box-sizing: border-box; border: 3px solid #4A6F9A; border-bottom: 0"></div>
+  <div style="position: absolute; left: 760px; top: 384px; width: 300px; height: 120px; border-radius: 50% 50% 0 0; box-sizing: border-box; border: 2px solid #A9BFCF; border-bottom: 0"></div>
+
+  <sc-for list="{{foam}}" as="f" hint-placeholder-count="18">
+    <div style="position: absolute; left: {{f.x}}px; top: {{f.y}}px; width: {{f.s}}px; height: {{f.s}}px; margin: {{f.m}}px 0 0 {{f.m}}px; border-radius: 50%; background: #F4ECD8; box-shadow: 0 0 0 2px #1C3765"></div>
+  </sc-for>
+  <sc-for list="{{spray}}" as="d" hint-placeholder-count="14">
+    <div style="position: absolute; left: {{d.x}}px; top: {{d.y}}px; width: 7px; height: 7px; border-radius: 50%; background: #F4ECD8"></div>
+  </sc-for>
+
+  <!-- title cartouche and seal -->
+  <div style="position: absolute; left: 60px; top: 40px; display: flex; align-items: stretch; gap: 14px">
+    <div style="padding: 12px 22px; border: 2px solid #1C3765; box-shadow: inset 0 0 0 4px #E9DDC0, inset 0 0 0 5px #1C3765; background: #EFE4C9; display: flex; flex-direction: column; gap: 4px">
+      <div style="font-size: 44px; font-weight: 800; letter-spacing: .22em; line-height: 1">EUCLID</div>
+      <div style="font-size: 14px; letter-spacing: .12em">Sixty-four Views of the Grid · No. 25</div>
+    </div>
+    <div style="width: 46px; background: #B23A28; display: flex; align-items: center; justify-content: center; color: #F4ECD8; font-size: 26px; font-weight: 800; writing-mode: vertical-rl">EU</div>
+  </div>
+
+  <!-- board -->
+  <div style="position: absolute; left: 60px; top: 150px; width: 580px; height: 580px; background: #F1E7CE; box-shadow: 0 0 0 2px #1C3765, 0 0 0 7px #E9DDC0, 0 0 0 9px #1C3765">
+    <sc-for list="{{lines}}" as="l" hint-placeholder-count="16">
+      <div style="position: absolute; left: {{l.left}}px; top: {{l.top}}px; width: {{l.w}}px; height: {{l.h}}px; background: #1C3765; opacity: .32"></div>
+    </sc-for>
+    <sc-for list="{{squares}}" as="q" hint-placeholder-count="5">
+      <div style="position: absolute; box-sizing: border-box; left: {{q.left}}px; top: {{q.top}}px; width: {{q.size}}px; height: {{q.size}}px; transform: rotate({{q.angle}}deg); border: {{q.border}}; background: {{q.fill}}"></div>
+    </sc-for>
+    <sc-for list="{{cells}}" as="c" hint-placeholder-count="64">
+      <sc-if value="{{c.empty}}" hint-placeholder-val="{{ true }}">
+        <div style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; background: #4A6F9A"></div>
+      </sc-if>
+      <sc-if value="{{c.a}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%; background: #1C3765; box-shadow: inset 0 0 0 3px #4A6F9A, inset 0 0 0 5px #1C3765, 0 0 0 2px #F4ECD8"></div>
+      </sc-if>
+      <sc-if value="{{c.b}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%; background: #D6A85A; box-shadow: 0 0 0 2.5px #1C3765; display: flex; align-items: center; justify-content: center">
+          <div style="width: 12px; height: 12px; border-radius: 50%; background: #F4ECD8; box-shadow: 0 0 0 2px #1C3765"></div>
+        </div>
+      </sc-if>
+      <sc-if value="{{c.last}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; left: {{c.x}}px; top: {{c.y}}px; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; border: 2px solid #B23A28; box-sizing: border-box"></div>
+      </sc-if>
+    </sc-for>
+  </div>
+
+  <!-- scores and controls -->
+  <div style="position: absolute; left: 700px; top: 528px; width: 450px; display: flex; flex-direction: column; gap: 16px">
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px">
+      <div style="border: 2px solid #1C3765; background: #EFE4C9; padding: 10px 16px; display: flex; align-items: center; gap: 14px">
+        <div style="width: 26px; height: 26px; border-radius: 50%; background: #1C3765; box-shadow: inset 0 0 0 3px #4A6F9A, inset 0 0 0 5px #1C3765"></div>
+        <div style="flex-grow: 1; font-size: 14px; letter-spacing: .12em">YOU<br>INDIGO</div>
+        <div style="font-size: 60px; font-weight: 800; line-height: 1">27</div>
+      </div>
+      <div style="border: 2px solid #1C3765; background: #EFE4C9; padding: 10px 16px; display: flex; align-items: center; gap: 14px">
+        <div style="width: 26px; height: 26px; border-radius: 50%; background: #D6A85A; box-shadow: 0 0 0 2px #1C3765"></div>
+        <div style="flex-grow: 1; font-size: 14px; letter-spacing: .12em">EUCLID<br>OCHRE</div>
+        <div style="font-size: 60px; font-weight: 800; line-height: 1; color: #7A5214">29</div>
+      </div>
+    </div>
+    <div style="font-size: 18px">Your move. Euclid rode in at H6; the tide is first to 150.</div>
+    <div style="display: flex; gap: 10px">
+      <button class="wb">Hint</button>
+      <button class="wb">Squares</button>
+      <button class="wb" style="background: #1C3765; color: #F4ECD8">New game</button>
+    </div>
+  </div>
+
+  <div class="seigaiha" style="position: absolute; left: 0; bottom: 0; width: 1200px; height: 40px"></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":800}}'>
+var EU_POS = {
+  p: [[0,0,2],[5,0,1],[1,1,1],[2,1,2],[3,1,1],[6,1,1],[5,2,2],[7,2,2],[1,3,1],[2,3,2],[3,3,1],[6,3,1],[4,4,1],[1,5,1],[3,5,1],[5,5,1],[6,5,2],[0,6,2],[3,6,2],[4,6,1],[6,6,2],[7,6,2],[6,7,2],[7,7,2]],
+  s: [[[[3,3],[3,1],[1,1],[1,3]],1,7,3],[[[2,3],[5,2],[6,5],[3,6]],2,8,5],[[[4,6],[3,5],[4,4],[5,5]],1,17,3],[[[6,6],[7,6],[7,7],[6,7]],2,20,2],[[[1,5],[1,3],[3,3],[3,5]],1,21,3]],
+  log: [[1,1,1,0],[2,5,2,0],[1,1,3,0],[2,6,5,0],[1,3,1,0],[2,3,6,0],[1,3,3,9],[2,2,3,25],[1,6,1,0],[2,0,6,0],[1,5,5,0],[2,7,7,0],[1,4,4,0],[2,0,0,0],[1,3,5,0],[2,6,7,0],[1,4,6,9],[2,7,6,0],[1,6,3,0],[2,6,6,4],[1,1,5,9],[2,2,1,0],[1,5,0,0],[2,7,2,0]]
+};
+function euLayout(P, M, T) {
+  var cols = 'ABCDEFGH', occ = {}, cells = [], lines = [], labels = [];
+  EU_POS.p.forEach(function (q) { occ[q[0] + ',' + q[1]] = q[2]; });
+  for (var y = 0; y < 8; y++) for (var x = 0; x < 8; x++) {
+    var o = occ[x + ',' + y] || 0;
+    cells.push({ x: M + x * P, y: M + y * P, a: o === 1, b: o === 2, empty: !o, last: x === 7 && y === 2 });
+  }
+  for (var k = 0; k < 8; k++) {
+    lines.push({ left: M, top: M + k * P - T / 2, w: 7 * P, h: T });
+    lines.push({ left: M + k * P - T / 2, top: M, w: T, h: 7 * P });
+    labels.push({ pos: M + k * P, col: cols.charAt(k), row: String(8 - k) });
+  }
+  var squares = EU_POS.s.map(function (q) {
+    var c = q[0], cx = 0, cy = 0;
+    c.forEach(function (p) { cx += p[0] / 4; cy += p[1] / 4; });
+    var dx = c[1][0] - c[0][0], dy = c[1][1] - c[0][1], size = Math.sqrt(dx * dx + dy * dy) * P;
+    return { left: M + cx * P - size / 2, top: M + cy * P - size / 2, size: size, angle: Math.atan2(dy, dx) * 180 / Math.PI, a: q[1] === 1, b: q[1] === 2, fresh: q[2] === 21, side: q[3], pts: q[3] * q[3], cx: M + cx * P, cy: M + cy * P };
+  });
+  var log = EU_POS.log.map(function (e, i) { return { n: i + 1, a: e[0] === 1, b: e[0] === 2, cell: cols.charAt(e[1]) + (8 - e[2]), pts: e[3], plus: e[3] ? '+' + e[3] : '' }; }).reverse();
+  return { cells: cells, lines: lines, squares: squares, log: log, labels: labels };
+}
+class Component extends DCLogic {
+  renderVals() {
+    var L = euLayout(71, 41, 1.2);
+    L.squares.forEach(function (q) {
+      q.border = q.fresh ? '3px dashed #1C3765' : q.a ? '3px solid #1C3765' : '3px solid #A87428';
+      q.fill = q.fresh ? 'rgba(244,236,216,.9)' : q.a ? 'rgba(74,111,154,.16)' : 'rgba(214,168,90,.18)';
+    });
+    // foam claws along the crest of the curl, centre (910,170)
+    var foam = [], spray = [];
+    for (var i = 0; i < 18; i++) {
+      var t = (-172 + i * 7.5) * Math.PI / 180;
+      var r = 214 + (i % 2 ? 10 : 0);
+      var s = 14 + (i % 3) * 6;
+      foam.push({ x: 910 + r * Math.cos(t), y: 170 + r * Math.sin(t), s: s, m: -s / 2 });
+    }
+    for (var j = 0; j < 14; j++) {
+      var u = (-176 + j * 9) * Math.PI / 180, rr = 250 + (j * 37 % 40);
+      spray.push({ x: 910 + rr * Math.cos(u), y: 170 + rr * Math.sin(u) });
+    }
+    return { cells: L.cells, lines: L.lines, squares: L.squares, foam: foam, spray: spray };
+  }
+}
+</script>
+</body>
+</html>
