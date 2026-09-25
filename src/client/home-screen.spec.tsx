@@ -71,11 +71,13 @@ describe("home dashboard structure", () => {
     expect(renderToStaticMarkup(<HomeScreen {...homeProps()} />)).not.toContain(
       "Challenge playground",
     );
-    expect(
-      renderToStaticMarkup(
-        <HomeScreen {...homeProps({ onChallenges: () => undefined })} />,
-      ),
-    ).toContain("Challenge playground");
+    const markup = renderToStaticMarkup(
+      <HomeScreen {...homeProps({ onChallenges: () => undefined })} />,
+    );
+    // It joins the utility row as a peer, named in full for assistive tech.
+    const tag = openingButtonTag(markup, 'aria-label="Challenge playground"');
+    expect(tag).toContain('class="home-nav__item"');
+    expect(markup).toContain("<span>Challenges</span>");
   });
 
   it("offers difficulty settings beside solo play and locks them during requests", () => {

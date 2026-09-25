@@ -24,9 +24,13 @@ export function ChallengeTimer({ snapshot }: { snapshot: ChallengeSnapshot }) {
     return () => window.clearInterval(timer);
   }, [snapshot]);
   return (
-    <p className="challenge-timer" role="timer" aria-live="off">
-      {snapshot.complete ? "Solved in" : "Elapsed"}{" "}
-      <strong>
+    <p
+      className={`challenge-timer${snapshot.complete ? " challenge-timer--done" : ""}`}
+      role="timer"
+      aria-live="off"
+    >
+      <span>{snapshot.complete ? "Solved in" : "Elapsed"}</span>{" "}
+      <strong className="num">
         {formatChallengeTime(
           reading.snapshot === snapshot ? reading.elapsed : snapshot.elapsedMs,
         )}

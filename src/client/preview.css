@@ -70,11 +70,11 @@ html.euclid-inline,
   gap: 12px;
   min-height: 0;
   overflow: hidden;
+}
+
+/* Every inline panel uses the shared .panel surface with post-sized padding. */
+.euclid-preview .panel {
   padding: 16px 18px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, var(--surface-top), var(--surface));
-  box-shadow: var(--panel-shadow);
 }
 
 .preview__brand {
@@ -235,37 +235,35 @@ html.euclid-inline,
   .euclid-preview {
     padding: 10px;
   }
+  /* The wide split leaves the side panel too narrow for its copy here. */
   .preview {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 10px 12px;
   }
-  .preview__brand .wordmark__text {
-    font-size: var(--fs-xl);
-  }
-  .preview__brand .brand-mark {
-    width: 30px !important;
-    height: 30px !important;
-  }
-  .preview__side {
+  .euclid-preview .panel {
     padding: 10px 12px;
   }
   .preview-caption__title {
     font-size: var(--fs-md);
+  }
+  /* Tighter chips keep both scores on one row, leaving height for the caption. */
+  .preview__brand .score-chips {
+    gap: 4px;
+  }
+  .preview__brand .score-chip {
+    gap: 4px;
+    padding: 0 8px 0 4px;
   }
 }
 
 /* Short posts, such as some native mobile embeds. */
 @media (max-height: 400px) {
   .preview-caption .preview-panel__body,
-  .preview-standings > .preview-panel__body {
+  .preview-standings > .preview-panel__body,
+  .preview__progress {
     display: none;
   }
   .score-chips .score-chip__label {
-    display: none;
-  }
-}
-
-@media (max-height: 400px) {
-  .preview__progress {
     display: none;
   }
 }

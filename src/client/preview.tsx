@@ -105,7 +105,7 @@ export function PreviewLeaderboard({
   return (
     <div className="preview-standings">
       <div className="preview-standings__head">
-        <p className="preview-panel__kicker">Leaderboard</p>
+        <h2>The players to beat</h2>
         <div
           className="seg preview-standings__tabs"
           role="group"
@@ -530,7 +530,7 @@ export const PreviewApp = () => {
               className={surfaceMode === "demo" ? "" : "board--poster"}
             />
           </div>
-          <div className="preview__side">
+          <div className="panel preview__side">
             <div className="preview__brand">
               <ScoreChips scores={frame.scores} />
             </div>
@@ -562,8 +562,7 @@ export const PreviewApp = () => {
       id: "leaderboard",
       title: "Leaderboard",
       content: (
-        <div className="splash-standings-panel">
-          <h2>The players to beat</h2>
+        <div className="panel splash-standings-panel">
           <PreviewLeaderboard
             theme={theme}
             rankings={rankings}
@@ -586,6 +585,7 @@ export const PreviewApp = () => {
             period={period}
             winner={winner}
             preview={challenges.preview}
+            active={activeSlide === period}
           />
         ),
       });

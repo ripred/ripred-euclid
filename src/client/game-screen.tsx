@@ -36,6 +36,7 @@ import { Dialog } from "./ui/Dialog";
 import type { ResultPlayer } from "./game-results";
 import { Icon } from "./ui/Icon";
 import { useBoardSounds, useSounds } from "./sound/use-sounds";
+import { useCountUp } from "./ui/use-count-up";
 import { useReducedMotion } from "./ui/use-reduced-motion";
 import "./game-screen.css";
 
@@ -87,33 +88,6 @@ const freshShapes = (
     corners: squareCorners(square),
   }));
 
-/** Counts toward a new value so score changes read as earned, not swapped. */
-function useCountUp(value: number, disabled: boolean): number {
-  const [shown, setShown] = useState(value);
-  const shownRef = useRef(value);
-  useEffect(() => {
-    if (disabled || Math.abs(value - shownRef.current) > 400) {
-      shownRef.current = value;
-      setShown(value);
-      return;
-    }
-    const from = shownRef.current;
-    const started = performance.now();
-    let frame = 0;
-    const step = (now: number) => {
-      const progress = Math.min(1, (now - started) / 650);
-      const eased = 1 - (1 - progress) ** 3;
-      const next = Math.round(from + (value - from) * eased);
-      shownRef.current = next;
-      setShown(next);
-      if (progress < 1) frame = requestAnimationFrame(step);
-    };
-    frame = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(frame);
-  }, [value, disabled]);
-  return shown;
-}
-
 function Avatar({ src, owner }: { src?: string | undefined; owner: Owner }) {
   return src ? (
     <img className="player__avatar" src={src} alt="" crossOrigin="anonymous" />
@@ -145,7 +119,7 @@ export function ScoreCard({
   feedback?: ScoreFeedbackEvent | null;
 }) {
   const reduced = useReducedMotion();
-  const shown = useCountUp(score, reduced);
+  const shown = useCountUp(score, { disabled: reduced, maxJump: 400 });
   const progress = target > 0 ? Math.min(1, score / target) : 0;
   const squareWord =
     feedback && feedback.completedSquares.length === 1 ? "square" : "squares";

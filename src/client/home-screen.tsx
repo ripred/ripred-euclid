@@ -572,25 +572,35 @@ export function HomeScreen(props: HomeScreenProps) {
         </section>
 
         <nav className="home-nav" aria-label="More Euclid options">
-          {onChallenges && (
-            <button
-              type="button"
-              className="btn btn--ghost"
-              disabled={navigationLocked}
-              onClick={onChallenges}
-            >
-              Challenge playground
-            </button>
-          )}
           <ul>
-            {UTILITIES.map((item) => (
+            {[
+              ...UTILITIES.map((item) => ({
+                label: item.label,
+                name: undefined,
+                icon: item.icon,
+                onClick: props[item.action],
+              })),
+              // Moderator-only; the server decides whether this is offered.
+              ...(onChallenges
+                ? [
+                    {
+                      label: "Challenges",
+                      name: "Challenge playground",
+                      icon: "challenge" as const,
+                      onClick: onChallenges,
+                    },
+                  ]
+                : []),
+            ].map((item) => (
               <li key={item.label}>
                 <button
                   type="button"
                   className="home-nav__item"
                   disabled={navigationLocked}
                   aria-describedby={lockDescriptionId}
-                  onClick={props[item.action]}
+                  aria-label={item.name}
+                  title={item.name}
+                  onClick={item.onClick}
                 >
                   <Icon name={item.icon} />
                   <span>{item.label}</span>

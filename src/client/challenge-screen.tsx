@@ -246,6 +246,11 @@ export function ChallengeScreen({ onLeave }: { onLeave: () => void }) {
       title="Challenge playground"
       titleId="challenge-title"
       narrow={false}
+      back={{
+        label: "Leave playground",
+        onClick: () => (uncertain ? onLeave() : ask("leave")),
+        disabled: busy,
+      }}
     >
       <p className="muted">
         Private moderator testing · 8×8 board · No ratings or public entries
@@ -259,7 +264,7 @@ export function ChallengeScreen({ onLeave }: { onLeave: () => void }) {
           }}
         >
           <fieldset disabled={busy || uncertain || !!confirmation}>
-            <legend>Next puzzle</legend>
+            <legend className="panel__title">Next puzzle</legend>
             <div className="challenge-actions">
               <button
                 type="button"
@@ -284,33 +289,36 @@ export function ChallengeScreen({ onLeave }: { onLeave: () => void }) {
                 Weekly starting point
               </button>
             </div>
-            <small>
+            <p className="field__hint">
               Daily: 2–3 mixed squares in 2–4 moves. Weekly: 3–4 oblique squares
               in 2–4 moves.
-            </small>
-            <label>
-              Minimum moves
+            </p>
+            <label className="field">
+              <span className="field__label">Minimum moves</span>
               <input
+                className="input num"
                 inputMode="numeric"
                 value={moves}
                 onChange={(e) => setMoves(e.target.value)}
                 aria-describedby="challenge-minimum-help"
               />
             </label>
-            <small id="challenge-minimum-help">
+            <p className="field__hint" id="challenge-minimum-help">
               1–4. The verified optimum, not a limit on your attempt.
-            </small>
-            <label>
-              Target squares
+            </p>
+            <label className="field">
+              <span className="field__label">Target squares</span>
               <input
+                className="input num"
                 inputMode="numeric"
                 value={goal}
                 onChange={(e) => setGoal(e.target.value)}
               />
             </label>
-            <label>
-              Geometry
+            <label className="field">
+              <span className="field__label">Geometry</span>
               <select
+                className="select"
                 value={geometry}
                 onChange={(e) =>
                   setGeometry(e.target.value as ChallengeGeometry)
@@ -323,64 +331,73 @@ export function ChallengeScreen({ onLeave }: { onLeave: () => void }) {
                 ))}
               </select>
             </label>
-            <small>
+            <p className="field__hint">
               Tilted includes diamonds. Oblique excludes aligned squares and 45°
               diamonds. Any valid square counts when playing.
-            </small>
-            <label className="challenge-check">
+            </p>
+            <label className="switch">
               <input
                 type="checkbox"
                 checked={shared}
                 onChange={(e) => setShared(e.target.checked)}
               />
-              Require shared corner
+              <span>Require shared corner</span>
             </label>
-            <label className="challenge-check">
+            <label className="switch">
               <input
                 type="checkbox"
                 checked={multiple}
                 onChange={(e) => setMultiple(e.target.checked)}
               />
-              Require multiple optimal solutions
+              <span>Require multiple optimal solutions</span>
             </label>
-            <label>
-              Total blocked spots
+            <label className="field">
+              <span className="field__label">Total blocked spots</span>
               <input
+                className="input num"
                 inputMode="numeric"
                 value={blocks}
                 onChange={(e) => setBlocks(e.target.value)}
               />
             </label>
-            <small>
+            <p className="field__hint">
               {manual.length} manually marked. Additional blocks are chosen
               automatically, up to the total (0–60).
-            </small>
-            <button
-              className="btn btn--ghost btn--sm"
-              type="button"
-              onClick={() => setEditing(!editing)}
-            >
-              {editing ? "Done editing blocked spots" : "Edit blocked spots"}
-            </button>
-            {manual.length > 0 && (
+            </p>
+            <div className="challenge-actions">
               <button
-                className="btn btn--ghost btn--sm"
+                className="btn btn--sm"
                 type="button"
-                onClick={() => setManual([])}
+                aria-pressed={editing}
+                onClick={() => setEditing(!editing)}
               >
-                Clear manual blocks
+                {editing ? "Done editing blocked spots" : "Edit blocked spots"}
               </button>
-            )}
-            <label>
-              Seed (optional)
+              {manual.length > 0 && (
+                <button
+                  className="btn btn--ghost btn--sm"
+                  type="button"
+                  onClick={() => setManual([])}
+                >
+                  Clear manual blocks
+                </button>
+              )}
+            </div>
+            <label className="field">
+              <span className="field__label">Seed (optional)</span>
               <input
+                className="input"
                 value={seed}
                 maxLength={80}
                 onChange={(e) => setSeed(e.target.value)}
                 placeholder="Blank generates a fresh puzzle"
               />
             </label>
-            {validation && <p role="alert">{validation}</p>}
+            {validation && (
+              <p className="notice notice--attention" role="alert">
+                {validation}
+              </p>
+            )}
             <button
               className="btn btn--primary"
               type="submit"
@@ -391,47 +408,53 @@ export function ChallengeScreen({ onLeave }: { onLeave: () => void }) {
           </fieldset>
         </form>
         <section className="panel challenge-play" aria-label="Puzzle play">
-          <div role="status" aria-live="polite">
+          <div className="challenge-status" role="status" aria-live="polite">
+            <div className="challenge-status__head">
+              <h2 className="panel__title">
+                {editing
+                  ? "Edit blocked spots"
+                  : snapshot
+                    ? snapshot.complete
+                      ? "Puzzle complete"
+                      : "Complete the squares"
+                    : "No puzzle yet"}
+              </h2>
+              {snapshot && !editing && <ChallengeTimer snapshot={snapshot} />}
+            </div>
             {editing ? (
-              <p>
+              <p className="field__hint">
                 Mark forbidden spots for the next puzzle. Your current attempt
                 is unchanged.
               </p>
             ) : snapshot ? (
-              <>
-                <p>
-                  <strong>
-                    {snapshot.complete
-                      ? "Puzzle complete"
-                      : "Complete the squares"}
-                  </strong>
-                </p>
-                <p>
+              <ul className="challenge-stats">
+                <li>
                   Squares: {snapshot.completedSquares.length} /{" "}
-                  {snapshot.puzzle.targetSquares} · Pieces placed:{" "}
-                  {snapshot.placements.length} · Minimum:{" "}
-                  {snapshot.puzzle.minimumMoves}
-                </p>
+                  {snapshot.puzzle.targetSquares}
+                </li>
+                <li>Pieces placed: {snapshot.placements.length}</li>
+                <li>Minimum: {snapshot.puzzle.minimumMoves}</li>
                 {snapshot.bestMoves !== null && (
-                  <p>
+                  <li className="challenge-stats__best">
                     Best completed attempt: {snapshot.bestMoves} moves
                     {snapshot.bestElapsedMs !== null &&
                       ` · ${formatChallengeTime(snapshot.bestElapsedMs)}`}
-                  </p>
+                  </li>
                 )}
-              </>
+              </ul>
             ) : (
-              <p>Configure a puzzle and select Generate.</p>
+              <p className="field__hint">
+                Configure a puzzle and select Generate.
+              </p>
             )}
-            {busy && <p>Working…</p>}
+            {busy && <p className="field__hint">Working…</p>}
             {input.aimIndex !== null && (
-              <p>
+              <p className="field__hint">
                 Tap {coordinates(input.aimIndex)} again to{" "}
                 {editing ? "toggle its block" : "place"}.
               </p>
             )}
           </div>
-          {snapshot && <ChallengeTimer snapshot={snapshot} />}
           <div ref={container} className="challenge-board-container">
             <div
               className="challenge-board"
@@ -474,7 +497,7 @@ export function ChallengeScreen({ onLeave }: { onLeave: () => void }) {
               />
             </div>
           </div>
-          <p className="muted">
+          <p className="field__hint">
             Use arrow keys to move and Enter or Space to place. Placements
             cannot be undone. You may use more than the minimum, or restart the
             same puzzle. Fewest pieces wins; equal move counts are ranked by
@@ -502,13 +525,6 @@ export function ChallengeScreen({ onLeave }: { onLeave: () => void }) {
               onClick={() => ask("restart")}
             >
               Restart puzzle
-            </button>
-            <button
-              className="btn btn--ghost"
-              disabled={busy}
-              onClick={() => (uncertain ? onLeave() : ask("leave"))}
-            >
-              Leave playground
             </button>
           </div>
         </section>

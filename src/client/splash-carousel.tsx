@@ -1,14 +1,24 @@
 import "./splash-carousel.css";
-import { useRef, type MouseEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import type {
   ChallengeSpotlights,
   ChallengeWinner,
 } from "../shared/challenge-spotlights";
 import type { ExpandedEntry } from "./expanded-entry";
 import { formatChallengeTime } from "./challenge-time";
-import { Wordmark } from "./ui/Brand";
+import { PieceGlyph } from "./ui/BoardDiagram";
+import { boardAspectRatio } from "./ui/board-geometry";
+import { TokenCluster, Wordmark } from "./ui/Brand";
 import { Icon } from "./ui/Icon";
 import { RedditAvatar } from "./ui/RedditAvatar";
+import { useCountUp } from "./ui/use-count-up";
+import { useReducedMotion } from "./ui/use-reduced-motion";
 
 export type SplashSlideId =
   | "rules"
@@ -26,52 +36,114 @@ export interface SplashSlide {
   content: ReactNode;
 }
 
+const WINNER_COPY = {
+  daily: { owner: 1, when: "Yesterday’s daily challenge" },
+  weekly: { owner: 2, when: "Last week’s weekly challenge" },
+} as const;
+
+/** Waits for the square to close before the numbers start counting. */
+const WINNER_COUNT_DELAY_MS = 1100;
+
+/**
+ * The champion framed by the square they would have closed: pieces drop in,
+ * the band draws around the avatar, then moves and time count up. No
+ * solution board is shown; the art is the brand motif, not the puzzle.
+ */
 export function ChallengeWinnerCard({
   period,
   winner,
   preview,
+  active,
 }: {
   period: "daily" | "weekly";
   winner: ChallengeWinner;
   preview: boolean;
+  active: boolean;
 }) {
+  const reduced = useReducedMotion();
+  const { owner, when } = WINNER_COPY[period];
+  const [counting, setCounting] = useState(false);
+  useEffect(() => {
+    if (!active) return;
+    setCounting(false);
+    const timer = window.setTimeout(
+      () => setCounting(true),
+      reduced ? 0 : WINNER_COUNT_DELAY_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [active, reduced]);
+  const time = useCountUp(counting ? winner.elapsedMs : 0, {
+    disabled: reduced || !counting,
+    duration: 1200,
+  });
+  const name = preview ? winner.username : `u/${winner.username}`;
+  const moveWord = winner.moves === 1 ? "move" : "moves";
+
   return (
-    <article className={`splash-winner splash-winner--${period}`}>
-      <span className="splash-winner__medal">
-        <RedditAvatar
-          username={winner.username}
-          avatar={winner.avatar}
-          size={72}
-        />
-        <span className="splash-winner__trophy">
-          <Icon name="trophy" size={18} />
-        </span>
-      </span>
-      <p className="preview-panel__kicker">
-        {period === "daily"
-          ? "Yesterday’s daily challenge"
-          : "Last week’s weekly challenge"}
-      </p>
-      <h2>{preview ? winner.username : `u/${winner.username}`}</h2>
-      <p className="splash-winner__result">
-        <strong>{winner.moves} moves</strong>
-        <span>in {formatChallengeTime(winner.elapsedMs)}</span>
-      </p>
+    <article
+      className={`preview splash-winner splash-winner--${period}${active && !reduced ? " splash-winner--live" : ""}`}
+    >
       <div
-        className="splash-winner__record"
-        aria-label="Challenge wins including this result"
+        className="preview__board splash-winner__stage"
+        style={{ aspectRatio: boardAspectRatio(4, 4) }}
+        aria-hidden="true"
       >
-        <span>
-          <strong>{winner.dailyWins}</strong> daily wins
-        </span>
-        <span>
-          <strong>{winner.weeklyWins}</strong> weekly wins
+        <TokenCluster owner={owner} className="splash-winner__square" />
+        <span className="splash-winner__avatar">
+          <RedditAvatar
+            username={winner.username}
+            avatar={winner.avatar}
+            size={96}
+          />
         </span>
       </div>
-      <p className="preview-panel__body">Fewest pieces. Fastest finish.</p>
-      {preview && (
-        <p className="splash-sample">Layout preview · Sample result</p>
-      )}
+      <div className="panel preview__side splash-winner__card">
+        <div className="splash-winner__head">
+          <p className="preview-panel__kicker">{when}</p>
+          <h2 title={name}>{name}</h2>
+        </div>
+        <dl className="splash-winner__stats">
+          <div className="splash-winner__stat">
+            <dt>Moves</dt>
+            <dd>
+              <span className="num">{winner.moves}</span>
+              <span className="splash-winner__pieces" aria-hidden="true">
+                {Array.from({ length: winner.moves }, (_, index) => (
+                  <PieceGlyph key={index} owner={owner} size={14} />
+                ))}
+              </span>
+            </dd>
+          </div>
+          <div className="splash-winner__stat">
+            <dt>Time</dt>
+            <dd className="num" aria-hidden="true">
+              {formatChallengeTime(time)}
+            </dd>
+          </div>
+        </dl>
+        <p className="euclid-sr-only">
+          Solved in {winner.moves} {moveWord},{" "}
+          {formatChallengeTime(winner.elapsedMs)}.
+        </p>
+        <div className="splash-winner__foot">
+          <p
+            className="splash-winner__record"
+            aria-label="Challenge wins including this result"
+          >
+            <span>
+              <strong className="num">{winner.dailyWins}</strong> daily wins
+            </span>
+            <span>
+              <strong className="num">{winner.weeklyWins}</strong> weekly wins
+            </span>
+          </p>
+          <p className="splash-sample">
+            {preview
+              ? "Layout preview · Sample result"
+              : "Fewest moves wins · time breaks ties"}
+          </p>
+        </div>
+      </div>
     </article>
   );
 }
@@ -84,37 +156,35 @@ export function SplashChoices({
   onExpand: ExpandSplash;
 }) {
   return (
-    <div className="splash-choices">
-      <div>
-        <p className="preview-panel__kicker">Your next move</p>
-        <h2>How will you play?</h2>
-      </div>
+    <div className="panel splash-choices">
+      <h2>How will you play?</h2>
       <div className="splash-choices__grid">
+        {/* Red and blue match the home screen's solo and multiplayer cards. */}
         <button
           className="splash-choice splash-choice--solo"
           onClick={(e) => onExpand(e, "solo")}
         >
-          <Icon name="arrow" size={24} />
+          <PieceGlyph owner={1} size={22} />
           <strong>Play Euclid</strong>
           <span>A game at your pace</span>
         </button>
         <button
-          className="splash-choice"
+          className="splash-choice splash-choice--reddit"
           onClick={(e) => onExpand(e, "reddit")}
         >
-          <Icon name="users" size={24} />
+          <PieceGlyph owner={2} size={22} />
           <strong>Play Another Redditor</strong>
           <span>Find your next opponent</span>
         </button>
         {challenges.preview && (
           <>
             <button className="splash-choice" disabled>
-              <Icon name="trophy" size={24} />
+              <Icon name="trophy" size={22} />
               <strong>Daily Challenge</strong>
               <span>2–3 mixed squares · Not open</span>
             </button>
             <button className="splash-choice" disabled>
-              <Icon name="trophy" size={24} />
+              <Icon name="trophy" size={22} />
               <strong>Weekly Challenge</strong>
               <span>3–4 oblique squares · Not open</span>
             </button>

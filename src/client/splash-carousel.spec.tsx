@@ -200,6 +200,39 @@ describe("splash carousel", () => {
     expect(host.querySelectorAll(".splash-choice:disabled")).toHaveLength(2);
   });
 
+  it("choreographs the winner only while shown and counts the time up to the result", async () => {
+    await mount();
+    await click("Show Daily winner");
+    const daily = host.querySelector('[data-slide="daily"] .splash-winner')!;
+    const weekly = host.querySelector('[data-slide="weekly"] .splash-winner')!;
+    expect(daily.classList.contains("splash-winner--live")).toBe(true);
+    expect(weekly.classList.contains("splash-winner--live")).toBe(false);
+    // One piece per move, and the final time is announced, not the count.
+    expect(daily.querySelectorAll(".splash-winner__pieces svg")).toHaveLength(
+      2,
+    );
+    expect(daily.querySelector(".euclid-sr-only")?.textContent).toBe(
+      "Solved in 2 moves, 0:18.4.",
+    );
+    const shown = () =>
+      daily.querySelector(".splash-winner__stat dd.num")?.textContent;
+    expect(shown()).toBe("0:00.0");
+    await advance(3000);
+    expect(shown()).toBe("0:18.4");
+  });
+
+  it("shows the winner's result at once with reduced motion", async () => {
+    reduced = true;
+    await mount();
+    await click("Show Daily winner");
+    const daily = host.querySelector('[data-slide="daily"] .splash-winner')!;
+    expect(daily.classList.contains("splash-winner--live")).toBe(false);
+    await advance(100);
+    expect(
+      daily.querySelector(".splash-winner__stat dd.num")?.textContent,
+    ).toBe("0:18.4");
+  });
+
   it("omits sample results and challenge choices when no contests are available", async () => {
     challenges = EMPTY_CHALLENGE_SPOTLIGHTS;
     await mount();
