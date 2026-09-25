@@ -1,0 +1,131 @@
+/* Demo game: the board beside a narrated lesson panel; stacked on phones. */
+
+.demo-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 1fr);
+  align-items: start;
+  gap: var(--sp-5);
+}
+
+.demo-layout__board {
+  width: 100%;
+  max-width: 640px;
+  justify-self: center;
+}
+
+.demo-panel {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.demo-panel .score-chips {
+  justify-content: flex-start;
+}
+
+.demo-caption {
+  display: grid;
+  gap: var(--sp-2);
+  min-height: 176px;
+  align-content: start;
+}
+
+.demo-steps {
+  display: flex;
+  gap: 4px;
+}
+
+.demo-steps__pip {
+  flex: 1;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+  transition: background-color var(--dur);
+}
+
+.demo-steps__pip--done {
+  background: linear-gradient(90deg, var(--red), var(--red-line));
+}
+
+.demo-caption__copy {
+  display: grid;
+  gap: 6px;
+  animation: caption-in 420ms var(--ease-out) both;
+}
+
+@keyframes caption-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.demo-caption__title {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-stretch: var(--wide);
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.demo-caption__body {
+  margin: 0;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.demo-progress {
+  display: grid;
+  gap: 6px;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 650;
+}
+
+.demo-progress__bar {
+  height: 4px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+}
+
+.demo-progress__bar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--red), var(--blue));
+  transform-origin: left;
+  transition: transform 240ms var(--ease-out);
+}
+
+.demo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.demo-actions__play {
+  margin-left: auto;
+}
+
+@media (max-width: 760px) {
+  .demo-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .demo-caption {
+    min-height: 0;
+  }
+  .demo-actions__play {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demo-caption__copy {
+    animation: none;
+  }
+  .demo-steps__pip,
+  .demo-progress__bar span {
+    transition: none;
+  }
+}

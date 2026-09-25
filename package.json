@@ -1,75 +1,44 @@
 {
   "private": true,
-  "name": "ripred-euclid",
-  "version": "0.2.5",
+  "name": "euclid",
+  "version": "1.0.0",
+  "description": "Euclid, a strategy game of squares against a computer opponent. A single-player web app for any modern browser.",
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "build": "npm run build:client && npm run build:server",
-    "build:client": "cd src/client && vite build",
-    "build:local-server": "cd src/server && vite build --config ../../tools/local-devvit/vite.server.config.mjs",
-    "build:server": "cd src/server && vite build",
-    "check": "npm run type-check && npm run lint:fix && npm run prettier",
-    "check:devvit": "node tools/check-devvit.mjs",
-    "deploy": "npm run build && devvit upload",
-    "dev": "concurrently -k -p \"[{name}]\" -n \"CLIENT,SERVER,DEVVIT\" -c \"blue,green,magenta\" \"npm run dev:client\" \"npm run dev:server\" \"npm run dev:devvit\"",
-    "dev:client": "cd src/client && vite build --watch",
-    "dev:devvit": "devvit playtest",
-    "dev:local": "npm run build:local-server && concurrently -k -p \"[{name}]\" -n \"API-BUILD,API,CLIENT\" -c \"green,yellow,blue\" \"npm run build:local-server -- --watch\" \"node --watch dist/local-server/index.cjs\" \"cd src/client && vite --port 7474 --config ../../tools/local-devvit/vite.client.config.mjs\"",
-    "dev:server": "cd src/server && vite build --watch",
-    "dev:vite": "cd src/client && vite --port 7474",
-    "launch": "npm run build && npm run deploy && devvit publish",
-    "lint": "eslint ./src",
-    "lint:fix": "eslint --fix ./src",
-    "login": "devvit login",
-    "postinstall": "npm run build",
-    "prettier": "prettier-package-json --write ./package.json && prettier --write .",
+    "build": "npm run type-check && vite build",
+    "check": "npm run type-check && npm run lint && npm run format:check && npm test",
+    "dev": "vite --port 5173",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "preview": "vite preview --port 4173",
     "test": "vitest run",
-    "test:dependencies": "node --test tools/dependency-security.mjs",
-    "type-check": "tsc --build"
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@devvit/web": "0.14.2",
     "@fontsource-variable/archivo": "5.3.0",
-    "express": "5.1.0",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },
   "devDependencies": {
-    "@devvit/public-api": "0.14.2",
     "@eslint/js": "9.23.0",
-    "@tailwindcss/vite": "4.1.6",
-    "@types/express": "5.0.1",
     "@types/react": "19.1.4",
     "@types/react-dom": "19.1.5",
     "@vitejs/plugin-react": "4.4.1",
-    "concurrently": "9.1.2",
-    "devvit": "0.14.2",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "5.2.0",
     "eslint-plugin-react-refresh": "0.4.20",
     "globals": "15.15.0",
+    "jsdom": "24.1.0",
     "prettier": "3.5.3",
-    "prettier-package-json": "2.8.0",
-    "prettier-plugin-tailwindcss": "0.6.11",
-    "tailwindcss": "4.1.6",
     "typescript": "5.8.3",
     "typescript-eslint": "8.29.0",
     "vite": "6.4.3",
     "vitest": "5.0.0"
   },
   "allowScripts": {
-    "@tailwindcss/oxide@4.1.6": true,
-    "esbuild@0.25.9": true,
-    "esbuild@0.25.10": true,
-    "fsevents@2.3.3": true,
-    "protobufjs@7.6.5": true
-  },
-  "overrides": {
-    "protobufjs": "7.6.5",
-    "@devvit/cli": {
-      "inquirer": "9.3.8",
-      "js-yaml@4.3.1": "4.3.2"
-    }
+    "esbuild@0.25.12": true,
+    "fsevents@2.3.3": true
   }
 }

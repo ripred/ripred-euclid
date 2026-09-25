@@ -1,0 +1,30 @@
+/* Compact score readout shared by demo and summary surfaces. */
+
+.score-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-2);
+}
+
+.score-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 var(--sp-3) 0 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.score-chip__label {
+  color: var(--text-2);
+}
+
+.score-chip__value {
+  color: var(--text);
+  font-weight: 850;
+}

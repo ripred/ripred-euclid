@@ -1,0 +1,163 @@
+/*
+ * Euclid design tokens — the single source for colour, type, space and motion.
+ *
+ * The board is a physical object: a grey slab, white open points, red and
+ * blue pieces with a dark rim, joined by thick square edges. It looks the
+ * same in both themes. Only the surrounding chrome follows the light or dark
+ * appearance, which the theme module writes to `data-theme`.
+ */
+
+/* Archivo's width axis, Latin subset only: every word in the game is English,
+   and the whole font travels inside the page. */
+@font-face {
+  font-family: "Archivo Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  src: url("@fontsource-variable/archivo/files/archivo-latin-wdth-normal.woff2")
+    format("woff2-variations");
+}
+
+:root {
+  /* Players and board: identical in every theme. */
+  --red: #e8341f;
+  --red-pressed: #c92a17;
+  --red-line: #f0594b;
+  --blue: #1f3fe0;
+  --blue-pressed: #1832bd;
+  --blue-line: #5b6cff;
+  --piece-red-hi: #ff9c82;
+  --piece-red-mid: #f2452c;
+  --piece-red-lo: #c7270f;
+  --piece-red-rim: #8c170a;
+  --piece-blue-hi: #9aabff;
+  --piece-blue-mid: #3a5bf2;
+  --piece-blue-lo: #1c35c9;
+  --piece-blue-rim: #101d7d;
+  --token-red: radial-gradient(
+    circle at 36% 30%,
+    var(--piece-red-hi),
+    var(--piece-red-mid) 38%,
+    var(--piece-red-lo) 82%,
+    var(--piece-red-rim)
+  );
+  --token-blue: radial-gradient(
+    circle at 36% 30%,
+    var(--piece-blue-hi),
+    var(--piece-blue-mid) 38%,
+    var(--piece-blue-lo) 82%,
+    var(--piece-blue-rim)
+  );
+  --slab-light: #a2a2a8;
+  --slab: #7b7b82;
+  --slab-dark: #5a5a61;
+  --slab-plinth: #2c2c31;
+  --on-color: #ffffff;
+
+  /* Chrome — dark is the default and brand appearance. */
+  --bg: #111112;
+  --surface: #1b1b1d;
+  --surface-2: #242427;
+  --surface-3: #2f2f33;
+  --line: #34343a;
+  --line-strong: #4b4b53;
+  --text: #f5f5f4;
+  --text-2: #b6b6ba;
+  --text-3: #8a8a91;
+  --red-text: #ff7d6c;
+  --blue-text: #93a1ff;
+  --attention: #f5b82e;
+  --attention-soft: rgb(245 184 46 / 0.14);
+  --live: #3ddc97;
+  --scrim: rgb(0 0 0 / 0.62);
+  --shadow-dialog: 0 24px 64px rgb(0 0 0 / 0.5);
+  --stage: radial-gradient(
+    120% 70% at 50% -8%,
+    #2d2d34 0%,
+    #161619 58%,
+    #0c0c0e 100%
+  );
+  --surface-top: #232327;
+  --panel-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.06), 0 14px 34px rgb(0 0 0 / 0.32);
+  --btn-top: #3b3b42;
+  --btn-bottom: #2c2c32;
+  --btn-lip: #121215;
+  --btn-text: var(--text);
+
+  /* Type */
+  --font:
+    "Archivo Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --wide: 118%;
+  --fs-2xs: 0.6875rem;
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.8125rem;
+  --fs-md: 0.9375rem;
+  --fs-lg: 1.0625rem;
+  --fs-xl: 1.375rem;
+  --fs-2xl: 1.75rem;
+  --fs-3xl: 2.25rem;
+
+  /* Space, shape, motion */
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.25rem;
+  --sp-6: 1.5rem;
+  --sp-8: 2rem;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+  --tap: 44px;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast: 140ms;
+  --dur: 240ms;
+  --dur-slow: 520ms;
+
+  /* Aliases kept for the admin and fallback screens that read them. */
+  --muted: var(--text-2);
+  --card-bg: var(--surface);
+  --card-border: var(--line);
+  --error-text: var(--attention);
+
+  color-scheme: dark;
+}
+
+:root[data-theme="light"],
+:root.light {
+  --bg: #efefec;
+  --surface: #ffffff;
+  --surface-2: #f6f6f3;
+  --surface-3: #e7e7e3;
+  --line: #d8d8d3;
+  --line-strong: #b4b4ae;
+  --text: #141414;
+  --text-2: #52524e;
+  --text-3: #787873;
+  --red-text: #c4260f;
+  --blue-text: #1f3fe0;
+  --attention: #9a6700;
+  --attention-soft: rgb(245 184 46 / 0.2);
+  --live: #0f8a57;
+  --scrim: rgb(20 20 20 / 0.48);
+  --shadow-dialog: 0 24px 64px rgb(0 0 0 / 0.22);
+  --stage: radial-gradient(
+    120% 70% at 50% -8%,
+    #ffffff 0%,
+    #ecece8 58%,
+    #dfdfd9 100%
+  );
+  --surface-top: #ffffff;
+  --panel-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.9), 0 10px 28px rgb(40 40 30 / 0.12);
+  --btn-top: #ffffff;
+  --btn-bottom: #ebebe6;
+  --btn-lip: #bdbdb6;
+  --btn-text: var(--text);
+
+  color-scheme: light;
+}

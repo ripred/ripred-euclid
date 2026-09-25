@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, stand-alone]
   pull_request:
 
 permissions:
@@ -21,7 +21,7 @@ jobs:
       - run: npm ci
       - run: npm run type-check
       - run: npm run lint
+      - run: npm run format:check
       - run: npm test
-      - run: npm run test:dependencies
-      - run: npm run check:devvit
+      - run: npm run build
       - run: git diff --exit-code

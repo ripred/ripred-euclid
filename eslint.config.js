@@ -6,38 +6,18 @@ import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 
 export default defineConfig([
-  tseslint.configs.recommended,
-  { ignores: ["webroot"] },
+  { ignores: ["dist/**", "node_modules/**"] },
   {
+    // The app: browser code, type-aware.
+    files: ["src/**/*.{ts,tsx}"],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
-    files: ["src/devvit/**/*.{ts,tsx}"],
-    languageOptions: {
-      ecmaVersion: 2023,
-      globals: globals.node,
-    },
-  },
-  {
-    extends: [js.configs.recommended, ...tseslint.configs.recommended],
-    files: ["tools/**/*.{ts,tsx,mjs,cjs,js}"],
-    languageOptions: {
-      ecmaVersion: 2023,
-      globals: globals.node,
-    },
-  },
-  {
-    extends: [js.configs.recommended, ...tseslint.configs.recommended],
-    files: ["src/server/**/*.{ts,tsx,mjs,cjs,js}"],
-    languageOptions: {
-      ecmaVersion: 2023,
-      globals: globals.node,
-    },
-  },
-  {
-    extends: [js.configs.recommended, ...tseslint.configs.recommended],
-    files: ["src/client/**/*.{ts,tsx}"],
     languageOptions: {
       ecmaVersion: 2023,
       globals: globals.browser,
+      parserOptions: {
+        project: ["./tsconfig.json"],
+        tsconfigRootDir: import.meta.dirname,
+      },
     },
     plugins: {
       "react-hooks": reactHooks,
@@ -49,30 +29,19 @@ export default defineConfig([
         "warn",
         { allowConstantExport: true },
       ],
+      "@typescript-eslint/no-floating-promises": "error",
     },
   },
   {
-    files: ["**/*.{js,mjs,cjs,ts,tsx}"],
-    rules: {
-      "@typescript-eslint/no-floating-promises": "error",
-      "@typescript-eslint/no-unused-vars": ["off"],
-      "no-unused-vars": ["off"],
-    },
-    ignores: [
-      "**/node_modules/**",
-      "**/dist/**",
-      "**/build/**",
-      "eslint.config.js",
-      "**/vite.config.ts",
-      "devvit.config.ts",
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ["./tsconfig.json", "./src/*/tsconfig.json"],
-        tsconfigRootDir: import.meta.dirname,
-      },
-    },
-    plugins: { js },
-    extends: ["js/recommended"],
+    // Build and lint configuration run in Node.
+    files: ["vite.config.ts", "eslint.config.js"],
+    extends: [js.configs.recommended, ...tseslint.configs.recommended],
+    languageOptions: { ecmaVersion: 2023, globals: globals.node },
+  },
+  {
+    // The offline cache runs in its own service-worker scope.
+    files: ["public/sw.js"],
+    extends: [js.configs.recommended],
+    languageOptions: { ecmaVersion: 2023, globals: globals.serviceworker },
   },
 ]);

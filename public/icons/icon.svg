@@ -1,0 +1,563 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><style>/*
+ * Euclid design tokens — the single source for colour, type, space and motion.
+ *
+ * The board is a physical object: a grey slab, white open points, red and
+ * blue pieces with a dark rim, joined by thick square edges. It looks the
+ * same in both themes. Only the surrounding chrome follows the light or dark
+ * appearance, which the theme module writes to `data-theme`.
+ */
+
+
+
+:root {
+  /* Players and board: identical in every theme. */
+  --red: #e8341f;
+  --red-pressed: #c92a17;
+  --red-line: #f0594b;
+  --blue: #1f3fe0;
+  --blue-pressed: #1832bd;
+  --blue-line: #5b6cff;
+  --piece-red-hi: #ff9c82;
+  --piece-red-mid: #f2452c;
+  --piece-red-lo: #c7270f;
+  --piece-red-rim: #8c170a;
+  --piece-blue-hi: #9aabff;
+  --piece-blue-mid: #3a5bf2;
+  --piece-blue-lo: #1c35c9;
+  --piece-blue-rim: #101d7d;
+  --token-red: radial-gradient(
+    circle at 36% 30%,
+    var(--piece-red-hi),
+    var(--piece-red-mid) 38%,
+    var(--piece-red-lo) 82%,
+    var(--piece-red-rim)
+  );
+  --token-blue: radial-gradient(
+    circle at 36% 30%,
+    var(--piece-blue-hi),
+    var(--piece-blue-mid) 38%,
+    var(--piece-blue-lo) 82%,
+    var(--piece-blue-rim)
+  );
+  --slab-light: #a2a2a8;
+  --slab: #7b7b82;
+  --slab-dark: #5a5a61;
+  --slab-plinth: #2c2c31;
+  --on-color: #ffffff;
+
+  /* Chrome — dark is the default and brand appearance. */
+  --bg: #111112;
+  --surface: #1b1b1d;
+  --surface-2: #242427;
+  --surface-3: #2f2f33;
+  --line: #34343a;
+  --line-strong: #4b4b53;
+  --text: #f5f5f4;
+  --text-2: #b6b6ba;
+  --text-3: #8a8a91;
+  --red-text: #ff7d6c;
+  --blue-text: #93a1ff;
+  --attention: #f5b82e;
+  --attention-soft: rgb(245 184 46 / 0.14);
+  --live: #3ddc97;
+  --scrim: rgb(0 0 0 / 0.62);
+  --shadow-dialog: 0 24px 64px rgb(0 0 0 / 0.5);
+  --stage: radial-gradient(
+    120% 70% at 50% -8%,
+    #2d2d34 0%,
+    #161619 58%,
+    #0c0c0e 100%
+  );
+  --surface-top: #232327;
+  --panel-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.06), 0 14px 34px rgb(0 0 0 / 0.32);
+  --btn-top: #3b3b42;
+  --btn-bottom: #2c2c32;
+  --btn-lip: #121215;
+  --btn-text: var(--text);
+
+  /* Type */
+  --font:
+    "Archivo Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --wide: 118%;
+  --fs-2xs: 0.6875rem;
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.8125rem;
+  --fs-md: 0.9375rem;
+  --fs-lg: 1.0625rem;
+  --fs-xl: 1.375rem;
+  --fs-2xl: 1.75rem;
+  --fs-3xl: 2.25rem;
+
+  /* Space, shape, motion */
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.25rem;
+  --sp-6: 1.5rem;
+  --sp-8: 2rem;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+  --tap: 44px;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast: 140ms;
+  --dur: 240ms;
+  --dur-slow: 520ms;
+
+  /* Aliases kept for the admin and fallback screens that read them. */
+  --muted: var(--text-2);
+  --card-bg: var(--surface);
+  --card-border: var(--line);
+  --error-text: var(--attention);
+
+  color-scheme: dark;
+}
+
+:root[data-theme="light"],
+:root.light {
+  --bg: #efefec;
+  --surface: #ffffff;
+  --surface-2: #f6f6f3;
+  --surface-3: #e7e7e3;
+  --line: #d8d8d3;
+  --line-strong: #b4b4ae;
+  --text: #141414;
+  --text-2: #52524e;
+  --text-3: #787873;
+  --red-text: #c4260f;
+  --blue-text: #1f3fe0;
+  --attention: #9a6700;
+  --attention-soft: rgb(245 184 46 / 0.2);
+  --live: #0f8a57;
+  --scrim: rgb(20 20 20 / 0.48);
+  --shadow-dialog: 0 24px 64px rgb(0 0 0 / 0.22);
+  --stage: radial-gradient(
+    120% 70% at 50% -8%,
+    #ffffff 0%,
+    #ecece8 58%,
+    #dfdfd9 100%
+  );
+  --surface-top: #ffffff;
+  --panel-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.9), 0 10px 28px rgb(40 40 30 / 0.12);
+  --btn-top: #ffffff;
+  --btn-bottom: #ebebe6;
+  --btn-lip: #bdbdb6;
+  --btn-text: var(--text);
+
+  color-scheme: light;
+}
+
+/* The board object. Units are grid cells; strokes scale with the board. */
+
+.board {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.board__plinth {
+  fill: var(--slab-plinth);
+}
+
+.board__grooves line {
+  stroke: rgb(0 0 0 / 0.2);
+  stroke-width: 0.035;
+  stroke-linecap: round;
+}
+
+/* Open points: porcelain studs set into shallow wells. */
+.board__point-well {
+  fill: rgb(0 0 0 / 0.34);
+}
+
+.board__point-cap {
+  transition: opacity var(--dur);
+}
+
+.board--dim-empty .board__point:not([class*="--hint-"]) {
+  opacity: 0.38;
+}
+
+.board__point--hint-near .board__point-well,
+.board__point--hint-far .board__point-well {
+  stroke-width: 0.07;
+}
+
+.board__point--hint-1 .board__point-well {
+  stroke: var(--red);
+}
+
+.board__point--hint-2 .board__point-well {
+  stroke: var(--blue);
+}
+
+.board__point--hint-near .board__point-well {
+  stroke-width: 0.1;
+  animation: hint-pulse 1.3s ease-in-out infinite;
+}
+
+.board__point--hint-far .board__point-well {
+  stroke-dasharray: 0.1 0.08;
+}
+
+@keyframes hint-pulse {
+  50% {
+    stroke-width: 0.03;
+  }
+}
+
+/* Tokens */
+.board__piece-disc {
+  stroke: rgb(0 0 0 / 0.5);
+  stroke-width: 0.025;
+}
+
+.board__piece-gloss {
+  fill: #fff;
+  opacity: 0.42;
+}
+
+/* Both tokens share one construction; only the colour differs. */
+.board__piece-groove {
+  fill: none;
+  stroke-width: 0.04;
+}
+
+.board__piece--1 .board__piece-groove {
+  stroke: rgb(90 14 2 / 0.55);
+}
+
+.board__piece--2 .board__piece-groove {
+  stroke: rgb(4 10 60 / 0.55);
+}
+
+.board__piece-groove-light {
+  fill: none;
+  stroke: rgb(255 255 255 / 0.5);
+  stroke-width: 0.035;
+}
+
+.board__piece-body,
+.board__piece-shadow {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.board__piece--arriving .board__piece-body {
+  animation: piece-drop 460ms var(--ease-spring) both;
+}
+
+.board__piece--arriving .board__piece-shadow {
+  animation: piece-shadow 460ms var(--ease-out) both;
+}
+
+.board__piece--ghost {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+@keyframes piece-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-0.5px) scale(1.45);
+  }
+  45% {
+    opacity: 1;
+  }
+  70% {
+    transform: translateY(0) scale(0.92, 0.88);
+  }
+}
+
+@keyframes piece-shadow {
+  from {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+/* Completed squares: glossy bands like the edges of a real board. */
+.board__band-shadow,
+.board__band-core,
+.board__band-shine,
+.board__band-fill {
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.board__band-shadow {
+  fill: none;
+  stroke: rgb(0 0 0 / 0.32);
+  stroke-width: 0.2;
+  transform: translate(0.02px, 0.05px);
+}
+
+.board__band-core {
+  fill: none;
+  stroke-width: 0.14;
+}
+
+.board__band-shine {
+  fill: none;
+  stroke: rgb(255 255 255 / 0.45);
+  stroke-width: 0.035;
+  transform: translate(-0.012px, -0.022px);
+}
+
+.board__band--1 .board__band-core {
+  stroke: var(--red-line);
+}
+
+.board__band--2 .board__band-core {
+  stroke: var(--blue-line);
+}
+
+.board__band-fill {
+  opacity: 0;
+  animation: band-fill 1.4s 220ms var(--ease-out) forwards;
+}
+
+.board__band--1 .board__band-fill {
+  fill: var(--red);
+}
+
+.board__band--2 .board__band-fill {
+  fill: var(--blue);
+}
+
+.board__band--fresh .board__band-core,
+.board__band--fresh .board__band-shine {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: band-draw 560ms var(--ease-out) forwards;
+}
+
+.board__band--fresh .board__band-core {
+  stroke-width: 0.17;
+}
+
+.board__band--fresh .board__band-shadow {
+  opacity: 0;
+  animation: fade-in 300ms 400ms var(--ease-out) forwards;
+}
+
+@keyframes band-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes band-fill {
+  30% {
+    opacity: 0.42;
+  }
+  to {
+    opacity: 0.2;
+  }
+}
+
+.board__flash {
+  fill: none;
+  stroke-width: 0.08;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: corner-flash 720ms 380ms var(--ease-out) both;
+  pointer-events: none;
+}
+
+.board__flash--1 {
+  stroke: #ffd2c7;
+}
+
+.board__flash--2 {
+  stroke: #d3dbff;
+}
+
+@keyframes corner-flash {
+  0% {
+    opacity: 1;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.1);
+  }
+}
+
+.board__blocked {
+  fill: none;
+  stroke-width: 0.09;
+  stroke-dasharray: 0.18 0.14;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+  animation: blocked-in 1.6s 300ms var(--ease-out) forwards;
+}
+
+.board__blocked--1 {
+  stroke: var(--red-line);
+}
+
+.board__blocked--2 {
+  stroke: var(--blue-line);
+}
+
+@keyframes blocked-in {
+  20%,
+  60% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.7;
+  }
+}
+
+.board__footprint {
+  fill: rgb(255 255 255 / 0.07);
+  stroke: rgb(255 255 255 / 0.9);
+  stroke-width: 0.05;
+  stroke-dasharray: 0.16 0.12;
+  animation: fade-in var(--dur) var(--ease-out) both;
+}
+
+.board__marker {
+  fill: none;
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.board__marker--last {
+  stroke: rgb(255 255 255 / 0.92);
+  stroke-width: 0.055;
+  animation: last-halo 1.8s ease-in-out infinite;
+}
+
+.board__marker--pending {
+  stroke-width: 0.09;
+  animation: marker-pulse 1.1s ease-in-out infinite;
+}
+
+.board__marker--pending.board__marker--1 {
+  stroke: var(--red-line);
+}
+
+.board__marker--pending.board__marker--2 {
+  stroke: var(--blue-line);
+}
+
+@keyframes last-halo {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes marker-pulse {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.82);
+  }
+}
+
+.piece-glyph {
+  display: inline-block;
+  flex: none;
+  overflow: visible;
+  vertical-align: -0.2em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board__band--fresh .board__band-core,
+  .board__band--fresh .board__band-shine {
+    stroke-dashoffset: 0;
+  }
+  .board__band-fill {
+    opacity: 0.2;
+  }
+  .board__band--fresh .board__band-shadow {
+    opacity: 1;
+  }
+  .board__flash {
+    display: none;
+  }
+}
+
+.brand-mark {
+  display: inline-block;
+  flex: none;
+}
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.wordmark__text {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-2xl);
+  font-stretch: 125%;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.wordmark--sm .wordmark__text {
+  font-size: var(--fs-xl);
+}
+
+.wordmark--lg .wordmark__text {
+  font-size: clamp(2.25rem, 7vw, 3.25rem);
+}
+
+/* Macro art: a close-up board that fades into the stage. */
+.board-macro {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.board-macro .board {
+  position: absolute;
+  inset: 0;
+}
+
+/* The close-up fades into whatever stage sits behind it. */
+.board-macro {
+  -webkit-mask-image: linear-gradient(180deg, #000 30%, transparent 96%);
+  mask-image: linear-gradient(180deg, #000 30%, transparent 96%);
+}
+
+.board-macro::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgb(0 0 0 / 0.4),
+    transparent 28%,
+    transparent 72%,
+    rgb(0 0 0 / 0.3)
+  );
+  content: "";
+  pointer-events: none;
+}
+
+.token-cluster {
+  pointer-events: none;
+}
+
+.token-cluster .board {
+  overflow: visible;
+}
+svg.board { width: 100%; height: 100%; }</style><defs><radialGradient id="stage" cx="50%" cy="40%" r="75%"><stop offset="0%" stop-color="#34343b"></stop><stop offset="100%" stop-color="#141416"></stop></radialGradient></defs><rect width="512" height="512" rx="112.64" fill="url(#stage)"></rect><svg x="77" y="77" width="358" height="358"><svg class="board " viewBox="-0.12 -0.12 3.24 3.3400000000000003" aria-hidden="true" focusable="false"><defs><radialGradient id="R4-slab" cx="30%" cy="18%" r="95%"><stop offset="0%" style="stop-color:var(--slab-light)"></stop><stop offset="55%" style="stop-color:var(--slab)"></stop><stop offset="100%" style="stop-color:var(--slab-dark)"></stop></radialGradient><linearGradient id="R4-sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#fff" stop-opacity="0.28"></stop><stop offset="8%" stop-color="#fff" stop-opacity="0"></stop><stop offset="92%" stop-color="#000" stop-opacity="0"></stop><stop offset="100%" stop-color="#000" stop-opacity="0.3"></stop></linearGradient><radialGradient id="R4-point" cx="38%" cy="32%" r="70%"><stop offset="0%" stop-color="#ffffff"></stop><stop offset="60%" stop-color="#ecebe7"></stop><stop offset="100%" stop-color="#b9b8b3"></stop></radialGradient><radialGradient id="R4-shadow" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#000" stop-opacity="0.55"></stop><stop offset="55%" stop-color="#000" stop-opacity="0.28"></stop><stop offset="100%" stop-color="#000" stop-opacity="0"></stop></radialGradient><radialGradient id="R4-p1" cx="36%" cy="30%" r="72%"><stop offset="0%" style="stop-color:var(--piece-red-hi)"></stop><stop offset="38%" style="stop-color:var(--piece-red-mid)"></stop><stop offset="82%" style="stop-color:var(--piece-red-lo)"></stop><stop offset="100%" style="stop-color:var(--piece-red-rim)"></stop></radialGradient><radialGradient id="R4-p2" cx="36%" cy="30%" r="72%"><stop offset="0%" style="stop-color:var(--piece-blue-hi)"></stop><stop offset="38%" style="stop-color:var(--piece-blue-mid)"></stop><stop offset="82%" style="stop-color:var(--piece-blue-lo)"></stop><stop offset="100%" style="stop-color:var(--piece-blue-rim)"></stop></radialGradient></defs><rect class="board__plinth" x="-0.07" y="0.04" width="3.14" height="3.14" rx="0.20500000000000002"></rect><rect x="0" y="0" width="3" height="3" rx="0.135" fill="url(#R4-slab)"></rect><rect x="0" y="0" width="3" height="3" rx="0.135" fill="url(#R4-sheen)"></rect><g class="board__grooves"><line x1="0.5" y1="0.5" x2="0.5" y2="2.5"></line><line x1="1.5" y1="0.5" x2="1.5" y2="2.5"></line><line x1="2.5" y1="0.5" x2="2.5" y2="2.5"></line><line x1="0.5" y1="0.5" x2="2.5" y2="0.5"></line><line x1="0.5" y1="1.5" x2="2.5" y2="1.5"></line><line x1="0.5" y1="2.5" x2="2.5" y2="2.5"></line></g><g class="board__point"><circle class="board__point-well" cx="1.5" cy="0.525" r="0.245"></circle><circle class="board__point-cap" cx="1.5" cy="0.5" r="0.2" fill="url(#R4-point)"></circle></g><g class="board__point"><circle class="board__point-well" cx="0.5" cy="1.525" r="0.245"></circle><circle class="board__point-cap" cx="0.5" cy="1.5" r="0.2" fill="url(#R4-point)"></circle></g><g class="board__point"><circle class="board__point-well" cx="2.5" cy="1.525" r="0.245"></circle><circle class="board__point-cap" cx="2.5" cy="1.5" r="0.2" fill="url(#R4-point)"></circle></g><g class="board__point"><circle class="board__point-well" cx="1.5" cy="2.525" r="0.245"></circle><circle class="board__point-cap" cx="1.5" cy="2.5" r="0.2" fill="url(#R4-point)"></circle></g><g class="board__band board__band--1"><polygon class="board__band-shadow" points="0.5,0.5 2.5,0.5 2.5,2.5 0.5,2.5"></polygon><polygon class="board__band-core" points="0.5,0.5 2.5,0.5 2.5,2.5 0.5,2.5" pathLength="1"></polygon><polygon class="board__band-shine" points="0.5,0.5 2.5,0.5 2.5,2.5 0.5,2.5" pathLength="1"></polygon></g><g class="board__piece board__piece--1 "><circle class="board__piece-shadow" cx="0.55" cy="0.59" r="0.4366" fill="url(#R4-shadow)"></circle><g class="board__piece-body"><circle class="board__piece-disc" cx="0.5" cy="0.5" r="0.37" fill="url(#R4-p1)"></circle><circle class="board__piece-groove-light" cx="0.5" cy="0.525" r="0.185"></circle><circle class="board__piece-groove" cx="0.5" cy="0.5" r="0.185"></circle><ellipse class="board__piece-gloss" cx="0.3964" cy="0.352" rx="0.15539999999999998" ry="0.08879999999999999" transform="rotate(-24 0.3964 0.352)"></ellipse></g></g><g class="board__piece board__piece--1 "><circle class="board__piece-shadow" cx="2.55" cy="0.59" r="0.4366" fill="url(#R4-shadow)"></circle><g class="board__piece-body"><circle class="board__piece-disc" cx="2.5" cy="0.5" r="0.37" fill="url(#R4-p1)"></circle><circle class="board__piece-groove-light" cx="2.5" cy="0.525" r="0.185"></circle><circle class="board__piece-groove" cx="2.5" cy="0.5" r="0.185"></circle><ellipse class="board__piece-gloss" cx="2.3964" cy="0.352" rx="0.15539999999999998" ry="0.08879999999999999" transform="rotate(-24 2.3964 0.352)"></ellipse></g></g><g class="board__piece board__piece--2 "><circle class="board__piece-shadow" cx="1.55" cy="1.59" r="0.4366" fill="url(#R4-shadow)"></circle><g class="board__piece-body"><circle class="board__piece-disc" cx="1.5" cy="1.5" r="0.37" fill="url(#R4-p2)"></circle><circle class="board__piece-groove-light" cx="1.5" cy="1.525" r="0.185"></circle><circle class="board__piece-groove" cx="1.5" cy="1.5" r="0.185"></circle><ellipse class="board__piece-gloss" cx="1.3964" cy="1.352" rx="0.15539999999999998" ry="0.08879999999999999" transform="rotate(-24 1.3964 1.352)"></ellipse></g></g><g class="board__piece board__piece--1 "><circle class="board__piece-shadow" cx="0.55" cy="2.59" r="0.4366" fill="url(#R4-shadow)"></circle><g class="board__piece-body"><circle class="board__piece-disc" cx="0.5" cy="2.5" r="0.37" fill="url(#R4-p1)"></circle><circle class="board__piece-groove-light" cx="0.5" cy="2.525" r="0.185"></circle><circle class="board__piece-groove" cx="0.5" cy="2.5" r="0.185"></circle><ellipse class="board__piece-gloss" cx="0.3964" cy="2.352" rx="0.15539999999999998" ry="0.08879999999999999" transform="rotate(-24 0.3964 2.352)"></ellipse></g></g><g class="board__piece board__piece--1 "><circle class="board__piece-shadow" cx="2.55" cy="2.59" r="0.4366" fill="url(#R4-shadow)"></circle><g class="board__piece-body"><circle class="board__piece-disc" cx="2.5" cy="2.5" r="0.37" fill="url(#R4-p1)"></circle><circle class="board__piece-groove-light" cx="2.5" cy="2.525" r="0.185"></circle><circle class="board__piece-groove" cx="2.5" cy="2.5" r="0.185"></circle><ellipse class="board__piece-gloss" cx="2.3964" cy="2.352" rx="0.15539999999999998" ry="0.08879999999999999" transform="rotate(-24 2.3964 2.352)"></ellipse></g></g></svg></svg></svg>
