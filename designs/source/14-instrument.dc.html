@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Euclid EU-8 — grid instrument</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Doto:wght@500;800;900&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#C9C5BC;font-family:"IBM Plex Mono",ui-monospace,monospace;color:#1C1C1E}
+a{color:#E2470B}a:hover{color:#A93506}
+.grille{background-image:radial-gradient(#8F8B83 1.6px,transparent 1.8px);background-size:9px 9px}
+.pad{position:absolute;width:52px;height:52px;margin:0;padding:0;border:0;border-radius:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;background:#2A2A2D;box-shadow:inset 0 -3px 0 #1A1A1C,inset 0 1px 0 #3A3A3E,0 2px 0 #0B0B0C;transition:transform .08s}
+.pad:hover{background:#343438}
+.pad:active{transform:translateY(2px)}
+.pad:focus-visible{outline:2px solid #F4F1EA;outline-offset:3px}
+.pad-org{background:radial-gradient(circle at 50% 38%,#FFC7A6 0%,#FF6A2B 46%,#D9420B 100%);box-shadow:0 0 22px rgba(255,106,43,.6),inset 0 -3px 0 rgba(0,0,0,.18);animation:lit .35s ease-out}
+.pad-org:hover{background:radial-gradient(circle at 50% 38%,#FFC7A6 0%,#FF6A2B 46%,#D9420B 100%)}
+.pad-cob{background:radial-gradient(circle at 50% 38%,#B9C8FF 0%,#3F68FF 46%,#2244D6 100%);box-shadow:0 0 22px rgba(63,104,255,.6),inset 0 -3px 0 rgba(0,0,0,.2);animation:lit .35s ease-out}
+.pad-cob:hover{background:radial-gradient(circle at 50% 38%,#B9C8FF 0%,#3F68FF 46%,#2244D6 100%)}
+@keyframes lit{0%{filter:brightness(2.2)}100%{filter:brightness(1)}}
+.trace{animation:trace 1.2s ease-out}
+@keyframes trace{0%{opacity:0;filter:brightness(2.5)}30%{opacity:1}100%{filter:brightness(1)}}
+.key{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;min-width:84px;min-height:48px;border:0;border-radius:10px;background:#D6D3CC;color:#1C1C1E;cursor:pointer;box-shadow:inset 0 -4px 0 #B4B0A7,0 2px 3px rgba(0,0,0,.18);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.key:hover{background:#DEDBD4}
+.key:active{box-shadow:inset 0 -1px 0 #B4B0A7;transform:translateY(2px)}
+.key:focus-visible{outline:2px solid #E2470B;outline-offset:3px}
+.key-org{background:#FF6A2B;color:#1C1C1E;box-shadow:inset 0 -4px 0 #C94510,0 2px 3px rgba(0,0,0,.18)}
+.key-org:hover{background:#FF7A40}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; padding: 58px 60px; background: #C9C5BC; display: flex; align-items: center; justify-content: center; overflow: hidden">
+
+  <!-- The instrument body -->
+  <div style="position: relative; width: 1320px; height: 784px; box-sizing: border-box; padding: 34px 38px; border-radius: 30px; background: #E6E3DC; box-shadow: inset 0 2px 0 #F7F5F0, inset 0 -3px 0 #C3BFB6, 0 30px 60px rgba(40,36,28,.28), 0 6px 14px rgba(40,36,28,.18); display: flex; flex-direction: column; gap: 22px">
+
+    <!-- screws -->
+    <div style="position: absolute; left: 16px; top: 16px; width: 12px; height: 12px; border-radius: 50%; background: #C4C0B8; box-shadow: inset 0 1px 1px rgba(0,0,0,.25); display: flex; align-items: center; justify-content: center"><div style="width: 8px; height: 1.5px; background: #8F8B83; transform: rotate(35deg)"></div></div>
+    <div style="position: absolute; right: 16px; top: 16px; width: 12px; height: 12px; border-radius: 50%; background: #C4C0B8; box-shadow: inset 0 1px 1px rgba(0,0,0,.25); display: flex; align-items: center; justify-content: center"><div style="width: 8px; height: 1.5px; background: #8F8B83; transform: rotate(-20deg)"></div></div>
+    <div style="position: absolute; left: 16px; bottom: 16px; width: 12px; height: 12px; border-radius: 50%; background: #C4C0B8; box-shadow: inset 0 1px 1px rgba(0,0,0,.25); display: flex; align-items: center; justify-content: center"><div style="width: 8px; height: 1.5px; background: #8F8B83; transform: rotate(80deg)"></div></div>
+    <div style="position: absolute; right: 16px; bottom: 16px; width: 12px; height: 12px; border-radius: 50%; background: #C4C0B8; box-shadow: inset 0 1px 1px rgba(0,0,0,.25); display: flex; align-items: center; justify-content: center"><div style="width: 8px; height: 1.5px; background: #8F8B83; transform: rotate(10deg)"></div></div>
+
+    <!-- Top strip: wordmark, model, grille, power LED -->
+    <div style="display: flex; align-items: center; gap: 22px; height: 52px">
+      <div style="font-family: 'Doto', monospace; font-weight: 900; font-size: 44px; letter-spacing: .02em; line-height: 1">EUCLID</div>
+      <div style="display: flex; flex-direction: column; gap: 2px; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: #5A5852">
+        <span style="color: #1C1C1E; font-weight: 600">EU-8</span>
+        <span>grid strategy instrument</span>
+      </div>
+      <div class="grille" style="flex-grow: 1; height: 40px; border-radius: 8px"></div>
+      <div style="display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: #5A5852">
+        <div style="width: 9px; height: 9px; border-radius: 50%; background: {{ledColor}}; box-shadow: 0 0 10px {{ledColor}}"></div>
+        <span>{{ledLabel}}</span>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 36px; flex-grow: 1; min-height: 0">
+
+      <!-- Left module: LCD, knobs, keys -->
+      <div style="width: 330px; flex-shrink: 0; display: flex; flex-direction: column; gap: 22px">
+        <div style="background: #161917; border-radius: 14px; padding: 18px 20px; box-shadow: inset 0 3px 10px rgba(0,0,0,.6), 0 1px 0 #F7F5F0; display: flex; flex-direction: column; gap: 12px; color: #EDEBE3">
+          <div style="display: flex; justify-content: space-between; font-family: 'Doto', monospace; font-weight: 800; font-size: 15px; letter-spacing: .12em; color: #9C9A92">
+            <span>{{lcdStatus}}</span>
+            <span>TGT 150</span>
+          </div>
+          <div style="display: flex; align-items: flex-end; gap: 14px">
+            <div style="width: 54px; font-family: 'Doto', monospace; font-weight: 800; font-size: 18px; color: #FF7A3D; padding-bottom: 8px">ORG</div>
+            <div style="flex-grow: 1; font-family: 'Doto', monospace; font-weight: 900; font-size: 64px; line-height: 1; color: #FF7A3D; text-align: right">{{org.score}}</div>
+          </div>
+          <div style="display: flex; gap: 3px">
+            <sc-for list="{{org.segs}}" as="g" hint-placeholder-count="15">
+              <div style="flex-grow: 1; height: 8px; border-radius: 2px; background: {{g.c}}"></div>
+            </sc-for>
+          </div>
+          <div style="display: flex; align-items: flex-end; gap: 14px; margin-top: 4px">
+            <div style="width: 54px; font-family: 'Doto', monospace; font-weight: 800; font-size: 18px; color: #86A0FF; padding-bottom: 8px">COB</div>
+            <div style="flex-grow: 1; font-family: 'Doto', monospace; font-weight: 900; font-size: 64px; line-height: 1; color: #86A0FF; text-align: right">{{cob.score}}</div>
+          </div>
+          <div style="display: flex; gap: 3px">
+            <sc-for list="{{cob.segs}}" as="g" hint-placeholder-count="15">
+              <div style="flex-grow: 1; height: 8px; border-radius: 2px; background: {{g.c}}"></div>
+            </sc-for>
+          </div>
+          <div style="font-family: 'Doto', monospace; font-weight: 800; font-size: 15px; letter-spacing: .08em; color: #EDEBE3; min-height: 18px">{{lcdLine}}</div>
+        </div>
+
+        <!-- Knobs -->
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 8px">
+            <div style="width: 62px; height: 62px; border-radius: 50%; background: #2A2A2D; box-shadow: 0 4px 8px rgba(0,0,0,.28), inset 0 2px 0 #444448; display: flex; justify-content: center; transform: rotate(-60deg)"><div style="width: 3px; height: 22px; margin-top: 6px; border-radius: 2px; background: #FF6A2B"></div></div>
+            <div style="font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: #5A5852">Level</div>
+            <div style="font-size: 11px; font-weight: 600">Tenderfoot</div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 8px">
+            <div style="width: 62px; height: 62px; border-radius: 50%; background: #2A2A2D; box-shadow: 0 4px 8px rgba(0,0,0,.28), inset 0 2px 0 #444448; display: flex; justify-content: center; transform: rotate(0deg)"><div style="width: 3px; height: 22px; margin-top: 6px; border-radius: 2px; background: #F4F1EA"></div></div>
+            <div style="font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: #5A5852">Grid</div>
+            <div style="font-size: 11px; font-weight: 600">8 × 8</div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 8px">
+            <div style="width: 62px; height: 62px; border-radius: 50%; background: #2A2A2D; box-shadow: 0 4px 8px rgba(0,0,0,.28), inset 0 2px 0 #444448; display: flex; justify-content: center; transform: rotate(-120deg)"><div style="width: 3px; height: 22px; margin-top: 6px; border-radius: 2px; background: #F4F1EA"></div></div>
+            <div style="font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: #5A5852">Score</div>
+            <div style="font-size: 11px; font-weight: 600">Footprint</div>
+          </div>
+        </div>
+
+        <!-- Keys -->
+        <div style="display: flex; gap: 10px; margin-top: auto">
+          <button class="key" onClick="{{hint}}">
+            <div style="width: 7px; height: 7px; border-radius: 50%; background: {{hintLed}}; box-shadow: 0 0 6px {{hintLed}}"></div>
+            <span>Hint</span>
+          </button>
+          <button class="key" onClick="{{toggleLines}}">
+            <div style="width: 7px; height: 7px; border-radius: 50%; background: {{linesLed}}; box-shadow: 0 0 6px {{linesLed}}"></div>
+            <span>Lines</span>
+          </button>
+          <button class="key key-org" onClick="{{newGame}}">
+            <div style="width: 7px; height: 7px; border-radius: 50%; background: #1C1C1E"></div>
+            <span>New</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Centre: the pad matrix -->
+      <div style="position: relative; width: 542px; height: 542px; flex-shrink: 0; border-radius: 20px; background: #121214; box-shadow: inset 0 3px 12px rgba(0,0,0,.7), 0 1px 0 #F7F5F0">
+        <sc-for list="{{cells}}" as="c" hint-placeholder-count="64">
+          <button class="{{c.cls}}" aria-label="{{c.label}}" onClick="{{c.pick}}" style="left: {{c.left}}px; top: {{c.top}}px">
+            <sc-if value="{{c.isLast}}" hint-placeholder-val="{{ false }}">
+              <div style="position: absolute; top: -5px; left: -5px; right: -5px; bottom: -5px; border: 2px solid #F4F1EA; border-radius: 15px; pointer-events: none"></div>
+            </sc-if>
+            <sc-if value="{{c.isEmpty}}" hint-placeholder-val="{{ true }}">
+              <div style="width: 5px; height: 5px; border-radius: 50%; background: {{c.dot}}; box-shadow: 0 0 {{c.dotGlow}}px {{c.dot}}"></div>
+            </sc-if>
+            <sc-if value="{{c.isCob}}" hint-placeholder-val="{{ false }}">
+              <div style="width: 16px; height: 16px; border-radius: 5px; background: #1A2A7A; box-shadow: inset 0 1px 3px rgba(0,0,0,.5)"></div>
+            </sc-if>
+          </button>
+        </sc-for>
+        <sc-if value="{{showLines}}" hint-placeholder-val="{{ true }}">
+          <sc-for list="{{traces}}" as="t" hint-placeholder-count="2">
+            <div class="{{t.cls}}" style="position: absolute; box-sizing: border-box; left: {{t.left}}px; top: {{t.top}}px; width: {{t.size}}px; height: {{t.size}}px; transform: rotate({{t.angle}}deg); border: 2px solid {{t.color}}; border-radius: 3px; box-shadow: 0 0 14px {{t.color}}, inset 0 0 14px {{t.glow}}; pointer-events: none"></div>
+          </sc-for>
+        </sc-if>
+        <sc-if value="{{over}}" hint-placeholder-val="{{ false }}">
+          <div style="position: absolute; inset: 0; border-radius: 20px; background: rgba(18,18,20,.82); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px">
+            <div style="font-family: 'Doto', monospace; font-weight: 900; font-size: 84px; line-height: 1; color: {{verdictColor}}">{{verdictBig}}</div>
+            <div style="font-family: 'Doto', monospace; font-weight: 800; font-size: 20px; letter-spacing: .1em; color: #EDEBE3">{{verdict}}</div>
+            <button class="key key-org" onClick="{{newGame}}" style="margin-top: 14px">
+              <span>Play again</span>
+            </button>
+          </div>
+        </sc-if>
+      </div>
+
+      <!-- Right module: the sequence -->
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: #5A5852; border-bottom: 1.5px solid #1C1C1E; padding-bottom: 8px">
+          <span style="color: #1C1C1E; font-weight: 600">Sequence</span>
+          <span>{{stepCount}} steps</span>
+        </div>
+        <div style="flex-grow: 1; display: flex; flex-direction: column; overflow: hidden">
+          <sc-for list="{{seq}}" as="s" hint-placeholder-count="12">
+            <div style="display: flex; align-items: center; gap: 12px; min-height: 34px; font-size: 13px; border-bottom: 1px solid #D2CEC6; opacity: {{s.fade}}">
+              <div style="width: 10px; height: 10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center">
+                <sc-if value="{{s.head}}" hint-placeholder-val="{{ false }}">
+                  <div style="width: 0; height: 0; border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-left: 8px solid #1C1C1E"></div>
+                </sc-if>
+              </div>
+              <div style="width: 30px; color: #5A5852">{{s.step}}</div>
+              <div style="width: 10px; height: 10px; border-radius: 3px; background: {{s.color}}"></div>
+              <div style="width: 36px; font-weight: 600">{{s.who}}</div>
+              <div style="flex-grow: 1">{{s.cell}}</div>
+              <div style="font-weight: 600; color: {{s.ptsColor}}">{{s.pts}}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="font-size: 11px; line-height: 1.55; color: #5A5852">Cobalt pads carry a dark centre, so the two sides read apart without colour.</div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+var EU_N = 8, EU_TARGET = 150, EU_P = 62, EU_M = 54;
+var EU_SEED = [[1,1],[5,2],[1,3],[6,5],[3,1],[3,6],[3,3],[2,3],[6,1],[0,6],[5,5],[7,7],[4,4],[0,0]];
+var EU_COLS = 'ABCDEFGH';
+
+function euCell(x, y) { return EU_COLS.charAt(x) + (EU_N - y); }
+function euFootprint(c) {
+  var xs = c.map(function (p) { return p[0]; }), ys = c.map(function (p) { return p[1]; });
+  var s = Math.max(Math.max.apply(null, xs) - Math.min.apply(null, xs), Math.max.apply(null, ys) - Math.min.apply(null, ys)) + 1;
+  return { side: s, pts: s * s };
+}
+function euFind(b, x, y, o) {
+  var out = [], seen = {};
+  for (var qy = 0; qy < EU_N; qy++) for (var qx = 0; qx < EU_N; qx++) {
+    if (b[qy * EU_N + qx] !== o || (qx === x && qy === y)) continue;
+    var dx = qx - x, dy = qy - y;
+    for (var s = -1; s <= 1; s += 2) {
+      var rx = -dy * s, ry = dx * s;
+      var c = [[x, y], [qx, qy], [qx + rx, qy + ry], [x + rx, y + ry]];
+      var ok = c.every(function (p) { return p[0] >= 0 && p[1] >= 0 && p[0] < EU_N && p[1] < EU_N && b[p[1] * EU_N + p[0]] === o; });
+      if (!ok) continue;
+      var key = c.map(function (p) { return p[0] + ',' + p[1]; }).sort().join('|');
+      if (seen[key]) continue;
+      seen[key] = true;
+      out.push(c);
+    }
+  }
+  return out;
+}
+function euGain(b, i, o) {
+  var t = b.slice(); t[i] = o;
+  return euFind(t, i % EU_N, Math.floor(i / EU_N), o).reduce(function (a, c) { return a + euFootprint(c).pts; }, 0);
+}
+function euBest(b, o) {
+  var best = -1, bestV = -1e9, foe = 3 - o;
+  for (var i = 0; i < b.length; i++) {
+    if (b[i]) continue;
+    var x = i % EU_N, y = Math.floor(i / EU_N);
+    var centre = -(Math.abs(x - 3.5) + Math.abs(y - 3.5)) * 0.15;
+    var v = euGain(b, i, o) + euGain(b, i, foe) * 0.8 + centre + Math.random() * 0.4;
+    if (v > bestV) { bestV = v; best = i; }
+  }
+  return best;
+}
+function euApply(s, x, y) {
+  var o = s.turn, b = s.board.slice();
+  b[y * EU_N + x] = o;
+  var found = euFind(b, x, y, o), gained = 0;
+  var squares = s.squares.map(function (q) { return Object.assign({}, q, { fresh: false }); });
+  found.forEach(function (c) { var f = euFootprint(c); gained += f.pts; squares.push({ corners: c, owner: o, fresh: true }); });
+  var scores = s.scores.slice(); scores[o - 1] += gained;
+  var log = s.log.concat([{ owner: o, x: x, y: y, pts: gained }]);
+  var winner = 0;
+  if (scores[o - 1] >= EU_TARGET) winner = o;
+  else if (b.every(function (v) { return v; })) winner = scores[0] === scores[1] ? 3 : (scores[0] > scores[1] ? 1 : 2);
+  return { board: b, squares: squares, scores: scores, log: log, turn: 3 - o, last: y * EU_N + x, winner: winner, busy: false, hintAt: -1, hide: s.hide };
+}
+function euFresh(seeded) {
+  var s = { board: new Array(EU_N * EU_N).fill(0), squares: [], scores: [0, 0], log: [], turn: 1, last: -1, winner: 0, busy: false, hintAt: -1, hide: false };
+  if (seeded) EU_SEED.forEach(function (m) { s = euApply(s, m[0], m[1]); });
+  return s;
+}
+function euSegs(score, on) {
+  var lit = Math.min(15, Math.floor(score / 10)), out = [];
+  for (var i = 0; i < 15; i++) out.push({ c: i < lit ? on : '#2B2F2C' });
+  return out;
+}
+function pad3(n) { return ('00' + n).slice(-3); }
+
+class Component extends DCLogic {
+  cur() {
+    if (this.state && this.state.board) return this.state;
+    if (!this._seed) this._seed = euFresh(true);
+    return this._seed;
+  }
+  componentWillUnmount() { clearTimeout(this._t); }
+  play(i) {
+    var s = this.cur();
+    if (s.turn !== 1 || s.winner || s.busy || s.board[i]) return;
+    var n = euApply(s, i % EU_N, Math.floor(i / EU_N));
+    if (n.winner) { this.setState(n); return; }
+    n.busy = true;
+    this.setState(n);
+    var self = this;
+    clearTimeout(this._t);
+    this._t = setTimeout(function () {
+      var s2 = self.cur();
+      var j = euBest(s2.board, 2);
+      if (j >= 0) self.setState(euApply(s2, j % EU_N, Math.floor(j / EU_N)));
+    }, 650);
+  }
+  renderVals() {
+    var self = this, s = this.cur();
+    var cells = s.board.map(function (v, i) {
+      var x = i % EU_N, y = Math.floor(i / EU_N), hint = s.hintAt === i;
+      return {
+        left: EU_M + x * EU_P - 26, top: EU_M + y * EU_P - 26,
+        cls: v === 1 ? 'pad pad-org' : v === 2 ? 'pad pad-cob' : 'pad',
+        label: euCell(x, y) + (v === 1 ? ', orange' : v === 2 ? ', cobalt' : ', open'),
+        isEmpty: !v, isCob: v === 2,
+        dot: hint ? '#FFD23F' : '#55555B', dotGlow: hint ? 12 : 0,
+        isLast: s.last === i,
+        pick: function () { self.play(i); }
+      };
+    });
+    var traces = s.squares.map(function (q) {
+      var c = q.corners;
+      var cx = (c[0][0] + c[1][0] + c[2][0] + c[3][0]) / 4, cy = (c[0][1] + c[1][1] + c[2][1] + c[3][1]) / 4;
+      var dx = c[1][0] - c[0][0], dy = c[1][1] - c[0][1];
+      var size = Math.sqrt(dx * dx + dy * dy) * EU_P;
+      var org = q.owner === 1;
+      return {
+        left: EU_M + cx * EU_P - size / 2, top: EU_M + cy * EU_P - size / 2, size: size,
+        angle: Math.atan2(dy, dx) * 180 / Math.PI,
+        color: q.fresh ? '#FFE9A8' : (org ? 'rgba(255,122,61,.9)' : 'rgba(134,160,255,.9)'),
+        glow: q.fresh ? 'rgba(255,233,168,.25)' : (org ? 'rgba(255,106,43,.14)' : 'rgba(63,104,255,.16)'),
+        cls: q.fresh ? 'trace' : ''
+      };
+    });
+    var seq = s.log.map(function (e, n) {
+      var org = e.owner === 1;
+      return { step: pad3(n + 1), who: org ? 'ORG' : 'COB', cell: euCell(e.x, e.y), pts: e.pts ? '+' + e.pts : '·', color: org ? '#FF6A2B' : '#3F68FF', ptsColor: e.pts ? '#1C1C1E' : '#8F8B83', head: false };
+    }).reverse().slice(0, 15);
+    seq.forEach(function (r, n) { r.head = n === 0; r.fade = n < 10 ? 1 : 1 - (n - 9) * 0.16; });
+    var last = s.log[s.log.length - 1];
+    var lcdLine = last ? (last.owner === 1 ? 'ORG ' : 'COB ') + euCell(last.x, last.y) + (last.pts ? '  SQUARE +' + last.pts : '') : 'PLACE A PAD';
+    var lcdStatus = s.winner ? 'END' : s.busy ? 'EUCLID...' : 'YOUR MOVE';
+    return {
+      cells: cells, traces: traces, seq: seq, stepCount: s.log.length,
+      org: { score: pad3(s.scores[0]), segs: euSegs(s.scores[0], '#FF7A3D') },
+      cob: { score: pad3(s.scores[1]), segs: euSegs(s.scores[1], '#86A0FF') },
+      lcdLine: lcdLine, lcdStatus: lcdStatus,
+      ledColor: s.busy ? '#3F68FF' : '#FF6A2B', ledLabel: s.busy ? 'Euclid' : 'Your turn',
+      showLines: !s.hide, linesLed: s.hide ? '#8F8B83' : '#FF6A2B', hintLed: s.hintAt >= 0 ? '#FFD23F' : '#8F8B83',
+      over: !!s.winner,
+      verdictBig: s.winner === 1 ? 'WIN' : s.winner === 2 ? 'LOSS' : 'TIE',
+      verdictColor: s.winner === 2 ? '#86A0FF' : '#FF7A3D',
+      verdict: s.winner === 1 ? 'ORANGE REACHES 150' : s.winner === 2 ? 'COBALT REACHES 150' : 'BOARD FULL · SCORES LEVEL',
+      hint: function () { var c = self.cur(); if (c.turn !== 1 || c.busy || c.winner) return; self.setState(Object.assign({}, c, { hintAt: euBest(c.board, 1) })); },
+      toggleLines: function () { var c = self.cur(); self.setState(Object.assign({}, c, { hide: !c.hide })); },
+      newGame: function () { clearTimeout(self._t); self.setState(euFresh(false)); }
+    };
+  }
+}
+</script>
+</body>
+</html>
