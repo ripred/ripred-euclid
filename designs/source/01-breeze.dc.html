@@ -20,9 +20,9 @@ a{color:#5E7FC4}a:hover{color:#3E5C9E}
 </helmet>
 <div style="position: relative; width: 1200px; height: 800px; box-sizing: border-box; padding: 56px 64px; background: #F7F3EC; display: flex; gap: 60px; overflow: hidden">
   <!-- drifting ribbons -->
-  <div style="position: absolute; left: 600px; top: 34px; width: 760px; height: 26px; border-radius: 999px; background: #F8E3A0; transform: rotate(-9deg); opacity: .85"></div>
-  <div style="position: absolute; left: 700px; top: 88px; width: 620px; height: 12px; border-radius: 999px; background: #CFE6D8; transform: rotate(-9deg)"></div>
-  <div style="position: absolute; left: 860px; top: 120px; width: 420px; height: 8px; border-radius: 999px; background: #F6C9C0; transform: rotate(-9deg)"></div>
+  <div style="position: absolute; left: 760px; top: -30px; width: 760px; height: 26px; border-radius: 999px; background: #F8E3A0; transform: rotate(-9deg); opacity: .85"></div>
+  <div style="position: absolute; left: 820px; top: 20px; width: 520px; height: 12px; border-radius: 999px; background: #CFE6D8; transform: rotate(-9deg)"></div>
+  <div style="position: absolute; left: 960px; top: 30px; width: 400px; height: 8px; border-radius: 999px; background: #F6C9C0; transform: rotate(-9deg)"></div>
   <div style="position: absolute; left: -140px; top: 712px; width: 720px; height: 22px; border-radius: 999px; background: #DCD4F2; transform: rotate(-9deg)"></div>
   <div style="position: absolute; left: -80px; top: 758px; width: 520px; height: 12px; border-radius: 999px; background: #F6C9C0; transform: rotate(-9deg)"></div>
 
@@ -55,9 +55,9 @@ a{color:#5E7FC4}a:hover{color:#3E5C9E}
   </div>
 
   <!-- side -->
-  <div style="position: relative; flex-grow: 1; display: flex; flex-direction: column; gap: 22px; padding-top: 30px">
+  <div style="position: relative; flex-grow: 1; display: flex; flex-direction: column; gap: 18px; padding-top: 16px">
     <div style="font-size: 13px; font-weight: 600; letter-spacing: .22em; text-transform: uppercase; color: #6B7486">Practice · 8 × 8 · first to 150</div>
-    <div style="font-family: 'Fraunces', Georgia, serif; font-style: italic; font-weight: 300; font-size: 104px; line-height: .9; color: #34405A">Euclid</div>
+    <div style="font-family: 'Fraunces', Georgia, serif; font-style: italic; font-weight: 300; font-size: 96px; line-height: .9; color: #34405A">Euclid</div>
     <div style="font-size: 18px; line-height: 1.5; color: #56607A; max-width: 380px">Take your time. Place a point; close a square; let the board fill slowly.</div>
 
     <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 6px">
@@ -136,7 +136,7 @@ class Component extends DCLogic {
   renderVals() {
     var L = euLayout(70, 55, 1);
     L.squares.forEach(function (q) { q.fillA = q.fresh ? 'rgba(248,231,166,.75)' : 'rgba(246,201,192,.45)'; });
-    var recent = L.log.slice(0, 4).map(function (r) { return { cell: r.cell, who: r.a ? 'You' : 'Euclid', dot: r.a ? '#F08F7E' : '#5E7FC4', pts: !!r.pts, plus: r.plus }; });
+    var recent = L.log.slice(0, 3).map(function (r) { return { cell: r.cell, who: r.a ? 'You' : 'Euclid', dot: r.a ? '#F08F7E' : '#5E7FC4', pts: !!r.pts, plus: r.plus }; });
     return { cells: L.cells, squares: L.squares, recent: recent };
   }
 }
