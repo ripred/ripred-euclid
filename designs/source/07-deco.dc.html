@@ -13,12 +13,12 @@
 <style>
 body{margin:0;background:#0F0E0C;font-family:"Josefin Sans",system-ui,sans-serif;color:#F1E6CF}
 a{color:#C9A45C}a:hover{color:#E6C98A}
-.rays{background:repeating-conic-gradient(from -90deg at 50% 100%,rgba(201,164,92,.13) 0deg 3deg,transparent 3deg 7deg)}
+.rays{-webkit-mask-image:linear-gradient(#000 45%,transparent 100%);mask-image:linear-gradient(#000 45%,transparent 100%);background:repeating-conic-gradient(from -90deg at 50% 100%,rgba(201,164,92,.13) 0deg 3deg,transparent 3deg 7deg)}
 .db{font-family:"Josefin Sans",system-ui,sans-serif;font-size:14px;font-weight:600;letter-spacing:.3em;text-transform:uppercase;min-height:46px;padding:4px 26px 0;border:1px solid #C9A45C;background:transparent;color:#E6C98A;cursor:pointer}
 </style>
 </helmet>
 <div style="position: relative; width: 1200px; height: 800px; background: #0F0E0C; overflow: hidden">
-  <div class="rays" style="position: absolute; left: 0; top: -60px; width: 1200px; height: 480px"></div>
+  <div class="rays" style="position: absolute; left: 0; top: -60px; width: 1200px; height: 620px"></div>
 
   <!-- title -->
   <div style="position: absolute; left: 0; top: 34px; width: 1200px; display: flex; align-items: center; justify-content: center; gap: 26px">
