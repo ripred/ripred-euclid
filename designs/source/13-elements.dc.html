@@ -56,7 +56,7 @@ a{color:#C8321F}a:hover{color:#8E2114}
       </div>
       <div style="display: flex; align-items: baseline; gap: 10px">
         <div style="font-family: 'Libre Caslon Display', Georgia, serif; font-size: 76px; line-height: 1; color: #C8321F">{{red.score}}</div>
-        <div style="font-size: 14px; color: #4A4538">of 150 · {{red.count}} squares</div>
+        <div style="font-size: 14px; color: #4A4538">of 150 · {{red.sq}}</div>
       </div>
       <div style="position: relative; height: 10px">
         <div style="position: absolute; left: 0; right: 0; top: 4px; height: 1px; background: #1B1A17"></div>
@@ -78,7 +78,7 @@ a{color:#C8321F}a:hover{color:#8E2114}
       </div>
       <div style="display: flex; align-items: baseline; gap: 10px">
         <div style="font-family: 'Libre Caslon Display', Georgia, serif; font-size: 76px; line-height: 1; color: #1D4E89">{{blue.score}}</div>
-        <div style="font-size: 14px; color: #4A4538">of 150 · {{blue.count}} squares</div>
+        <div style="font-size: 14px; color: #4A4538">of 150 · {{blue.sq}}</div>
       </div>
       <div style="position: relative; height: 10px">
         <div style="position: absolute; left: 0; right: 0; top: 4px; height: 1px; background: #1B1A17"></div>
@@ -318,8 +318,8 @@ class Component extends DCLogic {
     s.squares.forEach(function (q) { counts[q.owner - 1] += 1; });
     return {
       cells: cells, lines: lines, colLabels: colLabels, rowLabels: rowLabels, squares: squares, proof: proof,
-      red: { score: s.scores[0], pct: pct(s.scores[0]), count: counts[0] },
-      blue: { score: s.scores[1], pct: pct(s.scores[1]), count: counts[1] },
+      red: { score: s.scores[0], pct: pct(s.scores[0]), sq: counts[0] + (counts[0] === 1 ? ' square' : ' squares') },
+      blue: { score: s.scores[1], pct: pct(s.scores[1]), sq: counts[1] + (counts[1] === 1 ? ' square' : ' squares') },
       redTurn: !s.winner && !s.busy, blueTurn: !s.winner && s.busy,
       status: status, statusColor: s.busy ? '#1D4E89' : '#C8321F',
       caption: caption, propNo: euRoman(s.log.length + 1), moveCount: s.log.length,
