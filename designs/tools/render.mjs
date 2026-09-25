@@ -2,6 +2,15 @@
 import { chromium } from "playwright-core";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
+
+const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36";
+const fontCache = new Map();
+// Fetch web fonts with curl so the system trust store (and any proxy CA) is honoured.
+function fetchFont(url) {
+  if (!fontCache.has(url)) fontCache.set(url, execFileSync("curl", ["-sSfL", "-A", UA, url], { maxBuffer: 64 << 20 }));
+  return fontCache.get(url);
+}
 
 const [, , outDir, ...files] = process.argv;
 
@@ -66,6 +75,11 @@ const root = document.getElementById('root');
 [...frag.childNodes].forEach(ch => dcWalk(ch, vals).forEach(n => root.appendChild(n)));
 </script></body></html>`;
   const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 2 });
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => {
+    const url = route.request().url();
+    const css = url.includes("googleapis");
+    route.fulfill({ status: 200, contentType: css ? "text/css" : "font/woff2", headers: { "access-control-allow-origin": "*" }, body: fetchFont(url) });
+  });
   await page.setContent(html, { waitUntil: "networkidle" });
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(600);
