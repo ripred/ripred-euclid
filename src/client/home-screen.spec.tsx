@@ -67,6 +67,17 @@ function completeButtonMarkup(markup: string, className: string): string {
 }
 
 describe("home dashboard structure", () => {
+  it("offers the playground only when the server grants moderator access", () => {
+    expect(renderToStaticMarkup(<HomeScreen {...homeProps()} />)).not.toContain(
+      "Challenge playground",
+    );
+    expect(
+      renderToStaticMarkup(
+        <HomeScreen {...homeProps({ onChallenges: () => undefined })} />,
+      ),
+    ).toContain("Challenge playground");
+  });
+
   it("offers difficulty settings beside solo play and locks them during requests", () => {
     const render = (
       busyAction: Exclude<HomeScreenProps["busyAction"], undefined>,

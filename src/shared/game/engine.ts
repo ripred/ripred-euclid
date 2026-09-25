@@ -1,3 +1,4 @@
+import { squareFromEdge } from "./geometry";
 import { scoreSquareCorners } from "../scoring";
 import type {
   SerializableBoard,
@@ -232,25 +233,9 @@ export class Board {
       if (row === undefined || col === undefined) continue;
       // Treat move-to-candidate as one side; a 90-degree rotation gives the
       // other two corners for both axis-aligned and rotated squares.
-      const dx = col - x;
-      const dy = row - y;
-      const x1 = x - dy;
-      const y1 = y + dx;
-      const x2 = col - dy;
-      const y2 = row + dx;
-      if (
-        x1 < 0 ||
-        x1 >= this.W ||
-        y1 < 0 ||
-        y1 >= this.H ||
-        x2 < 0 ||
-        x2 >= this.W ||
-        y2 < 0 ||
-        y2 >= this.H ||
-        (col === x && row === y)
-      ) {
-        continue;
-      }
+      const edge = squareFromEdge(this.W, this.H, x, y, col, row);
+      if (!edge) continue;
+      const [{ x: x1, y: y1 }, { x: x2, y: y2 }] = edge;
       const v1 = this.cellAt(y * this.W + x);
       const v2 = this.cellAt(row * this.W + col);
       const v3 = this.cellAt(y1 * this.W + x1);
@@ -316,25 +301,9 @@ export class Board {
     const other = color === 1 ? 2 : 1;
     for (let row = 0; row < this.H; row++) {
       for (let col = 0; col < this.W; col++) {
-        const dx = col - x;
-        const dy = row - y;
-        const x1 = x - dy;
-        const y1 = y + dx;
-        const x2 = col - dy;
-        const y2 = row + dx;
-        if (
-          x1 < 0 ||
-          x1 >= this.W ||
-          y1 < 0 ||
-          y1 >= this.H ||
-          x2 < 0 ||
-          x2 >= this.W ||
-          y2 < 0 ||
-          y2 >= this.H ||
-          (col === x && row === y)
-        ) {
-          continue;
-        }
+        const edge = squareFromEdge(this.W, this.H, x, y, col, row);
+        if (!edge) continue;
+        const [{ x: x1, y: y1 }, { x: x2, y: y2 }] = edge;
         const v1 = this.cellAt(y * this.W + x);
         const v2 = this.cellAt(row * this.W + col);
         const v3 = this.cellAt(y1 * this.W + x1);

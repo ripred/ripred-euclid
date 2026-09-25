@@ -13,6 +13,8 @@ export default defineConfig({
       input: {
         default: "preview.html",
         game: "index.html",
+        solo: "solo.html",
+        reddit: "reddit.html",
         leaderboard: "leaderboard.html",
         watch: "watch.html",
       },

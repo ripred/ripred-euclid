@@ -1,3 +1,5 @@
+import type { ExpandedAction } from "./expanded-entry";
+import { ChallengeScreen } from "./challenge-screen";
 import React, {
   useCallback,
   useEffect,
@@ -236,6 +238,7 @@ function createClientCommandId(prefix: string): string {
 
 /* ===== App (UI + flows) ===== */
 type Mode =
+  | "challenge"
   | "ai"
   | "multiplayer"
   | "spectate"
@@ -270,7 +273,12 @@ function readViewportSize(): ViewportSize {
 
 export const App = ({
   initialMode = null,
-}: { initialMode?: "rankings" | "spectate" | null } = {}) => {
+  initialAction = null,
+}: {
+  initialMode?: "rankings" | "spectate" | null;
+  initialAction?: ExpandedAction | null;
+} = {}) => {
+  const pendingInitialAction = useRef(initialAction);
   const appliedThemeRef = useRef<ThemeMode | null>(null);
   const [watchTheme, setWatchTheme] = useState<ThemeMode>("light");
   const [initState, setInitState] = useState<InitResponse | null>(null);
@@ -1755,6 +1763,28 @@ export const App = ({
     }
   };
 
+  useEffect(() => {
+    if (mode !== null) pendingInitialAction.current = null;
+    if (
+      !pendingInitialAction.current ||
+      initState?.type !== "init" ||
+      mode !== null ||
+      homePresenceLoading ||
+      homeSoloLoading ||
+      !homePresenceReady ||
+      homePresenceReconciliationPending ||
+      homeBusyActionRef.current
+    )
+      return;
+    const action = pendingInitialAction.current;
+    pendingInitialAction.current = null;
+    // An existing match, queue, or unresolved solo lookup requires the home controls.
+    if (homeH2H.state !== "idle" || homeDataErrors.solo) return;
+    if (action === "reddit") void startMultiplayerQueue();
+    else if (homeSolo) void continueSoloFromHome();
+    else void startSoloFromHome();
+  });
+
   const continueSoloFromHome = async (): Promise<boolean> => {
     const cached = homeSolo;
     if (!cached || homeBusyActionRef.current || homeH2H.state === "queued") {
@@ -2491,6 +2521,8 @@ export const App = ({
   useEffect(() => {
     const secret = "ripred";
     const onKey = (e: KeyboardEvent) => {
+      // Playground configuration and play never enter ordinary-game shortcuts.
+      if (mode === "challenge") return;
       const k = e.key || "";
       if (!k) return;
       if (chatOpen) return;
@@ -2695,6 +2727,15 @@ export const App = ({
     content = (
       <>
         <HomeScreen
+          onChallenges={
+            initState?.type === "init" && initState.canManageChallenges
+              ? () => {
+                  if (navigationLocked) return;
+                  stopHomePresenceMonitoring();
+                  setMode("challenge");
+                }
+              : undefined
+          }
           username={initState?.username ?? ""}
           playEuclidSubtitle={getPlayEuclidSubtitle(
             soloMode,
@@ -2742,6 +2783,8 @@ export const App = ({
         />
       </>
     );
+  } else if (mode === "challenge") {
+    content = <ChallengeScreen onLeave={() => setMode(null)} />;
   } else if (mode === "options") {
     content = (
       <SetupScreen

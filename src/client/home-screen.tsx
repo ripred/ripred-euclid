@@ -49,6 +49,7 @@ export interface HomeScreenProps {
   onLeaderboard: () => void;
   onOptions: () => void;
   onRules: () => void;
+  onChallenges?: (() => void) | undefined;
 }
 
 interface HomeActionButtonProps {
@@ -322,6 +323,7 @@ const UTILITIES: readonly {
  */
 export function HomeScreen(props: HomeScreenProps) {
   const {
+    onChallenges,
     username,
     playEuclidSubtitle,
     records,
@@ -570,6 +572,16 @@ export function HomeScreen(props: HomeScreenProps) {
         </section>
 
         <nav className="home-nav" aria-label="More Euclid options">
+          {onChallenges && (
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={navigationLocked}
+              onClick={onChallenges}
+            >
+              Challenge playground
+            </button>
+          )}
           <ul>
             {UTILITIES.map((item) => (
               <li key={item.label}>

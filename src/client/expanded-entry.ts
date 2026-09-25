@@ -1,6 +1,11 @@
-export type ExpandedEntry = "game" | "leaderboard" | "watch";
+export type ExpandedEntry =
+  | "game"
+  | "leaderboard"
+  | "watch"
+  | "solo"
+  | "reddit";
 
-/** Entry documents select a local screen; they never join or start a game. */
+/** Ordinary entry documents select a local screen. */
 export function expandedInitialMode(
   entry: string | undefined,
 ): "rankings" | "spectate" | null {
@@ -12,4 +17,11 @@ export function expandedInitialMode(
     default:
       return null;
   }
+}
+
+export type ExpandedAction = "solo" | "reddit";
+export function expandedInitialAction(
+  entry: string | undefined,
+): ExpandedAction | null {
+  return entry === "solo" || entry === "reddit" ? entry : null;
 }

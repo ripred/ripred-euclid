@@ -10,6 +10,11 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { writeFileSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import {
+  MOCK_RANKINGS,
+  MOCK_SPOTLIGHTS,
+  mockAvatarUrl,
+} from "./preview-fixtures.mjs";
 
 const identity = new AsyncLocalStorage();
 const USER_COOKIE = "euclid-local-user";
@@ -113,11 +118,20 @@ let postCounter = 0;
 const posts = new Map();
 
 export const reddit = {
+  getModerators({ username }) {
+    return {
+      all: async () => (username === "local_moderator" ? [{ username }] : []),
+    };
+  },
   async getCurrentUsername() {
     return current().username;
   },
+  async getSnoovatarUrl(username) {
+    return mockAvatarUrl(username);
+  },
   async getCurrentUser() {
-    return { username: current().username, getSnoovatarUrl: async () => "" };
+    const username = current().username;
+    return { username, getSnoovatarUrl: async () => mockAvatarUrl(username) };
   },
   async getCurrentSubreddit() {
     return { name: LOCAL_SUBREDDIT };
@@ -181,6 +195,19 @@ export const getServerPort = () => Number(process.env.EUCLID_API_PORT ?? 7475);
 export function createServer(app) {
   return http.createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
+    if (
+      req.method === "GET" &&
+      (url.pathname === "/api/rankings" ||
+        url.pathname === "/api/challenge-spotlights")
+    ) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify(
+          url.pathname === "/api/rankings" ? MOCK_RANKINGS : MOCK_SPOTLIGHTS,
+        ),
+      );
+      return;
+    }
     if (url.pathname === "/__local/brand-asset" && req.method === "POST") {
       saveBrandAsset(req, res, url.searchParams.get("file") ?? "");
       return;

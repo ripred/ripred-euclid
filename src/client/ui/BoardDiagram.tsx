@@ -186,6 +186,7 @@ export interface BoardDiagramProps {
   width: number;
   height: number;
   cells: ArrayLike<number>;
+  blockedPoints?: readonly number[];
   squares?: readonly BoardSquareShape[];
   footprints?: readonly BoardFootprint[];
   markers?: readonly BoardMarker[];
@@ -211,6 +212,7 @@ export function BoardDiagram({
   width,
   height,
   cells,
+  blockedPoints = [],
   squares = [],
   footprints = [],
   markers = [],
@@ -294,9 +296,18 @@ export function BoardDiagram({
 
           {indices.map((index) => {
             if (ownerAt(cells, index)) return null;
-            const hint = hintAt.get(index);
             const cx = centre(index % width);
             const cy = centre(Math.floor(index / width));
+            if (blockedPoints.includes(index))
+              return (
+                <g key={index} className="board__blocked-point">
+                  <circle cx={cx} cy={cy} r={POINT_RADIUS + 0.02} />
+                  <path
+                    d={`M ${cx - 0.12} ${cy - 0.12} l 0.24 0.24 M ${cx + 0.12} ${cy - 0.12} l -0.24 0.24`}
+                  />
+                </g>
+              );
+            const hint = hintAt.get(index);
             return (
               <g
                 key={index}

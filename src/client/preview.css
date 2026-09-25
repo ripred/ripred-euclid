@@ -30,20 +30,15 @@ html.euclid-inline,
   min-width: 0;
 }
 
-/* Wide posts: the board runs full height; story and actions stack beside it. */
+/* Rules occupy one fixed carousel panel; navigation and actions have their own rows. */
 .preview {
   display: grid;
-  grid-template-areas:
-    "board side"
-    "board actions";
-  /* Resolve widths before measuring wrapped buttons; the board's aspect ratio
-     must not determine the action column's available width. */
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 12px 20px;
+  grid-template-areas: "board side";
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 16px;
   height: 100%;
-  max-width: 860px;
-  margin: 0 auto;
+  min-height: 0;
 }
 
 .preview__board {
@@ -209,23 +204,6 @@ html.euclid-inline,
   display: none;
 }
 
-/* Actions stay put through every phase. */
-.preview-actions {
-  grid-area: actions;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.preview-actions .btn {
-  min-height: 44px;
-}
-
-.preview-actions__game {
-  flex: 1 1 140px;
-}
-
 .preview-actions__error {
   flex-basis: 100%;
   margin: 0;
@@ -252,15 +230,6 @@ html.euclid-inline,
   overflow-wrap: anywhere;
 }
 
-/* Narrow posts: actions return to a full-width row under the board. */
-@media (max-width: 600px) {
-  .preview {
-    grid-template-areas:
-      "board side"
-      "actions actions";
-  }
-}
-
 /* Narrow posts: a smaller board and a tighter story. */
 @media (max-width: 520px) {
   .euclid-preview {
@@ -281,13 +250,6 @@ html.euclid-inline,
   }
   .preview-caption__title {
     font-size: var(--fs-md);
-  }
-  .preview-actions__leaderboard {
-    width: 44px;
-    padding: 0;
-  }
-  .preview-actions__text {
-    display: none;
   }
 }
 

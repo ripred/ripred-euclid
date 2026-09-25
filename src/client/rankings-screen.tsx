@@ -88,8 +88,11 @@ export function RankingsScreen({
         aria-label="Full leaderboard"
       >
         <div className="rankings__head">
-          <p className="muted">{bucketSubtitle(bucket, rankings)}</p>
-          {loaded ? (
+          <p className="muted">
+            {bucketSubtitle(bucket, rankings)}
+            {loaded && ` · ${rankings[bucket].length} players`}
+          </p>
+          {loaded && !rankings.preview ? (
             <button
               type="button"
               className="btn btn--sm"
@@ -103,6 +106,12 @@ export function RankingsScreen({
             </button>
           ) : null}
         </div>
+
+        {rankings.preview && (
+          <p className="muted">
+            Local preview · 500 sample players · Results are fictional
+          </p>
+        )}
 
         {loading || (!loaded && !error) ? (
           <p role="status" className="muted">

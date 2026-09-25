@@ -1,11 +1,10 @@
+import { squaresWithCorner } from "../../shared/game/geometry";
+export { squaresWithCorner } from "../../shared/game/geometry";
+export type { GridPoint } from "../../shared/game/geometry";
+import type { GridPoint } from "../../shared/game/geometry";
 /** Geometry shared by every board surface: game, demo, replay and share. */
 
 export type Owner = 1 | 2;
-
-export interface GridPoint {
-  x: number;
-  y: number;
-}
 
 export interface BoardSquareShape {
   key: string;
@@ -92,32 +91,6 @@ export function cellsFromPoints(
   const cells = new Array<number>(width * height).fill(0);
   for (const point of points) cells[point.y * width + point.x] = point.owner;
   return cells;
-}
-
-/**
- * Every square with (x0, y0) as a corner, once each. For each candidate
- * adjacent corner A, the square turns a quarter clockwise from (x0, y0)→A.
- * Yields the other three corners in order around the square.
- */
-export function* squaresWithCorner(
-  width: number,
-  height: number,
-  x0: number,
-  y0: number,
-): Generator<[GridPoint, GridPoint, GridPoint]> {
-  const inside = (p: GridPoint) =>
-    p.x >= 0 && p.x < width && p.y >= 0 && p.y < height;
-  for (let row = 0; row < height; row++) {
-    for (let col = 0; col < width; col++) {
-      if (col === x0 && row === y0) continue;
-      const dx = col - x0;
-      const dy = row - y0;
-      const far = { x: col - dy, y: row + dx };
-      const near = { x: x0 - dy, y: y0 + dx };
-      if (!inside(far) || !inside(near)) continue;
-      yield [{ x: col, y: row }, far, near];
-    }
-  }
 }
 
 /** Squares the move at (x, y) denied: the other three corners are `owner`'s. */

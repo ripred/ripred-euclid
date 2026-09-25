@@ -1,3 +1,4 @@
+import { squareCatalog } from "./game/geometry";
 export type SquareScoringMode = "bbox" | "true";
 
 export type ScoringPoint = {
@@ -90,57 +91,15 @@ export function totalSquareScore(
 ): number {
   assertBoardDimensions(width, height);
 
-  const seenSquares = new Set<string>();
   let total = 0;
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      for (let adjacentY = 0; adjacentY < height; adjacentY++) {
-        for (let adjacentX = 0; adjacentX < width; adjacentX++) {
-          if (adjacentX === x && adjacentY === y) continue;
-
-          const dx = adjacentX - x;
-          const dy = adjacentY - y;
-          const oppositeAdjacentX = x - dy;
-          const oppositeAdjacentY = y + dx;
-          const oppositeX = adjacentX - dy;
-          const oppositeY = adjacentY + dx;
-
-          if (
-            oppositeAdjacentX < 0 ||
-            oppositeAdjacentX >= width ||
-            oppositeAdjacentY < 0 ||
-            oppositeAdjacentY >= height ||
-            oppositeX < 0 ||
-            oppositeX >= width ||
-            oppositeY < 0 ||
-            oppositeY >= height
-          ) {
-            continue;
-          }
-
-          const cornerIndexes = [
-            y * width + x,
-            adjacentY * width + adjacentX,
-            oppositeAdjacentY * width + oppositeAdjacentX,
-            oppositeY * width + oppositeX,
-          ].sort((left, right) => left - right);
-          const squareKey = cornerIndexes.join(",");
-          if (seenSquares.has(squareKey)) continue;
-
-          seenSquares.add(squareKey);
-          total += scoreSquareCorners(
-            [
-              { x, y },
-              { x: adjacentX, y: adjacentY },
-              { x: oppositeAdjacentX, y: oppositeAdjacentY },
-              { x: oppositeX, y: oppositeY },
-            ],
-            scoring,
-          );
-        }
-      }
-    }
+  for (const square of squareCatalog(width, height)) {
+    total += scoreSquareCorners(
+      square.corners.map((index) => ({
+        x: index % width,
+        y: Math.floor(index / width),
+      })),
+      scoring,
+    );
   }
 
   return total;

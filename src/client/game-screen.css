@@ -310,33 +310,6 @@
   pointer-events: none;
 }
 
-.game__grid {
-  position: relative;
-  display: grid;
-  touch-action: manipulation;
-}
-
-.game__row {
-  display: contents;
-}
-
-.game__cell {
-  border-radius: 50%;
-  outline: none;
-  cursor: default;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.game__cell--open {
-  cursor: pointer;
-}
-
-.game__cell:focus-visible {
-  box-shadow:
-    0 0 0 2px var(--bg),
-    0 0 0 4px var(--attention);
-}
-
 .score-pop {
   --tone: var(--red);
   position: absolute;

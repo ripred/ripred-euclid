@@ -28,5 +28,6 @@ export async function fetchRankings(
     hvh: rankings.hvh ?? [],
     hva: rankings.hva ?? [],
     ...(rankings.hvaRules ? { hvaRules: rankings.hvaRules } : {}),
+    ...(rankings.preview === true ? { preview: true } : {}),
   };
 }

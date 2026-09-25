@@ -1,35 +1,6 @@
+import { PlayerAvatar } from "./PlayerAvatar";
 import type { RankingsShareRow } from "../../shared/types/api";
 import "./standings.css";
-
-export function PlayerAvatar({
-  name,
-  avatar,
-  size = 32,
-}: {
-  name: string;
-  avatar?: string | undefined;
-  size?: number;
-}) {
-  const initial = name.trim().replace(/^u\//i, "").charAt(0).toUpperCase();
-  return avatar ? (
-    <img
-      className="avatar"
-      src={avatar}
-      alt=""
-      crossOrigin="anonymous"
-      width={size}
-      height={size}
-    />
-  ) : (
-    <span
-      className="avatar avatar--initial"
-      style={{ width: size, height: size, fontSize: size * 0.42 }}
-      aria-hidden="true"
-    >
-      {initial || "?"}
-    </span>
-  );
-}
 
 const formatRecord = (row: RankingsShareRow) =>
   `${row.wins}W · ${row.losses}L · ${row.draws}D`;

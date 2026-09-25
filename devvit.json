@@ -17,6 +17,12 @@
       },
       "watch": {
         "entry": "watch.html"
+      },
+      "solo": {
+        "entry": "solo.html"
+      },
+      "reddit": {
+        "entry": "reddit.html"
       }
     }
   },

@@ -336,3 +336,15 @@
     display: none;
   }
 }
+
+.board__blocked-point circle {
+  fill: var(--slab-dark);
+  stroke: var(--text-2);
+  stroke-width: 0.025;
+}
+.board__blocked-point path {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 0.05;
+  stroke-linecap: round;
+}

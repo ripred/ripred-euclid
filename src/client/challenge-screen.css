@@ -1,0 +1,79 @@
+.challenge-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.7fr) minmax(0, 1.3fr);
+  gap: 20px;
+  margin-top: 20px;
+}
+.challenge-controls,
+.challenge-play {
+  padding: 20px;
+  min-width: 0;
+}
+.challenge-controls fieldset {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.challenge-controls legend {
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+.challenge-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.challenge-controls .challenge-check {
+  flex-direction: row;
+  align-items: center;
+}
+.challenge-controls input:not([type="checkbox"]),
+.challenge-controls select {
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+}
+.challenge-controls small {
+  color: var(--text-2);
+}
+.challenge-board-container {
+  width: 100%;
+  overflow: auto;
+  padding: 12px 0 20px;
+}
+.challenge-board {
+  position: relative;
+  margin: 0 auto;
+}
+.challenge-board-art {
+  position: absolute;
+  pointer-events: none;
+}
+.challenge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+@media (max-width: 760px) {
+  .challenge-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .challenge-controls,
+  .challenge-play {
+    padding: 14px;
+  }
+}
+
+.challenge-timer {
+  margin: 4px 0 12px;
+  font-size: var(--fs-lg);
+  font-variant-numeric: tabular-nums;
+}

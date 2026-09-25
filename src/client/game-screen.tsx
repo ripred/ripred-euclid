@@ -1,3 +1,5 @@
+import { BoardInput } from "./ui/BoardInput";
+import { useBoardInput } from "./ui/use-board-input";
 import React, {
   useEffect,
   useLayoutEffect,
@@ -11,7 +13,7 @@ import type { ShareChatItem, ShareSquare } from "../shared/types/api";
 import type { Board } from "../shared/game/engine";
 import type { PlayerColor, PlayerIndex } from "../shared/game/rules";
 import { rulesSummary } from "./format";
-import { calculateBoardLayout, shouldPlaceFromKey } from "./game-ui";
+import { calculateBoardLayout } from "./game-ui";
 import {
   formatScoreFeedback,
   selectSquareLines,
@@ -54,9 +56,6 @@ const squareCorners = (square: ShareSquare) => [
 ];
 
 const HISTORY_MIN_OPACITY = 0.35;
-
-/** Below this cell size, touch placement asks for a confirming second tap. */
-const AIM_CELL_SIZE = 38;
 
 function historyShapes(
   squares: readonly ShareSquare[],
@@ -457,13 +456,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   }, [assistOn, isMobile, cell, board.W, board.m_board, myColor]);
 
   /* ===== Touch on dense boards: tap to aim, tap the same point to place ===== */
-  const aimRequired = cell < AIM_CELL_SIZE;
-  const [aimIdx, setAimIdx] = useState<number | null>(null);
-  const pointerTypeRef = useRef("mouse");
-  const liveAimIdx =
-    placingSide && aimIdx !== null && ownerAt(board.m_board, aimIdx) === 0
-      ? aimIdx
-      : null;
   const tapSound = useBoardSounds({
     history: board.m_history,
     cells: board.m_board,
@@ -478,82 +470,18 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     }
     onCellClick(x, y);
   };
-  const onCellActivate = (x: number, y: number) => {
-    const index = y * board.W + x;
-    const touch = pointerTypeRef.current !== "mouse";
-    if (
-      touch &&
-      aimRequired &&
-      placingSide &&
-      ownerAt(board.m_board, index) === 0 &&
-      liveAimIdx !== index
-    ) {
-      setAimIdx(index);
-      return;
-    }
-    setAimIdx(null);
-    place(x, y);
-  };
-
-  /*
-   * Keystrokes never queue ahead of a move: Enter or Space places only when
-   * it was pressed after this turn became placeable and is not a repeat.
-   */
-  const placeableSinceRef = useRef(Infinity);
-  useLayoutEffect(() => {
-    placeableSinceRef.current = placingSide ? performance.now() : Infinity;
-  }, [placingSide, board.m_history.length]);
-
-  /* ===== Keyboard: a roving focus across the points ===== */
-  const [focusIdx, setFocusIdx] = useState(
-    () => Math.floor(board.H / 2) * board.W + Math.floor(board.W / 2),
-  );
-  const safeFocusIdx = Math.min(focusIdx, board.W * board.H - 1);
-  const focusCell = (index: number) => {
-    setFocusIdx(index);
-    gridRef.current
-      ?.querySelector<HTMLElement>(`[data-index="${index}"]`)
-      ?.focus();
-  };
-  const onGridKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    // Act on the point the key event reached, not a possibly stale focus.
-    const targetIndex = Number(
-      (event.target as HTMLElement).dataset.index ?? safeFocusIdx,
-    );
-    const x = targetIndex % board.W;
-    const y = Math.floor(targetIndex / board.W);
-    const moves: Record<string, [number, number]> = {
-      ArrowLeft: [-1, 0],
-      ArrowRight: [1, 0],
-      ArrowUp: [0, -1],
-      ArrowDown: [0, 1],
-    };
-    const move = moves[event.key];
-    if (move) {
-      event.preventDefault();
-      const nx = Math.max(0, Math.min(board.W - 1, x + move[0]));
-      const ny = Math.max(0, Math.min(board.H - 1, y + move[1]));
-      focusCell(ny * board.W + nx);
-      return;
-    }
-    if (event.key === "Home" || event.key === "End") {
-      event.preventDefault();
-      focusCell(y * board.W + (event.key === "Home" ? 0 : board.W - 1));
-      return;
-    }
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      if (
-        shouldPlaceFromKey(
-          event.nativeEvent,
-          placeableSinceRef.current,
-          placingSide !== null,
-        ) &&
-        acceptPlacementKey(event)
-      )
-        place(x, y);
-    }
-  };
+  const boardInput = useBoardInput({
+    width: board.W,
+    height: board.H,
+    cellSize: cell,
+    gridRef,
+    enabled: placingSide !== null,
+    revision: board.m_history.length,
+    isOpen: (index) => ownerAt(board.m_board, index) === 0,
+    onPlace: (index) => place(index % board.W, Math.floor(index / board.W)),
+    acceptKey: acceptPlacementKey,
+  });
+  const liveAimIdx = boardInput.aimIndex;
 
   const lastIndex =
     board.m_last.x >= 0 ? board.m_last.y * board.W + board.m_last.x : -1;
@@ -779,48 +707,21 @@ export const GameScreen: React.FC<GameScreenProps> = ({
             </div>
           )}
 
-          <div
-            ref={gridRef}
-            className="game__grid"
-            role="grid"
-            aria-label={`Board, ${board.W} by ${board.H}. Use arrow keys to move and Enter to place.`}
-            onKeyDown={onGridKeyDown}
-            style={{
-              gridTemplateColumns: `repeat(${board.W}, ${cell}px)`,
-              gridAutoRows: `${cell}px`,
+          <BoardInput
+            width={board.W}
+            height={board.H}
+            cellSize={cell}
+            controls={boardInput}
+            label={`Board, ${board.W} by ${board.H}. Use arrow keys to move and Enter to place.`}
+            describeCell={describeCell}
+            onHover={(index) => {
+              setPreviewIdx(index);
+              if (assistOn && myColor != null)
+                setHoverIdx(
+                  ownerAt(board.m_board, index) === myColor ? index : null,
+                );
             }}
-          >
-            {Array.from({ length: board.H }, (_, y) => (
-              <div key={y} role="row" className="game__row">
-                {Array.from({ length: board.W }, (_, x) => {
-                  const index = y * board.W + x;
-                  const owner = ownerAt(board.m_board, index);
-                  return (
-                    <div
-                      key={x}
-                      role="gridcell"
-                      data-index={index}
-                      tabIndex={index === safeFocusIdx ? 0 : -1}
-                      aria-label={describeCell(index)}
-                      className={`game__cell${owner === 0 && placingSide ? " game__cell--open" : ""}`}
-                      onFocus={() => setFocusIdx(index)}
-                      onPointerDown={(event) => {
-                        pointerTypeRef.current = event.pointerType;
-                      }}
-                      onClick={() => onCellActivate(x, y)}
-                      onPointerEnter={(event) => {
-                        if (event.pointerType !== "mouse") return;
-                        setPreviewIdx(index);
-                        if (assistOn && myColor != null) {
-                          setHoverIdx(owner === myColor ? index : null);
-                        }
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            ))}
-          </div>
+          />
         </div>
 
         {chatItems.length > 0 && (

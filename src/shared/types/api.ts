@@ -494,6 +494,7 @@ export type ResultSharePayload = {
 };
 
 export type RankingsResponse = {
+  preview?: boolean;
   hvh?: RankingsShareRow[];
   hva?: RankingsShareRow[];
   hvaRules?: RankedSoloSessionMetadata;
@@ -507,6 +508,7 @@ export type SharePostDescriptor = {
 };
 
 export type GameInitResponse = {
+  canManageChallenges?: boolean;
   type: "init";
   postId: string;
   username: string;

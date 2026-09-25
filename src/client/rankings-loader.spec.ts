@@ -31,6 +31,14 @@ const row: RankingsShareRow = {
 };
 
 describe("live rankings requests", () => {
+  it("preserves the local fixture marker so sample results cannot be mistaken for live rankings", async () => {
+    fetchMock.mockResolvedValue(response({ hvh: [row], preview: true }));
+    await expect(fetchRankings()).resolves.toEqual({
+      hvh: [row],
+      hva: [],
+      preview: true,
+    });
+  });
   it("retains both canonical boards, their order, and ranked rules", async () => {
     const rankings: RankingsResponse = {
       hvh: [row, { ...row, userId: "second-player", rating: 1600 }],

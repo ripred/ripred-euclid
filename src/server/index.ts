@@ -1,3 +1,7 @@
+import { UserAvatars } from "./user-avatars";
+import { userAvatarRouter } from "./user-avatar-routes";
+import { EMPTY_CHALLENGE_SPOTLIGHTS } from "../shared/challenge-spotlights";
+import { challengeRouter } from "./challenge-routes";
 import express, { type Response } from "express";
 import { randomUUID } from "node:crypto";
 import type {
@@ -51,6 +55,23 @@ const router = express.Router();
 const h2hStore = new H2HStore(redis);
 const h2hSettlements = new H2HSettlementService(redis);
 const soloStore = new SoloStore(redis);
+
+async function challengeModerator(): Promise<string | null> {
+  const userId = context.userId;
+  const subredditName = context.subredditName;
+  if (!userId || !subredditName) return null;
+  const username = await reddit.getCurrentUsername();
+  if (!username) return null;
+  const moderators = await reddit
+    .getModerators({ subredditName, username, limit: 1 })
+    .all();
+  return moderators.some(
+    (m) => m.username.toLowerCase() === username.toLowerCase(),
+  )
+    ? userId
+    : null;
+}
+router.use("/api/challenge-lab", challengeRouter(redis, challengeModerator));
 
 /* =========================
    UTIL / CONSTANTS
@@ -125,6 +146,9 @@ function parseStringArray(raw: string | null | undefined): string[] {
 
 const NAMEKEY = (uid: string) => `euclid:name:${uid}`;
 const AVAKEY = (uid: string) => `euclid:avatar:${uid}`;
+const userAvatars = new UserAvatars(redis, (username) =>
+  reddit.getSnoovatarUrl(username),
+);
 
 // Legacy/H2H Elo. Trustworthy solo Ranked data uses the versioned SoloStore.
 const PLAYERS_KEY = () => "euclid:players:hvh";
@@ -205,10 +229,8 @@ async function refreshCurrentUserProfile(
 
   let avatar = (await redis.get(AVAKEY(uid))) ?? "";
   try {
-    const currentUser = await reddit.getCurrentUser();
-    const latestAvatar = (await currentUser?.getSnoovatarUrl()) ?? "";
-    if (latestAvatar) {
-      avatar = latestAvatar;
+    if (name) {
+      avatar = (await userAvatars.get(name)) ?? "";
       await redis.set(AVAKEY(uid), avatar);
     }
   } catch (error: unknown) {
@@ -666,6 +688,12 @@ function sendShareError(
 /* =========================
    BASIC ROUTES
    ========================= */
+router.use("/api/users", userAvatarRouter(userAvatars));
+
+router.get("/api/challenge-spotlights", (_req, res) => {
+  res.json(EMPTY_CHALLENGE_SPOTLIGHTS);
+});
+
 router.get<
   { postId: string },
   InitResponse | { status: string; message: string }
@@ -699,6 +727,9 @@ router.get<
 
     res.json({
       type: "init",
+      canManageChallenges: await challengeModerator()
+        .then(Boolean)
+        .catch(() => false),
       postId,
       username,
       appVersion,
