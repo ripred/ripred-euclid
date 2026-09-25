@@ -266,11 +266,13 @@ html.euclid-inline,
   .euclid-preview {
     padding: 10px;
   }
+  /* The 1.6 : 1 split leaves the story too narrow for the wordmark here. */
   .preview {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 10px 12px;
   }
   .preview__brand .wordmark__text {
-    font-size: var(--fs-xl);
+    font-size: var(--fs-lg);
   }
   .preview__brand .brand-mark {
     width: 30px !important;
@@ -278,6 +280,14 @@ html.euclid-inline,
   }
   .preview__side {
     padding: 10px 12px;
+  }
+  /* Tighter chips keep both scores on one row, leaving height for the caption. */
+  .preview__brand .score-chips {
+    gap: 4px;
+  }
+  .preview__brand .score-chip {
+    gap: 4px;
+    padding: 0 8px 0 4px;
   }
   .preview-caption__title {
     font-size: var(--fs-md);
