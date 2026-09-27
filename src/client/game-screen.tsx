@@ -25,9 +25,9 @@ import {
   BOARD_BLEED,
   ownerAt,
   ownerName,
+  pointIndex,
   pointLabel,
-  squaresWithCorner,
-  type BoardHint,
+  squareHints,
   type BoardMarker,
   type BoardSquareShape,
   type Owner,
@@ -322,14 +322,13 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     ...freshShapes(layers[0]!.active, 1, scoreFeedback?.id ?? "none"),
     ...freshShapes(layers[1]!.active, 2, scoreFeedback?.id ?? "none"),
   ];
-  const footprints =
-    board.scoring === "bbox" && scoreFeedback
-      ? scoreFeedback.footprintBounds.map((bounds, index) => ({
-          key: `${scoreFeedback.id}-footprint-${index}`,
-          owner: (scoreFeedback.player + 1) as Owner,
-          ...bounds,
-        }))
-      : [];
+  const footprints = scoreFeedback
+    ? scoreFeedback.footprintBounds.map((bounds, index) => ({
+        key: `${scoreFeedback.id}-footprint-${index}`,
+        owner: (scoreFeedback.player + 1) as Owner,
+        ...bounds,
+      }))
+    : [];
   const footprintSize = footprints[0]
     ? `${footprints[0].width}×${footprints[0].height}`
     : null;
@@ -338,50 +337,13 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [previewIdx, setPreviewIdx] = useState<number | null>(null);
 
-  const { oneMoveTargets, twoMoveTargets } = useMemo(() => {
-    const one = new Set<number>();
-    const two = new Set<number>();
-    if (!assistOn || hoverIdx == null || myColor == null)
-      return { oneMoveTargets: one, twoMoveTargets: two };
-    const W = board.W,
-      H = board.H,
-      arr = board.m_board;
-    if (arr[hoverIdx] !== myColor)
-      return { oneMoveTargets: one, twoMoveTargets: two };
-    const opp = myColor === 1 ? 2 : 1;
-    const x0 = hoverIdx % W,
-      y0 = Math.floor(hoverIdx / W);
-
-    for (const corners of squaresWithCorner(W, H, x0, y0)) {
-      const indices = corners.map((p) => p.y * W + p.x);
-      const values = indices.map((index) => arr[index]);
-      // Any opponent piece in the corners blocks this square for us
-      if (values.some((value) => value === undefined || value === opp))
-        continue;
-      const open = indices.filter((_, i) => values[i] === 0);
-      if (open.length === 1) open.forEach((index) => one.add(index));
-      else if (open.length === 2) open.forEach((index) => two.add(index));
-    }
-    return { oneMoveTargets: one, twoMoveTargets: two };
-  }, [assistOn, hoverIdx, myColor, board.W, board.H, board.m_board]);
-
-  const hints: BoardHint[] =
-    myColor == null
-      ? []
-      : [
-          ...[...oneMoveTargets].map((index) => ({
-            index,
-            owner: myColor,
-            strength: "near" as const,
-          })),
-          ...[...twoMoveTargets]
-            .filter((index) => !oneMoveTargets.has(index))
-            .map((index) => ({
-              index,
-              owner: myColor,
-              strength: "far" as const,
-            })),
-        ];
+  const hints = useMemo(
+    () =>
+      assistOn && hoverIdx != null && myColor != null
+        ? squareHints(board.m_board, board.W, board.H, hoverIdx, myColor)
+        : [],
+    [assistOn, hoverIdx, myColor, board.W, board.H, board.m_board],
+  );
   const assistShowing = assistOn && hoverIdx !== null && hints.length > 0;
 
   const clearHover = () => {
@@ -399,7 +361,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       const rect = grid.getBoundingClientRect();
       const tx = Math.floor((touch.clientX - rect.left) / cell);
       const ty = Math.floor((touch.clientY - rect.top) / cell);
-      const idx = ty * board.W + tx;
+      const idx = pointIndex(tx, ty, board.W);
       if (
         tx >= 0 &&
         tx < board.W &&
@@ -439,7 +401,10 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   });
   // Every placement path clicks at once; the server still decides the move.
   const place = (x: number, y: number) => {
-    if (placingSide && ownerAt(board.m_board, y * board.W + x) === 0) {
+    if (
+      placingSide &&
+      ownerAt(board.m_board, pointIndex(x, y, board.W)) === 0
+    ) {
       tapSound(placingSide);
     }
     onCellClick(x, y);
@@ -458,7 +423,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const liveAimIdx = boardInput.aimIndex;
 
   const lastIndex =
-    board.m_last.x >= 0 ? board.m_last.y * board.W + board.m_last.x : -1;
+    board.m_last.x >= 0
+      ? pointIndex(board.m_last.x, board.m_last.y, board.W)
+      : -1;
   const lastOwner = lastIndex >= 0 ? ownerAt(board.m_board, lastIndex) : 0;
   const markers: BoardMarker[] = [];
   if (lastOwner) {

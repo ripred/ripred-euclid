@@ -32,15 +32,23 @@ import {
   type RedisCasWrite,
   type RedisMultiCasDecision,
 } from "./redis-cas";
+import { asCount, isCount, isNonBlankString, isRecord } from "../shared/guards";
+import { parseJson, readStringList, uniqueStrings } from "./stored-json";
+
+/*
+ * Match keys live under a versioned namespace; games saved in the earlier,
+ * unversioned keys are no longer read. Ratings live elsewhere and carry over.
+ */
+const H2H_GAMES = "euclid:h2h:v2";
 
 export const H2H_STORE_KEYS = Object.freeze({
-  queue: "euclid:queue_json",
-  activeGames: "euclid:active_games",
-  pendingSettlements: "euclid:h2h:settlement:pending",
-  game: (gameId: string) => `euclid:game:${gameId}`,
+  queue: `${H2H_GAMES}:queue`,
+  activeGames: `${H2H_GAMES}:active-games`,
+  pendingSettlements: `${H2H_GAMES}:settlement:pending`,
+  game: (gameId: string) => `${H2H_GAMES}:game:${gameId}`,
   result: (gameId: string, terminalRevision: number) =>
-    `euclid:h2h:result:${gameId}:${terminalRevision}`,
-  userGame: (userId: string) => `euclid:user:${userId}:game`,
+    `${H2H_GAMES}:result:${gameId}:${terminalRevision}`,
+  userGame: (userId: string) => `${H2H_GAMES}:user:${userId}:game`,
   chatLast: (userId: string) => `euclid:chat:last:${userId}`,
   creationBudget: (userId: string) => `euclid:h2h:creation-budget:${userId}`,
 });
@@ -187,7 +195,7 @@ type QueueDiscovery = {
 };
 
 function requireIdentifier(value: string, field: string): void {
-  if (!value || !value.trim()) {
+  if (!isNonBlankString(value)) {
     throw new H2HStoreError(
       "invalid_identifier",
       `${field} must be a non-empty string.`,
@@ -196,7 +204,7 @@ function requireIdentifier(value: string, field: string): void {
 }
 
 function requireRevision(value: number): void {
-  if (!Number.isSafeInteger(value) || value < 0) {
+  if (!isCount(value)) {
     throw new H2HDomainError(
       "invalid_request",
       "expectedRevision must be a non-negative safe integer.",
@@ -206,8 +214,7 @@ function requireRevision(value: number): void {
 
 function parseTimestamp(raw: string | undefined): number | null {
   if (raw === undefined || raw.trim() === "") return null;
-  const value = Number(raw);
-  return Number.isSafeInteger(value) && value >= 0 ? value : null;
+  return asCount(Number(raw));
 }
 
 function stableSerialize(value: unknown): string {
@@ -294,42 +301,12 @@ function monotonicTimestamp(
   return Math.max(candidate, floor);
 }
 
-function parseStringList(raw: string | undefined): string[] {
-  if (!raw) return [];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) &&
-      parsed.every((value) => typeof value === "string")
-      ? parsed
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function uniqueStrings(values: readonly string[]): string[] {
-  return [...new Set(values.filter((value) => value.length > 0))];
-}
-
 function serializeList(values: readonly string[]): string {
   return JSON.stringify(uniqueStrings(values));
 }
 
-function parseJson(raw: string | undefined): unknown {
-  if (!raw) return undefined;
-  try {
-    return JSON.parse(raw) as unknown;
-  } catch {
-    return undefined;
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function requireSettlementInteger(value: unknown, field: string): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+  if (!isCount(value)) {
     throw new H2HSettlementDataError(
       `${field} must be a non-negative safe integer.`,
     );
@@ -633,7 +610,7 @@ function writeTerminalResult(
     state.board,
   );
   const active = uniqueStrings(
-    parseStringList(snapshot.get(H2H_STORE_KEYS.activeGames)),
+    readStringList(snapshot.get(H2H_STORE_KEYS.activeGames)),
   );
   const removed = removeActiveGame(active, state.gameId);
   if (removed.removed) {
@@ -782,9 +759,7 @@ export class H2HStore {
   async isQueued(userId: string): Promise<boolean> {
     requireIdentifier(userId, "userId");
     const queue = uniqueStrings(
-      parseStringList(
-        (await this.redis.get(H2H_STORE_KEYS.queue)) ?? undefined,
-      ),
+      readStringList((await this.redis.get(H2H_STORE_KEYS.queue)) ?? undefined),
     );
     return queue.includes(userId);
   }
@@ -882,7 +857,7 @@ export class H2HStore {
       this.redis,
       H2H_STORE_KEYS.queue,
       (raw) => {
-        const queue = uniqueStrings(parseStringList(raw));
+        const queue = uniqueStrings(readStringList(raw));
         const next = queue.filter((candidate) => candidate !== userId);
         return sameList(queue, next)
           ? { action: "no-change", result: false }
@@ -1101,7 +1076,7 @@ export class H2HStore {
               }
               deleteWrite(writes, gameKey);
               const active = uniqueStrings(
-                parseStringList(snapshot.get(H2H_STORE_KEYS.activeGames)),
+                readStringList(snapshot.get(H2H_STORE_KEYS.activeGames)),
               );
               const removed = removeActiveGame(active, request.gameId);
               if (removed.removed) {
@@ -1282,7 +1257,7 @@ export class H2HStore {
           );
           setWrite(writes, gameKey, JSON.stringify(rematchState.board));
           const active = uniqueStrings(
-            parseStringList(snapshot.get(H2H_STORE_KEYS.activeGames)),
+            readStringList(snapshot.get(H2H_STORE_KEYS.activeGames)),
           );
           setWrite(
             writes,
@@ -1428,7 +1403,7 @@ export class H2HStore {
           }
 
           const active = uniqueStrings(
-            parseStringList(snapshot.get(H2H_STORE_KEYS.activeGames)),
+            readStringList(snapshot.get(H2H_STORE_KEYS.activeGames)),
           );
           const removed = removeActiveGame(active, gameId);
           const writes = new Map<string, RedisCasWrite>();
@@ -1557,7 +1532,7 @@ export class H2HStore {
 
   async listLiveGames(): Promise<H2HLiveGameSummary[]> {
     const active = uniqueStrings(
-      parseStringList(
+      readStringList(
         (await this.redis.get(H2H_STORE_KEYS.activeGames)) ?? undefined,
       ),
     );
@@ -1590,7 +1565,6 @@ export class H2HStore {
         revision: state.revision,
         width: state.board.W,
         height: state.board.H,
-        scoring: state.board.scoring,
         winScore: state.board.winScore,
       });
     }
@@ -1602,9 +1576,7 @@ export class H2HStore {
   // graph first so the following CAS watches every key that may affect pairing.
   private async discoverQueueKeys(userId: string): Promise<QueueDiscovery> {
     const queue = uniqueStrings(
-      parseStringList(
-        (await this.redis.get(H2H_STORE_KEYS.queue)) ?? undefined,
-      ),
+      readStringList((await this.redis.get(H2H_STORE_KEYS.queue)) ?? undefined),
     );
     const userIds = uniqueStrings([...queue, userId]);
     const mappingKeys = userIds.map(H2H_STORE_KEYS.userGame);
@@ -1650,7 +1622,7 @@ export class H2HStore {
     now: number,
   ): RedisMultiCasDecision<QueueAttemptResult> {
     const queue = uniqueStrings(
-      parseStringList(snapshot.get(H2H_STORE_KEYS.queue)),
+      readStringList(snapshot.get(H2H_STORE_KEYS.queue)),
     );
     if (
       queue.some(
@@ -1679,7 +1651,7 @@ export class H2HStore {
 
     const writes = new Map<string, RedisCasWrite>();
     let active = uniqueStrings(
-      parseStringList(snapshot.get(H2H_STORE_KEYS.activeGames)),
+      readStringList(snapshot.get(H2H_STORE_KEYS.activeGames)),
     );
     let callerEligible = !callerGameId;
     let resumedState: H2HCanonicalStateSnapshot | null = null;

@@ -1,4 +1,3 @@
-export const PREVIEW_ONBOARDING_KEY = "euclid_launch_onboarding_seen";
 export const FULL_TUTORIAL_KEY = "euclid_first_play";
 
 interface OnboardingStorage {
@@ -12,8 +11,12 @@ function getBrowserOnboardingStorage(): OnboardingStorage {
   return window.localStorage;
 }
 
+/**
+ * Only finishing or dismissing the in-game tutorial counts. The splash's rules
+ * slide replays on its own in the rotation, so reaching its end says nothing
+ * about whether anyone watched it.
+ */
 export interface TutorialCompletionState {
-  previewDemoCompleted: boolean;
   fullTutorialCompleted: boolean;
   completedThisSession: boolean;
 }
@@ -51,7 +54,6 @@ export function shouldShowFullTutorial(
   return (
     isGameMode &&
     !spectating &&
-    !completion.previewDemoCompleted &&
     !completion.fullTutorialCompleted &&
     !completion.completedThisSession
   );

@@ -56,9 +56,6 @@ function createFixture(options: SoloStoreOptions = {}): {
 }
 
 const PRACTICE_RULES: PracticeRulesInput = {
-  W: 4,
-  H: 4,
-  scoring: "bbox",
   winScore: 1,
   difficulty: "doofus",
   humanPlayer: 0,
@@ -166,7 +163,7 @@ describe("request allocation protections", () => {
 
   it("rejects exhausted work budgets before loading a game, including retries", async () => {
     const { redis, store } = createFixture();
-    const rules = { ...PRACTICE_RULES, W: 16, H: 16 };
+    const rules = PRACTICE_RULES;
     const started = await startPractice(store, "practice-start", rules);
     const move = moveRequest(started.snapshot, "initial-move");
     await store.move("owner", move);
@@ -552,7 +549,7 @@ describe("SoloStore start and ownership", () => {
       first.snapshot.gameId,
     );
     expect(
-      redis.keys().filter((key) => key.startsWith("euclid:solo:v1:game:")),
+      redis.keys().filter((key) => key.startsWith(SOLO_STORE_KEYS.game(""))),
     ).toHaveLength(1);
 
     await expect(store.getActiveRanked("owner")).resolves.toMatchObject({

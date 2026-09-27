@@ -17,6 +17,7 @@ import {
   soloTerminalResult,
   validateSoloStartRequest,
   withSoloRating,
+  SOLO_SCHEMA_VERSION,
 } from "./solo";
 
 const START = 2_000_000_000_000;
@@ -45,9 +46,6 @@ function practice(
     ownerId: "human-1",
     privateSeed: "private-practice-seed",
     rules: validatePracticeRules({
-      W: 4,
-      H: 4,
-      scoring: "bbox",
       winScore: options.winScore ?? 20,
       difficulty: options.difficulty ?? "doofus",
       humanPlayer: options.humanPlayer ?? 0,
@@ -120,36 +118,25 @@ describe("solo request and rules validation", () => {
     const validated = validateSoloStartRequest({
       mode: "practice",
       commandId: "start-2",
-      rules: {
-        W: 4,
-        H: 6,
-        scoring: "true",
-        winScore: 10,
-        difficulty: "coffee",
-      },
+      rules: { winScore: 10, difficulty: "coffee" },
     });
+    // Practice is always played on the standard board.
     expect(validated.rules).toMatchObject({
       mode: "practice",
       rulesVersion: SOLO_RULES_VERSION,
-      W: 4,
-      H: 6,
+      W: 8,
+      H: 8,
       difficulty: "coffee",
     });
 
-    expect(() =>
-      validateSoloStartRequest({
-        mode: "practice",
-        commandId: "start-2",
-        rules: {
-          W: 4,
-          H: 6,
-          scoring: "true",
-          winScore: 10,
-          difficulty: "coffee",
-          trustedScore: true,
-        },
-      }),
-    ).toThrow("unknown field");
+    for (const extra of [{ trustedScore: true }, { W: 4 }, { scoring: "true" }])
+      expect(() =>
+        validateSoloStartRequest({
+          mode: "practice",
+          commandId: "start-2",
+          rules: { winScore: 10, difficulty: "coffee", ...extra },
+        }),
+      ).toThrow("unknown field");
   });
 
   it.each([
@@ -169,7 +156,7 @@ describe("canonical solo creation and deterministic turns", () => {
 
     expect(first).toEqual(second);
     expect(first).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: SOLO_SCHEMA_VERSION,
       revision: 0,
       status: "active",
       humanMoveCount: 0,
@@ -454,11 +441,17 @@ describe("abandonment and canonical terminal results", () => {
   });
 
   it("completes from canonical moves and does not expose an AI win for sharing", () => {
-    let record = practice({ winScore: 4 }).record;
+    // Filling points in reading order loses when Euclid moves first.
+    let record = practice({
+      winScore: 4,
+      difficulty: "beginner",
+      humanPlayer: 1,
+      firstPlayer: 0,
+    }).record;
     let sequence = 1;
     while (record.status === "active") {
       record = makeHumanMove(record, sequence++).record;
-      if (sequence > 20) throw new Error("Expected a 4x4 game to terminate.");
+      if (sequence > 64) throw new Error("Expected the game to terminate.");
     }
 
     expect(record.status).toBe("completed");

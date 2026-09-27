@@ -4,6 +4,7 @@ import {
   GAME_STATES,
   RANKED_SOLO_RULES,
   SOLO_RULES_VERSION,
+  STANDARD_BOARD,
   type PracticeRules,
 } from "../shared/game/rules";
 import type { SharePlayer, SoloSessionSnapshot } from "../shared/types/api";
@@ -25,9 +26,7 @@ import {
 const PRACTICE_RULES: PracticeRules = {
   rulesVersion: SOLO_RULES_VERSION,
   mode: "practice",
-  W: 4,
-  H: 4,
-  scoring: "bbox",
+  ...STANDARD_BOARD,
   winScore: 5,
   humanPlayer: 1,
   firstPlayer: 1,
@@ -58,7 +57,6 @@ function boardFor(
   return {
     W: rules.W,
     H: rules.H,
-    scoring: rules.scoring,
     winScore: rules.winScore,
     m_board: new Array<number>(rules.W * rules.H).fill(0),
     m_players:
@@ -318,9 +316,6 @@ describe("solo request intents", () => {
       mode: "practice",
       commandId: "practice-start",
       rules: {
-        W: 4,
-        H: 4,
-        scoring: "bbox",
         winScore: 5,
         difficulty: "coffee",
         humanPlayer: 1,

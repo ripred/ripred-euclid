@@ -1,4 +1,5 @@
 import { squareCatalog } from "./game/geometry";
+import { isCount } from "./guards";
 
 export const CHALLENGE_SIZE = 8;
 export const CHALLENGE_VERSION = 1;
@@ -129,7 +130,7 @@ export function readChallengeOptions(value: unknown): ChallengeOptions {
   if (
     !Array.isArray(o.blockedPoints) ||
     o.blockedPoints.length > blockedCount ||
-    o.blockedPoints.some((p) => !Number.isSafeInteger(p) || p < 0 || p >= 64) ||
+    o.blockedPoints.some((p) => !isCount(p) || p >= CHALLENGE_SIZE ** 2) ||
     new Set(o.blockedPoints).size !== o.blockedPoints.length
   )
     throw new ChallengeError(

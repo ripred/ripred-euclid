@@ -127,8 +127,7 @@ export function HowToPlay({ layout = "list" }: { layout?: "list" | "strip" }) {
       </ol>
       <p className="how-to-play__finish">
         <strong>First to the target wins.</strong> If the board fills first, the
-        higher score wins. Practice games can use True Area scoring instead,
-        which counts a square's real area.
+        higher score wins.
       </p>
     </div>
   );

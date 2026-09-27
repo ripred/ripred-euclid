@@ -1,5 +1,5 @@
-import { squareFromEdge } from "./geometry";
-import { scoreSquareCorners } from "../scoring";
+import { emptyCells, pointIndex, squareFromEdge } from "./geometry";
+import { scoreGridFootprint } from "../scoring";
 import type {
   SerializableBoard,
   SharePlayer,
@@ -22,7 +22,6 @@ export type BoardChat = NonNullable<SerializableBoard["chat"]>;
 export interface BoardOptions {
   W?: number;
   H?: number;
-  scoring?: SerializableBoard["scoring"];
   winScore?: number;
   skipInit?: boolean;
   rng?: RandomSource;
@@ -146,7 +145,6 @@ export class Board {
 
   W: number;
   H: number;
-  scoring: SerializableBoard["scoring"];
   winScore: number;
 
   m_board: number[] = [];
@@ -171,7 +169,6 @@ export class Board {
     const rawH = Math.max(4, Math.min(16, opts.H ?? rawW));
     this.W = rawW - (rawW % 2);
     this.H = rawH - (rawH % 2);
-    this.scoring = opts.scoring ?? "bbox";
     this.winScore = Math.max(1, Math.floor(opts.winScore ?? 150));
     this.m_players = [p1, p2];
     this.m_last = new Point(-1, -1, -1);
@@ -180,7 +177,7 @@ export class Board {
   }
 
   initGame(): void {
-    this.m_board = new Array<number>(this.W * this.H).fill(0);
+    this.m_board = emptyCells(this.W, this.H);
     this.m_history = [];
     this.m_turn = 0;
     this.m_displayed_game_over = false;
@@ -191,7 +188,7 @@ export class Board {
   }
 
   pointAt(x: number, y: number): Point {
-    return new Point(x, y, y * this.W + x);
+    return new Point(x, y, pointIndex(x, y, this.W));
   }
 
   private cellAt(index: number): number {
@@ -215,7 +212,7 @@ export class Board {
   }
 
   private scoreSquare(p1: Point, p2: Point, p3: Point, p4: Point): number {
-    return scoreSquareCorners([p1, p2, p3, p4], this.scoring);
+    return scoreGridFootprint([p1, p2, p3, p4]);
   }
 
   analyze(move: Point, potential: Square[] | null): number {
@@ -236,8 +233,8 @@ export class Board {
       const edge = squareFromEdge(this.W, this.H, x, y, col, row);
       if (!edge) continue;
       const [{ x: x1, y: y1 }, { x: x2, y: y2 }] = edge;
-      const v1 = this.cellAt(y * this.W + x);
-      const v2 = this.cellAt(row * this.W + col);
+      const v1 = this.cellAt(pointIndex(x, y, this.W));
+      const v2 = this.cellAt(pointIndex(col, row, this.W));
       const v3 = this.cellAt(y1 * this.W + x1);
       const v4 = this.cellAt(y2 * this.W + x2);
       if (v1 === other || v2 === other || v3 === other || v4 === other) {
@@ -304,8 +301,8 @@ export class Board {
         const edge = squareFromEdge(this.W, this.H, x, y, col, row);
         if (!edge) continue;
         const [{ x: x1, y: y1 }, { x: x2, y: y2 }] = edge;
-        const v1 = this.cellAt(y * this.W + x);
-        const v2 = this.cellAt(row * this.W + col);
+        const v1 = this.cellAt(pointIndex(x, y, this.W));
+        const v2 = this.cellAt(pointIndex(col, row, this.W));
         const v3 = this.cellAt(y1 * this.W + x1);
         const v4 = this.cellAt(y2 * this.W + x2);
         if (v1 === other || v2 === other || v3 === other || v4 === other) {
@@ -638,7 +635,6 @@ export class Board {
     return {
       W: this.W,
       H: this.H,
-      scoring: this.scoring,
       winScore: this.winScore,
       m_board: this.m_board,
       m_players: this.m_players,
@@ -677,7 +673,6 @@ export class Board {
       {
         W: source.W,
         H: source.H,
-        scoring: source.scoring,
         winScore: source.winScore,
         skipInit: true,
         rng,

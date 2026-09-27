@@ -35,11 +35,11 @@ import type {
 import { Board, isBoardValid } from "../shared/game/engine";
 import {
   AI_DIFFICULTY_LABELS,
+  STANDARD_WIN_SCORE,
   type AiDifficulty,
   type PlayerColor,
   type SoloMode,
 } from "../shared/game/rules";
-import { recommendedWinTarget, totalSquareScore } from "../shared/scoring";
 import {
   getH2HExitAction,
   getH2HResultPresentation,
@@ -72,7 +72,6 @@ import { Icon } from "./ui/Icon";
 import {
   FULL_TUTORIAL_KEY,
   hasStoredCompletion,
-  PREVIEW_ONBOARDING_KEY,
   shouldShowFullTutorial,
   storeCompletion,
 } from "./onboarding";
@@ -83,12 +82,12 @@ import {
 } from "./theme";
 import { ResultShareView } from "./share-preview";
 import { fetchRankings, type LoadedRankings } from "./rankings-loader";
-import { errorMessage } from "./error-message";
+import { errorMessage } from "../shared/error-message";
 import {
-  readPracticeDifficulty,
-  savePracticeDifficulty,
+  readPracticePreferences,
+  savePracticePreferences,
 } from "./solo-preferences";
-import { isRecord } from "./fetch-json";
+import { isRecord } from "../shared/guards";
 import { useLiveGames } from "./live-games";
 import {
   WatchActions,
@@ -143,6 +142,7 @@ import {
   saveSoundPreference,
 } from "./sound/engine";
 import { SoundContext } from "./sound/use-sounds";
+import { pointIndex } from "../shared/game/geometry";
 
 const HUMAN_VS_EUCLID_LABEL = "Redditor vs Euclid";
 const EUCLID_LABEL = "Euclid";
@@ -332,29 +332,25 @@ export const App = ({
     return () => window.clearTimeout(timer);
   }, [activeScoreFeedback]);
 
-  // Remember practice preferences; ranked and resumed games use server rules.
+  // Practice starts from the setup saved on this device, which the splash's
+  // Options panel also edits; ranked and resumed games use server rules.
+  const [savedPractice] = useState(readPracticePreferences);
   const [selectedDifficulty, setSelectedDifficulty] = useState<AiDifficulty>(
-    readPracticeDifficulty,
+    savedPractice.difficulty,
   );
-  useEffect(() => {
-    savePracticeDifficulty(selectedDifficulty);
-  }, [selectedDifficulty]);
   const [soloMode, setSoloMode] = useState<SoloMode>("practice");
 
-  // Independent W/H (even); the setup screen owns the allowed sizes.
-  const [boardW, setBoardW] = useState<number>(8);
-  const [boardH, setBoardH] = useState<number>(8);
-
-  const [scoringMode, setScoringMode] = useState<"bbox" | "true">("bbox");
-
   // Assist highlights toggle
-  const [assistOn, setAssistOn] = useState<boolean>(false);
+  const [assistOn, setAssistOn] = useState<boolean>(savedPractice.assist);
+  useEffect(() => {
+    savePracticePreferences({
+      difficulty: selectedDifficulty,
+      assist: assistOn,
+    });
+  }, [selectedDifficulty, assistOn]);
 
-  // Setup guidance pairs the board's score ceiling with a target scaled from
-  // the classic 8x8 first-to-150 game.
-  const [bestCase, setBestCase] = useState<number>(0);
-  const [recommended, setRecommended] = useState<number>(150);
-  const [winScore, setWinScore] = useState<number>(150);
+  // Practice may play to another target on the standard board.
+  const [winScore, setWinScore] = useState<number>(STANDARD_WIN_SCORE);
   const soloStartIntentKey = useMemo(
     () =>
       createSoloStartIntentKey(
@@ -363,15 +359,12 @@ export const App = ({
           : {
               mode: "practice",
               rules: {
-                W: boardW,
-                H: boardH,
-                scoring: scoringMode,
                 winScore,
                 difficulty: selectedDifficulty,
               },
             },
       ),
-    [boardH, boardW, scoringMode, selectedDifficulty, soloMode, winScore],
+    [selectedDifficulty, soloMode, winScore],
   );
 
   const [status, setStatus] = useState<string>("");
@@ -626,13 +619,11 @@ export const App = ({
   const [tutorialCompletedThisSession, setTutorialCompletedThisSession] =
     useState(false);
   useEffect(() => {
-    const previewOnboardingSeen = hasStoredCompletion(PREVIEW_ONBOARDING_KEY);
     const fullTutorialCompleted = hasStoredCompletion(FULL_TUTORIAL_KEY);
     setShowTutorial(
       shouldShowFullTutorial(
         mode,
         {
-          previewDemoCompleted: previewOnboardingSeen,
           fullTutorialCompleted,
           completedThisSession: tutorialCompletedThisSession,
         },
@@ -701,17 +692,6 @@ export const App = ({
       active = false;
     };
   }, []);
-  // Scale the recommended target from the 8×8 first-to-150 baseline.
-  useEffect(() => {
-    const W = boardW - (boardW % 2);
-    const H = boardH - (boardH % 2);
-    const cur = totalSquareScore(W, H, scoringMode);
-    const rec = recommendedWinTarget(W, H, scoringMode);
-    setBestCase(cur);
-    setRecommended(rec);
-    setWinScore(rec); // auto-adjust; user can override afterward
-  }, [boardW, boardH, scoringMode]);
-
   const returnFromSolo = useCallback(() => {
     // Every solo exit changes the authoritative saved-game/record summary.
     // Refresh those home cards as part of the transition instead of relying
@@ -786,13 +766,7 @@ export const App = ({
       soloMode === "ranked"
         ? createRankedSoloStartIntent(commandId)
         : createPracticeSoloStartIntent(
-            {
-              W: boardW,
-              H: boardH,
-              scoring: scoringMode,
-              winScore,
-              difficulty: selectedDifficulty,
-            },
+            { winScore, difficulty: selectedDifficulty },
             commandId,
           );
 
@@ -847,11 +821,7 @@ export const App = ({
         soloStartCommandRef.current = null;
       }
       enqueueScoreFeedback(
-        normalizeSoloScoreFeedback(
-          payload.snapshot.gameId,
-          payload.events,
-          payload.snapshot.board.scoring,
-        ),
+        normalizeSoloScoreFeedback(payload.snapshot.gameId, payload.events),
       );
       return true;
     } catch (error) {
@@ -867,13 +837,10 @@ export const App = ({
     }
   }, [
     adoptSoloSnapshot,
-    boardH,
-    boardW,
     returnFromSolo,
     clearScoreFeedback,
     enqueueScoreFeedback,
     homeSolo,
-    scoringMode,
     selectedDifficulty,
     soloMode,
     soloStartIntentKey,
@@ -941,11 +908,7 @@ export const App = ({
 
         if (adoptedSnapshot) {
           enqueueScoreFeedback(
-            normalizeSoloScoreFeedback(
-              payload.snapshot.gameId,
-              payload.events,
-              payload.snapshot.board.scoring,
-            ),
+            normalizeSoloScoreFeedback(payload.snapshot.gameId, payload.events),
           );
         }
         return true;
@@ -2783,16 +2746,8 @@ export const App = ({
         onSoloModeChange={setSoloMode}
         difficulty={selectedDifficulty}
         onDifficultyChange={setSelectedDifficulty}
-        width={boardW}
-        height={boardH}
-        onWidthChange={setBoardW}
-        onHeightChange={setBoardH}
-        scoring={scoringMode}
-        onScoringChange={setScoringMode}
         winScore={winScore}
         onWinScoreChange={setWinScore}
-        bestCase={bestCase}
-        recommended={recommended}
         assistOn={assistOn}
         onAssistChange={setAssistOn}
         appVersion={initState?.appVersion || "loading"}
@@ -3368,7 +3323,7 @@ export const App = ({
     const onCellClick = (x: number, y: number) => {
       if (!board || !gameIdRef.current) return;
       if (spectating) return;
-      const cell = board.m_board[y * board.W + x];
+      const cell = board.m_board[pointIndex(x, y, board.W)];
       if (
         !isMyTurn ||
         cell === undefined ||
@@ -3663,7 +3618,7 @@ export const App = ({
     );
     const soloScoreFeedback = soloScoreFeedbackQueue[0] ?? null;
     const onCellClick = (x: number, y: number) => {
-      const cell = board.m_board[y * board.W + x];
+      const cell = board.m_board[pointIndex(x, y, board.W)];
       if (
         !isSoloHumanTurn(soloSnapshot) ||
         soloPending !== null ||

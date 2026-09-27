@@ -1,15 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { SOLO_RULES_VERSION, type PracticeRules } from "../shared/game/rules";
+import {
+  SOLO_RULES_VERSION,
+  STANDARD_BOARD,
+  type PracticeRules,
+} from "../shared/game/rules";
 import type { SerializableBoard, SharePlayer } from "../shared/types/api";
 import { buildReplayFrames } from "./share-replay-model";
 
 const PLAYER_TWO_FIRST_RULES: PracticeRules = {
   rulesVersion: SOLO_RULES_VERSION,
   mode: "practice",
-  W: 4,
-  H: 4,
-  scoring: "bbox",
+  ...STANDARD_BOARD,
   winScore: 5,
   humanPlayer: 1,
   firstPlayer: 1,
@@ -33,7 +35,6 @@ function replayFixture(playerTwoFirst: boolean): SerializableBoard {
   return {
     W: 4,
     H: 4,
-    scoring: "bbox",
     winScore: 5,
     m_board: [...owners, ...new Array<number>(13).fill(0)],
     m_players: [player("player-one"), player("player-two")],

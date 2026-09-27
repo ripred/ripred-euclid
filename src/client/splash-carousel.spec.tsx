@@ -191,7 +191,10 @@ describe("splash carousel", () => {
     await mount();
     await click("Show Weekly winner");
     const weekly = host.querySelector('[data-slide="weekly"]')!;
-    expect(weekly.textContent).toContain("Last week’s weekly challenge");
+    expect(weekly.querySelector(".preview-panel__kicker")?.textContent).toBe(
+      "Weekly Challenge Winner",
+    );
+    expect(weekly.textContent).toContain("Last week’s puzzle");
     expect(weekly.textContent).toContain("0:42.7");
     expect(weekly.textContent).toContain("12 daily wins");
     expect(weekly.textContent).toContain("3 weekly wins");
@@ -207,8 +210,8 @@ describe("splash carousel", () => {
     await click("Show Daily winner");
     const daily = host.querySelector('[data-slide="daily"] .splash-winner')!;
     const weekly = host.querySelector('[data-slide="weekly"] .splash-winner')!;
-    expect(daily.classList.contains("splash-winner--live")).toBe(true);
-    expect(weekly.classList.contains("splash-winner--live")).toBe(false);
+    expect(daily.classList.contains("splash-scene--live")).toBe(true);
+    expect(weekly.classList.contains("splash-scene--live")).toBe(false);
     // One piece per move, and the final time is announced, not the count.
     expect(daily.querySelectorAll(".splash-winner__pieces svg")).toHaveLength(
       2,
@@ -228,11 +231,78 @@ describe("splash carousel", () => {
     await mount();
     await click("Show Daily winner");
     const daily = host.querySelector('[data-slide="daily"] .splash-winner')!;
-    expect(daily.classList.contains("splash-winner--live")).toBe(false);
+    expect(daily.classList.contains("splash-scene--live")).toBe(false);
     await advance(100);
     expect(
       daily.querySelector(".splash-winner__stat dd.num")?.textContent,
     ).toBe("0:18.4");
+  });
+
+  it("celebrates standings and winners with falling confetti, and invites a move", async () => {
+    await mount();
+    for (const slide of ["leaderboard", "daily", "weekly"])
+      expect(
+        host.querySelectorAll(
+          `[data-slide="${slide}"] .splash-confetti > span`,
+        ),
+      ).toHaveLength(16);
+    expect(host.querySelectorAll("[data-slide] .splash-confetti")).toHaveLength(
+      3,
+    );
+    await click("Show Leaderboard");
+    const standings = host.querySelector(
+      '[data-slide="leaderboard"] .splash-scene',
+    )!;
+    expect(standings.classList.contains("splash-scene--live")).toBe(true);
+    await click("Show Choose a game");
+    const play = host.querySelector('[data-slide="play"]')!;
+    expect(play.querySelector("h2")?.textContent).toBe("Two Ways to Play!");
+    expect(play.querySelectorAll(".board__marker--pending")).toHaveLength(1);
+  });
+
+  it("edits and saves game options in the post while the rotation holds", async () => {
+    localStorage.clear();
+    await mount();
+    await click("Options");
+    const dialog = host.querySelector('[role="dialog"]')!;
+    expect(dialog.getAttribute("aria-labelledby")).toBe("splash-options-title");
+    expect(document.activeElement?.id).toBe("splash-options-title");
+    expect(host.querySelector(".splash-carousel")?.hasAttribute("inert")).toBe(
+      true,
+    );
+    const hintPoints = () =>
+      dialog.querySelectorAll('[class*="board__point--hint-"]').length;
+    expect(hintPoints()).toBe(0);
+    // Turning hints on previews them on the stage's 8×8 showcase board.
+    await act(async () =>
+      dialog.querySelectorAll<HTMLInputElement>(".switch input")[0]!.click(),
+    );
+    expect(hintPoints()).toBeGreaterThan(0);
+    const slider =
+      dialog.querySelector<HTMLInputElement>("#splash-difficulty")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(slider, "8");
+      slider.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(JSON.parse(localStorage.getItem("euclid_practice_setup")!)).toEqual({
+      difficulty: "brutal",
+      assist: true,
+    });
+    expect(dialog.querySelector('[aria-label="Board width"]')).toBeNull();
+    expect(dialog.querySelector('[aria-label="Scoring"]')).toBeNull();
+    await advance(45000);
+    expect(active()).toBe("rules");
+    await act(async () => {
+      dialog.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement?.textContent).toBe("Options");
+    expect(requestExpandedMode).not.toHaveBeenCalled();
   });
 
   it("omits sample results and challenge choices when no contests are available", async () => {

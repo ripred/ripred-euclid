@@ -22,6 +22,7 @@ import { Dialog } from "./ui/Dialog";
 import "./challenge-screen.css";
 import { formatChallengeTime } from "./challenge-time";
 import { ChallengeTimer } from "./ChallengeTimer";
+import { Switch } from "./ui/Switch";
 
 type Action = "generate" | "restart" | "leave";
 const coordinates = (index: number) =>
@@ -335,22 +336,16 @@ export function ChallengeScreen({ onLeave }: { onLeave: () => void }) {
               Tilted includes diamonds. Oblique excludes aligned squares and 45°
               diamonds. Any valid square counts when playing.
             </p>
-            <label className="switch">
-              <input
-                type="checkbox"
-                checked={shared}
-                onChange={(e) => setShared(e.target.checked)}
-              />
-              <span>Require shared corner</span>
-            </label>
-            <label className="switch">
-              <input
-                type="checkbox"
-                checked={multiple}
-                onChange={(e) => setMultiple(e.target.checked)}
-              />
-              <span>Require multiple optimal solutions</span>
-            </label>
+            <Switch
+              label="Require shared corner"
+              checked={shared}
+              onChange={setShared}
+            />
+            <Switch
+              label="Require multiple optimal solutions"
+              checked={multiple}
+              onChange={setMultiple}
+            />
             <label className="field">
               <span className="field__label">Total blocked spots</span>
               <input

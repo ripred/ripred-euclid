@@ -1,8 +1,10 @@
 import { Board, Player } from "../shared/game/engine";
-import type {
-  GameOutcome,
-  PlayerColor,
-  PlayerIndex,
+import {
+  STANDARD_BOARD,
+  STANDARD_WIN_SCORE,
+  type GameOutcome,
+  type PlayerColor,
+  type PlayerIndex,
 } from "../shared/game/rules";
 import type {
   CanonicalBoardSnapshot,
@@ -16,14 +18,15 @@ import type {
   SharePoint,
   ShareSquare,
 } from "../shared/types/api";
+import { asCount, isNonBlankString, isRecord } from "../shared/guards";
+import { squareIndexKey } from "../shared/share-squares";
 
-export const H2H_SCHEMA_VERSION = 1;
+/** Version 2 dropped the scoring field when Grid Footprint became the only rule. */
+export const H2H_SCHEMA_VERSION = 2;
 
 export const H2H_RULES = Object.freeze({
-  W: 8,
-  H: 8,
-  scoring: "bbox" as const,
-  winScore: 150,
+  ...STANDARD_BOARD,
+  winScore: STANDARD_WIN_SCORE,
   rulesVersion: 1,
 });
 
@@ -92,10 +95,6 @@ type CanonicalEnd = {
 
 const deterministicRng = () => 0;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function hasOwn(source: Record<string, unknown>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(source, key);
 }
@@ -112,14 +111,8 @@ function reject(
   throw new H2HDomainError(code, message, state);
 }
 
-function nonNegativeInteger(value: unknown): number | null {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-    ? value
-    : null;
-}
-
 function requireNow(value: unknown): number {
-  const now = nonNegativeInteger(value);
+  const now = asCount(value);
   if (now === null) {
     return reject(
       "invalid_request",
@@ -130,7 +123,7 @@ function requireNow(value: unknown): number {
 }
 
 function requireIdentifier(value: unknown, field: string): string {
-  if (typeof value !== "string" || !value.trim()) {
+  if (!isNonBlankString(value)) {
     return reject("invalid_request", `${field} must be a non-empty string.`);
   }
   return value;
@@ -192,8 +185,8 @@ function normalizeSquare(value: unknown): ShareSquare | null {
   const p2 = normalizePoint(value.p2);
   const p3 = normalizePoint(value.p3);
   const p4 = normalizePoint(value.p4);
-  const points = nonNegativeInteger(value.points);
-  const remain = nonNegativeInteger(value.remain);
+  const points = asCount(value.points);
+  const remain = asCount(value.remain);
   const clr = value.clr;
   if (
     !p1 ||
@@ -213,13 +206,7 @@ function normalizeSquare(value: unknown): ShareSquare | null {
 }
 
 function squareSignature(square: ShareSquare): string {
-  const indices = [
-    square.p1.index,
-    square.p2.index,
-    square.p3.index,
-    square.p4.index,
-  ].sort((left, right) => left - right);
-  return `${indices.join(",")}|${square.clr}|${square.points}|${square.remain}`;
+  return `${squareIndexKey(square)}|${square.clr}|${square.points}|${square.remain}`;
 }
 
 function serializeSquare(square: ShareSquare): ShareSquare {
@@ -275,7 +262,7 @@ function normalizeChat(
     return invalidBoard("chat must contain a sequence and item list.");
   }
 
-  const seq = nonNegativeInteger(value.seq);
+  const seq = asCount(value.seq);
   if (seq === null) return invalidBoard("chat.seq must be non-negative.");
   if (value.items.length > H2H_CHAT_MAX_ITEMS) {
     return invalidBoard("The stored chat exceeds its item limit.");
@@ -284,8 +271,8 @@ function normalizeChat(
   let previousId = 0;
   const items: ShareChatItem[] = value.items.map((candidate) => {
     if (!isRecord(candidate)) return invalidBoard("A chat item is invalid.");
-    const id = nonNegativeInteger(candidate.id);
-    const ts = nonNegativeInteger(candidate.ts);
+    const id = asCount(candidate.id);
+    const ts = asCount(candidate.ts);
     const sender = candidate.sender;
     const text = candidate.text;
     if (id === null || id < 1 || id <= previousId) {
@@ -341,7 +328,7 @@ function validateStoredPlayer(
 
   if (
     value.m_score !== undefined &&
-    nonNegativeInteger(value.m_score) !== canonical.m_score
+    asCount(value.m_score) !== canonical.m_score
   ) {
     invalidBoard(
       `Player ${playerIndex + 1} score does not match move history.`,
@@ -349,7 +336,7 @@ function validateStoredPlayer(
   }
   if (
     value.m_lastNumSquares !== undefined &&
-    nonNegativeInteger(value.m_lastNumSquares) !== canonical.m_lastNumSquares
+    asCount(value.m_lastNumSquares) !== canonical.m_lastNumSquares
   ) {
     invalidBoard(
       `Player ${playerIndex + 1} last-square count does not match move history.`,
@@ -408,7 +395,6 @@ function replayHistory(
     {
       W: H2H_RULES.W,
       H: H2H_RULES.H,
-      scoring: H2H_RULES.scoring,
       winScore: H2H_RULES.winScore,
       rng: deterministicRng,
     },
@@ -527,7 +513,6 @@ export function normalizeH2HBoard(source: unknown): H2HBoardSnapshot {
 
   requireCompatibleField(source, "W", H2H_RULES.W);
   requireCompatibleField(source, "H", H2H_RULES.H);
-  requireCompatibleField(source, "scoring", H2H_RULES.scoring);
   requireCompatibleField(source, "winScore", H2H_RULES.winScore);
   requireCompatibleField(source, "rulesVersion", H2H_RULES.rulesVersion);
   requireCompatibleField(source, "schemaVersion", H2H_SCHEMA_VERSION);
@@ -599,13 +584,13 @@ export function normalizeH2HBoard(source: unknown): H2HBoardSnapshot {
   }
   if (
     source.m_lastPoints !== undefined &&
-    nonNegativeInteger(source.m_lastPoints) !== replay.m_lastPoints
+    asCount(source.m_lastPoints) !== replay.m_lastPoints
   ) {
     return invalidBoard("The last move score does not match move history.");
   }
 
   const storedRevision =
-    source.revision === undefined ? null : nonNegativeInteger(source.revision);
+    source.revision === undefined ? null : asCount(source.revision);
   if (source.revision !== undefined && storedRevision === null) {
     return invalidBoard("revision must be a non-negative safe integer.");
   }
@@ -631,13 +616,9 @@ export function normalizeH2HBoard(source: unknown): H2HBoardSnapshot {
   const chat = normalizeChat(source.chat, participantIds);
 
   const createdAt =
-    source.createdAt === undefined
-      ? null
-      : nonNegativeInteger(source.createdAt);
+    source.createdAt === undefined ? null : asCount(source.createdAt);
   const lastSaved =
-    source.lastSaved === undefined
-      ? null
-      : nonNegativeInteger(source.lastSaved);
+    source.lastSaved === undefined ? null : asCount(source.lastSaved);
   if (source.createdAt !== undefined && createdAt === null) {
     return invalidBoard("createdAt must be a non-negative safe integer.");
   }
@@ -650,7 +631,7 @@ export function normalizeH2HBoard(source: unknown): H2HBoardSnapshot {
   const turnStartedAt =
     source.turnStartedAt === undefined
       ? (lastSaved ?? createdAt)
-      : nonNegativeInteger(source.turnStartedAt);
+      : asCount(source.turnStartedAt);
   if (source.turnStartedAt !== undefined && turnStartedAt === null) {
     return invalidBoard("turnStartedAt must be a non-negative safe integer.");
   }
@@ -682,7 +663,6 @@ export function normalizeH2HBoard(source: unknown): H2HBoardSnapshot {
   return {
     W: H2H_RULES.W,
     H: H2H_RULES.H,
-    scoring: H2H_RULES.scoring,
     winScore: H2H_RULES.winScore,
     m_board: [...replay.m_board],
     m_players: players,
@@ -732,7 +712,6 @@ export function createInitialH2HBoard(
     {
       W: H2H_RULES.W,
       H: H2H_RULES.H,
-      scoring: H2H_RULES.scoring,
       winScore: H2H_RULES.winScore,
       rng: deterministicRng,
     },

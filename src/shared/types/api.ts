@@ -64,7 +64,6 @@ export type SoloSessionMetadata =
 export type SerializableBoard = {
   W: number;
   H: number;
-  scoring: "bbox" | "true";
   winScore: number;
   m_board: number[];
   m_players: SharePlayer[];
@@ -135,7 +134,6 @@ export type H2HLiveGameSummary = {
   revision: number;
   width: number;
   height: number;
-  scoring: SerializableBoard["scoring"];
   winScore: number;
 };
 

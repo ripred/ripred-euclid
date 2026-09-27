@@ -1,111 +1,51 @@
 import {
-  AI_DIFFICULTIES,
   AI_DIFFICULTY_LABELS,
   RANKED_SOLO_RULES,
+  STANDARD_BOARD,
+  STANDARD_MAX_SCORE,
+  STANDARD_WIN_SCORE,
   type AiDifficulty,
   type SoloMode,
 } from "../shared/game/rules";
-import { rulesSummary, scoringLabel } from "./format";
+import { emptyCells } from "../shared/game/geometry";
+import { rulesSummary } from "./format";
+import { SQUARE_HINTS_COPY } from "./solo-preferences";
+import { DifficultySlider } from "./ui/DifficultySlider";
+import { Switch } from "./ui/Switch";
 import { BoardDiagram } from "./ui/BoardDiagram";
 import { boardAspectRatio } from "./ui/board-geometry";
 import { PageShell } from "./ui/PageShell";
 import "./setup-screen.css";
-
-const EVEN_BOARD_SIZES = [4, 6, 8, 10, 12, 14, 16] as const;
-
-type Scoring = "bbox" | "true";
 
 export interface SetupScreenProps {
   soloMode: SoloMode;
   onSoloModeChange: (mode: SoloMode) => void;
   difficulty: AiDifficulty;
   onDifficultyChange: (difficulty: AiDifficulty) => void;
-  width: number;
-  height: number;
-  onWidthChange: (width: number) => void;
-  onHeightChange: (height: number) => void;
-  scoring: Scoring;
-  onScoringChange: (scoring: Scoring) => void;
   winScore: number;
   onWinScoreChange: (score: number) => void;
-  bestCase: number;
-  recommended: number;
   assistOn: boolean;
   onAssistChange: (on: boolean) => void;
   appVersion: string;
   onDone: () => void;
 }
 
-/** A radio group of pill choices for board dimensions. */
-function ChoiceGroup<T extends string | number>({
-  label,
-  options,
-  value,
-  onChange,
-  format = String,
-}: {
-  label: string;
-  options: readonly T[];
-  value: T;
-  onChange: (value: T) => void;
-  format?: (value: T) => string;
-}) {
-  return (
-    <div className="choices" role="radiogroup" aria-label={label}>
-      {options.map((option) => (
-        <button
-          key={option}
-          type="button"
-          role="radio"
-          aria-checked={option === value}
-          className="choice"
-          onClick={() => onChange(option)}
-        >
-          {format(option)}
-        </button>
-      ))}
-    </div>
-  );
-}
+const EMPTY_STANDARD_BOARD = emptyCells(STANDARD_BOARD.W, STANDARD_BOARD.H);
 
-const SCORING_OPTIONS: readonly {
-  value: Scoring;
-  description: string;
-}[] = [
-  {
-    value: "bbox",
-    description:
-      "Count the points along the side of the square's upright box, then square it. Tilted squares punch above their size.",
-  },
-  {
-    value: "true",
-    description:
-      "Score the square's real area. Tilted squares are worth exactly what they cover.",
-  },
-];
-
-function RulesPreview({
-  width,
-  height,
-  label,
-}: {
-  width: number;
-  height: number;
-  label: string;
-}) {
+/** The standard board every game is played on, captioned with its rules. */
+function RulesPreview({ label }: { label: string }) {
   return (
     <figure className="setup-preview">
       <div
         className="setup-preview__board"
         style={{
-          aspectRatio: boardAspectRatio(width, height),
+          aspectRatio: boardAspectRatio(STANDARD_BOARD.W, STANDARD_BOARD.H),
         }}
       >
         <BoardDiagram
-          key={`${width}x${height}`}
-          width={width}
-          height={height}
-          cells={new Array<number>(width * height).fill(0)}
+          width={STANDARD_BOARD.W}
+          height={STANDARD_BOARD.H}
+          cells={EMPTY_STANDARD_BOARD}
         />
       </div>
       <figcaption>{label}</figcaption>
@@ -119,16 +59,8 @@ export function SetupScreen(props: SetupScreenProps) {
     onSoloModeChange,
     difficulty,
     onDifficultyChange,
-    width,
-    height,
-    onWidthChange,
-    onHeightChange,
-    scoring,
-    onScoringChange,
     winScore,
     onWinScoreChange,
-    bestCase,
-    recommended,
     assistOn,
     onAssistChange,
     appVersion,
@@ -165,11 +97,7 @@ export function SetupScreen(props: SetupScreenProps) {
 
         {ranked ? (
           <div className="setup-ranked">
-            <RulesPreview
-              width={RANKED_SOLO_RULES.W}
-              height={RANKED_SOLO_RULES.H}
-              label={rulesSummary(RANKED_SOLO_RULES)}
-            />
+            <RulesPreview label={rulesSummary(RANKED_SOLO_RULES)} />
             <div className="setup-ranked__copy">
               <p>
                 Ranked uses one comparable preset, so every rating is earned on
@@ -188,97 +116,11 @@ export function SetupScreen(props: SetupScreenProps) {
           </div>
         ) : (
           <div className="setup-practice">
-            <div className="field setup-difficulty">
-              <div className="setup-difficulty__label">
-                <label className="field__label" htmlFor="setup-difficulty">
-                  Euclid's difficulty
-                </label>
-                <output htmlFor="setup-difficulty">
-                  {AI_DIFFICULTY_LABELS[difficulty]}
-                </output>
-              </div>
-              <input
-                id="setup-difficulty"
-                className="setup-difficulty__slider"
-                type="range"
-                min={0}
-                max={AI_DIFFICULTIES.length - 1}
-                step={1}
-                value={AI_DIFFICULTIES.indexOf(difficulty)}
-                aria-valuetext={AI_DIFFICULTY_LABELS[difficulty]}
-                onChange={(event) => {
-                  const selected =
-                    AI_DIFFICULTIES[event.currentTarget.valueAsNumber];
-                  if (selected) onDifficultyChange(selected);
-                }}
-              />
-              <div className="setup-difficulty__ticks" aria-hidden="true">
-                {AI_DIFFICULTIES.map((level) => (
-                  <span key={level} data-selected={level === difficulty} />
-                ))}
-              </div>
-              <div className="setup-difficulty__ends" aria-hidden="true">
-                <span>{AI_DIFFICULTY_LABELS[AI_DIFFICULTIES[0]]}</span>
-                <span>
-                  {
-                    AI_DIFFICULTY_LABELS[
-                      AI_DIFFICULTIES[AI_DIFFICULTIES.length - 1]!
-                    ]
-                  }
-                </span>
-              </div>
-            </div>
-
-            <div className="setup-board">
-              <div className="setup-board__fields">
-                <div className="field">
-                  <span className="field__label">Board width</span>
-                  <ChoiceGroup
-                    label="Board width"
-                    options={EVEN_BOARD_SIZES}
-                    value={width as (typeof EVEN_BOARD_SIZES)[number]}
-                    onChange={onWidthChange}
-                  />
-                </div>
-                <div className="field">
-                  <span className="field__label">Board height</span>
-                  <ChoiceGroup
-                    label="Board height"
-                    options={EVEN_BOARD_SIZES}
-                    value={height as (typeof EVEN_BOARD_SIZES)[number]}
-                    onChange={onHeightChange}
-                  />
-                </div>
-              </div>
-              <RulesPreview
-                width={width}
-                height={height}
-                label={`${width}×${height} board`}
-              />
-            </div>
-
-            <div className="field">
-              <span className="field__label">Scoring</span>
-              <div
-                className="setup-scoring"
-                role="radiogroup"
-                aria-label="Scoring"
-              >
-                {SCORING_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    role="radio"
-                    aria-checked={scoring === option.value}
-                    className="setup-scoring__option"
-                    onClick={() => onScoringChange(option.value)}
-                  >
-                    <strong>{scoringLabel(option.value)}</strong>
-                    <span>{option.description}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+            <DifficultySlider
+              id="setup-difficulty"
+              value={difficulty}
+              onChange={onDifficultyChange}
+            />
 
             <div className="field setup-target">
               <label className="field__label" htmlFor="setup-win-score">
@@ -290,13 +132,16 @@ export function SetupScreen(props: SetupScreenProps) {
                   className="input num"
                   type="number"
                   min={1}
-                  max={bestCase}
+                  max={STANDARD_MAX_SCORE}
                   value={winScore}
                   onChange={(event) =>
                     onWinScoreChange(
                       Math.max(
                         1,
-                        Math.min(bestCase, Number(event.target.value) || 0),
+                        Math.min(
+                          STANDARD_MAX_SCORE,
+                          Number(event.target.value) || 0,
+                        ),
                       ),
                     )
                   }
@@ -304,33 +149,23 @@ export function SetupScreen(props: SetupScreenProps) {
                 <button
                   type="button"
                   className="btn btn--sm"
-                  disabled={winScore === recommended}
-                  onClick={() => onWinScoreChange(recommended)}
+                  disabled={winScore === STANDARD_WIN_SCORE}
+                  onClick={() => onWinScoreChange(STANDARD_WIN_SCORE)}
                 >
-                  Use recommended {recommended}
+                  Use standard {STANDARD_WIN_SCORE}
                 </button>
               </div>
               <p className="field__hint">
-                Recommended scales the classic 8×8, first-to-150 game. The most
-                one player can score on {width}×{height} with{" "}
-                {scoringLabel(scoring)} is {bestCase}.
+                Standard games are first to {STANDARD_WIN_SCORE}. The most one
+                player can score is {STANDARD_MAX_SCORE}.
               </p>
             </div>
 
-            <label className="switch">
-              <input
-                type="checkbox"
-                checked={assistOn}
-                onChange={(event) => onAssistChange(event.target.checked)}
-              />
-              <span>
-                <strong>Square hints</strong>
-                <span className="field__hint">
-                  Hover or press one of your pieces to see the points that
-                  finish a square in one or two moves.
-                </span>
-              </span>
-            </label>
+            <Switch
+              {...SQUARE_HINTS_COPY}
+              checked={assistOn}
+              onChange={onAssistChange}
+            />
           </div>
         )}
       </section>

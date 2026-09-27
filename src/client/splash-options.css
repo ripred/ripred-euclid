@@ -1,0 +1,51 @@
+/* Options take the carousel's place, laid out like a slide: a board on the
+   stage that previews square hints, the settings in the panel beside it.
+   Everything fits the tall post without an inner scroll area. */
+.splash-options {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  width: 100%;
+  max-width: 960px;
+  height: 100%;
+  min-height: 0;
+  margin: auto;
+  animation: rise-in 260ms var(--ease-out) both;
+}
+.splash-options__scene .splash-scene__card {
+  justify-content: center;
+  gap: 18px;
+}
+.splash-options .splash-footer .splash-sample {
+  flex: 1;
+}
+.splash-options .splash-footer .btn--primary {
+  flex: none;
+  min-width: 140px;
+}
+/* Phones: the settings need the height more than the board does. */
+@media (max-width: 520px) {
+  .splash-options .splash-scene__stage {
+    display: none;
+  }
+  .splash-options .splash-scene {
+    grid-template-rows: minmax(0, 1fr);
+  }
+}
+@media (max-height: 440px) {
+  .splash-options .difficulty-slider__ends,
+  .splash-options .splash-footer .splash-sample {
+    display: none;
+  }
+  .splash-options__scene .splash-scene__card {
+    gap: 10px;
+  }
+  .splash-options .switch .field__hint {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .splash-options {
+    animation: none;
+  }
+}

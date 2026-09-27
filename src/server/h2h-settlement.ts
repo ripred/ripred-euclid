@@ -16,6 +16,8 @@ import {
   type RedisCasOptions,
   type RedisCasWrite,
 } from "./redis-cas";
+import { asCount, isRecord, isStringArray } from "../shared/guards";
+import { parseJson, uniqueStrings } from "./stored-json";
 
 const ELO_START = 1_200;
 const ELO_K = 32;
@@ -71,31 +73,15 @@ export type H2HSettlementServiceOptions = {
   maxDrainLimit?: number;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function safeInteger(value: unknown): number | null {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-    ? value
-    : null;
-}
-
 function parseStringSet(raw: string | undefined, field: string): string[] {
   if (raw === undefined) return [];
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
+  const parsed = parseJson(raw, () => {
     throw new H2HSettlementDataError(`${field} is not valid JSON.`);
-  }
-  if (
-    !Array.isArray(parsed) ||
-    parsed.some((value) => typeof value !== "string" || !value)
-  ) {
+  });
+  if (!isStringArray(parsed) || parsed.some((value) => !value)) {
     throw new H2HSettlementDataError(`${field} must be a string array.`);
   }
-  return [...new Set(parsed)];
+  return uniqueStrings(parsed);
 }
 
 function parseCounter(raw: string | undefined, field: string): number {
@@ -133,10 +119,10 @@ function parseElo(raw: string | undefined, field: string): H2HEloRecord | null {
     throw new H2HSettlementDataError(`${field} must be an object.`);
   }
   const rating = parsed.rating;
-  const games = safeInteger(parsed.games);
-  const wins = safeInteger(parsed.wins);
-  const losses = safeInteger(parsed.losses);
-  const draws = safeInteger(parsed.draws);
+  const games = asCount(parsed.games);
+  const wins = asCount(parsed.wins);
+  const losses = asCount(parsed.losses);
+  const draws = asCount(parsed.draws);
   if (
     typeof rating !== "number" ||
     !Number.isFinite(rating) ||
@@ -225,7 +211,7 @@ function parseReceipt(raw: string, eventId: string): H2HSettlementReceipt {
       `Settlement receipt ${JSON.stringify(eventId)} is invalid.`,
     );
   }
-  const settledAt = safeInteger(parsed.settledAt);
+  const settledAt = asCount(parsed.settledAt);
   if (
     parsed.version !== RECEIPT_VERSION ||
     parsed.eventId !== eventId ||
@@ -297,7 +283,7 @@ export class H2HSettlementService {
       settlementDate(event.endedAt),
     );
     const settledAt = this.now();
-    if (safeInteger(settledAt) === null) {
+    if (asCount(settledAt) === null) {
       throw new RangeError(
         "Settlement time must be a non-negative safe integer timestamp.",
       );

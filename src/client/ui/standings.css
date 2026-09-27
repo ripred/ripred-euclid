@@ -36,20 +36,20 @@
 }
 
 .standing--rank-1 .standing__rank {
-  background: radial-gradient(circle at 35% 30%, #ffe7a1, #f2b72c 60%, #a8740b);
+  background: var(--gold-token);
 }
 
 .standing--rank-2 .standing__rank {
-  background: radial-gradient(circle at 35% 30%, #ffffff, #d9d9d4 60%, #9a9a94);
+  background: var(--silver-token);
 }
 
 .standing--rank-3 .standing__rank {
-  background: radial-gradient(circle at 35% 30%, #ffb59d, #e0603f 60%, #93301a);
+  background: var(--bronze-token);
   color: #fff;
 }
 
 .standing--rank-1 {
-  border-color: color-mix(in srgb, #f2b72c 45%, var(--line));
+  border-color: color-mix(in srgb, var(--gold) 45%, var(--line));
 }
 
 .standing__who {

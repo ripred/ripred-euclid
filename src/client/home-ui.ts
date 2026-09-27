@@ -10,6 +10,7 @@ import type {
   SoloSessionSnapshot,
   UserStatsResponse,
 } from "../shared/types/api";
+import { rulesSummary } from "./format";
 
 export type HomeRecordLabel = "Euclid Ranked" | "Redditor Matches";
 
@@ -122,12 +123,6 @@ export function getPlayEuclidSubtitle(
     : `Practice · ${AI_DIFFICULTY_LABELS[difficulty]} · no rating changes`;
 }
 
-function scoringLabel(
-  scoring: SoloSessionSnapshot["board"]["scoring"],
-): string {
-  return scoring === "true" ? "True Area" : "Grid Footprint";
-}
-
 /** Builds resume copy from a canonical solo snapshot, including player orientation. */
 export function getSoloContinuationPresentation(
   snapshot: SoloSessionSnapshot,
@@ -158,7 +153,7 @@ export function getSoloContinuationPresentation(
     title: `${isActive ? "Continue" : "Review"} ${snapshot.mode === "ranked" ? "Ranked" : "Practice"} game`,
     detail,
     score: `You ${humanScore} · Euclid ${euclidScore}`,
-    rules: `${snapshot.board.W} × ${snapshot.board.H} · ${scoringLabel(snapshot.board.scoring)} · first to ${snapshot.board.winScore}`,
+    rules: rulesSummary(snapshot.board),
     actionLabel: isActive ? "Continue" : "Review result",
   };
 }

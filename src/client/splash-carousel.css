@@ -1,8 +1,26 @@
+/* Reddit's tall inline post is 512px. Larger windows, such as local
+   previews, keep that proportion and centre the post instead of stretching. */
+.euclid-preview--splash {
+  --rise-from: 8px;
+  display: grid;
+  max-height: 512px;
+  margin-block: auto;
+}
+/* Options take the carousel's place in the same space. */
+.euclid-preview--splash > * {
+  grid-area: 1 / 1;
+}
+/* Slides set their own visibility, so the carousel leaves layout entirely. */
+.splash-carousel[inert] {
+  display: none;
+}
 .splash-carousel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
   gap: 10px;
+  width: 100%;
   height: 100%;
+  min-height: 0;
   max-width: 960px;
   margin: auto;
 }
@@ -12,10 +30,12 @@
   justify-content: space-between;
   gap: 12px;
 }
-.splash-header > span {
+.splash-header__label {
+  margin: 0;
   color: var(--text-3);
   font-size: var(--fs-xs);
   font-weight: 650;
+  outline: none;
 }
 .splash-viewport {
   --splash-fade-duration: 220ms;
@@ -109,45 +129,115 @@
 .splash-footer .btn--primary {
   flex: 1;
 }
-.splash-standings-panel,
-.splash-choices {
-  height: 100%;
-  min-height: 0;
+.splash-footer__options {
+  gap: 6px;
 }
-.splash-standings-panel {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 16px;
-}
-.splash-standings-panel > * {
-  width: min(100%, 620px);
-  margin: 0 auto;
+/* Phones keep every action on one row; Options shows as its icon. */
+@media (max-width: 520px) {
+  .splash-footer__label {
+    display: none;
+  }
 }
 .splash-slide h2 {
   margin: 0;
-  font-size: clamp(20px, 3.3vw, 32px);
+  font-size: clamp(18px, 2.7vw, 26px);
   font-weight: 850;
   font-stretch: var(--wide);
-  line-height: 1.2;
+  line-height: 1.15;
 }
-/* Winner: the champion inside the square, laid out like the lesson slide. */
-.splash-winner {
-  --winner: var(--red);
-  --winner-line: var(--red-line);
+
+/* Scenes: every slide sets its art on a glow in the slide's colour, beside a
+   panel edged in the same colour, so the rotation reads as one story. */
+.splash-scene {
+  --band-draw-delay: 860ms;
+  --scene: var(--red);
+  --scene-text: var(--red-text);
 }
-.splash-winner--weekly {
-  --winner: var(--blue);
-  --winner-line: var(--blue-line);
+.splash-scene--blue {
+  --scene: var(--blue);
+  --scene-text: var(--blue-text);
 }
-.splash-winner__stage {
+.splash-scene--gold {
+  --scene: var(--gold);
+  --scene-text: var(--attention);
+}
+.splash-scene__stage {
   position: relative;
+  aspect-ratio: var(--stage-ratio);
+  container-type: size;
   background: radial-gradient(
     closest-side,
-    color-mix(in srgb, var(--winner) 30%, transparent),
+    color-mix(in srgb, var(--scene) 30%, transparent),
     transparent
   );
 }
+.splash-scene__stage > .board {
+  width: 100%;
+  height: 100%;
+}
+/* Head at the top, foot at the bottom, the slide's substance centred between. */
+.splash-scene__card {
+  display: flex;
+  flex-direction: column;
+  border-color: color-mix(in srgb, var(--scene) 42%, var(--line));
+  box-shadow:
+    inset 0 3px 0 var(--scene),
+    var(--panel-shadow);
+}
+.splash-scene .preview-panel__kicker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--scene-text);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+/* Heading on the left; any controls (such as the leaderboard tabs) wrap to
+   the end of the same row. */
+.splash-scene__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 8px;
+}
+.splash-scene__heading {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.splash-scene__subtitle {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.splash-winner__stats,
+.splash-choices {
+  align-self: stretch;
+  margin-block: auto;
+}
+.splash-scene__foot {
+  margin-top: auto;
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+/* Entrance: pieces drop in turn by their --order, then bands draw closed.
+   Stages with more than four pieces land the rest together with the fourth. */
+.splash-scene__stage[data-entrance] .board__piece {
+  --piece-delay: calc(300ms + min(var(--order, 0), 3) * 140ms);
+}
+.splash-scene--live .splash-scene__head {
+  animation: rise-in 420ms 120ms var(--ease-out) both;
+}
+.splash-scene--live .splash-scene__head ~ * {
+  animation: rise-in 420ms 600ms var(--ease-out) both;
+}
+
+/* Winner: the champion inside the square they would have closed. */
 .splash-winner__square,
 .splash-winner__square .board {
   width: 100%;
@@ -166,50 +256,41 @@
   background: var(--surface-2);
   box-shadow:
     0 0 0 3px var(--surface),
-    0 0 0 5px var(--winner-line),
+    0 0 0 5px var(--scene),
     0 10px 28px rgb(0 0 0 / 0.4);
   transform: translate(-50%, -50%);
 }
-.splash-winner__avatar .avatar {
+.splash-winner__avatar .avatar,
+.splash-podium__avatar .avatar {
   width: 100% !important;
   height: 100% !important;
-  font-size: clamp(18px, 6vw, 40px) !important;
-}
-.splash-winner__card {
-  grid-template-rows: auto minmax(0, 1fr) auto;
-}
-.splash-winner__head {
-  display: grid;
-  gap: 4px;
+  font-size: 12cqmin !important;
 }
 /* Usernames stay on one line at the body width; the full name is in the title. */
-.splash-winner__head h2 {
+.splash-scene__title--one-line {
   overflow: hidden;
-  font-size: var(--fs-xl);
-  font-stretch: 100%;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .splash-winner__stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-content: center;
   gap: 8px;
-  margin: 0;
+  margin-inline: 0;
 }
 .splash-winner__stat {
   display: grid;
   gap: 2px;
   min-width: 0;
   padding: 10px 12px;
-  border: 1px solid var(--line);
+  border: 1px solid color-mix(in srgb, var(--scene) 45%, var(--line));
   border-radius: var(--radius-md);
   background: var(--surface-2);
 }
 .splash-winner__stat dt {
-  color: var(--text-3);
+  color: var(--scene-text);
   font-size: var(--fs-xs);
-  font-weight: 700;
+  font-weight: 750;
 }
 .splash-winner__stat dd {
   display: flex;
@@ -226,12 +307,6 @@
   display: inline-flex;
   gap: 3px;
 }
-.splash-winner__foot {
-  display: grid;
-  gap: 4px;
-  padding-top: 10px;
-  border-top: 1px solid var(--line);
-}
 .splash-winner__record {
   display: flex;
   flex-wrap: wrap;
@@ -243,109 +318,202 @@
 .splash-winner__record strong {
   color: var(--text);
 }
+.splash-scene--live .splash-winner__avatar {
+  --pop-from: 0.6;
+  animation: pop-in 520ms var(--ease-spring) both;
+}
+.splash-scene--live .splash-winner__pieces .piece-glyph {
+  animation: pop-in 360ms calc(1s + var(--order, 0) * 100ms) var(--ease-spring)
+    both;
+}
+/* Confetti: paper strips in both colours and gold drifting down behind the
+   art, only while the slide is shown. */
+.splash-confetti {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.splash-confetti > span {
+  position: absolute;
+  top: 0;
+  left: var(--x);
+  width: 1.8cqmin;
+  height: 3cqmin;
+  border-radius: 0.4cqmin;
+  background: var(--token-red);
+  opacity: 0;
+}
+.splash-confetti > span:nth-child(3n + 2) {
+  background: var(--token-blue);
+}
+.splash-confetti > span:nth-child(3n) {
+  background: var(--gold-token);
+}
+.splash-confetti > span:nth-child(4n) {
+  width: 2.2cqmin;
+  height: 2.2cqmin;
+  border-radius: 50%;
+}
+.splash-scene--live .splash-confetti > span {
+  animation: confetti-fall var(--fall) linear var(--delay) infinite;
+}
+@keyframes confetti-fall {
+  0% {
+    opacity: 0;
+    transform: translate(0, -4cqh) rotate(0deg) rotateX(0deg);
+  }
+  8%,
+  88% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--drift), 104cqh) rotate(var(--spin))
+      rotateX(720deg);
+  }
+}
 
-/* Choreography: the avatar arrives, four pieces drop in turn, the square
-   closes around it, then the result counts up. */
-.splash-winner--live .splash-winner__avatar {
-  animation: winner-arrive 520ms var(--ease-spring) both;
-}
-.splash-winner--live .board__piece .board__piece-body {
-  animation: piece-drop 460ms 300ms var(--ease-spring) both;
-}
-.splash-winner--live .board__piece ~ .board__piece .board__piece-body {
-  animation-delay: 440ms;
-}
-.splash-winner--live
-  .board__piece
-  ~ .board__piece
-  ~ .board__piece
-  .board__piece-body {
-  animation-delay: 580ms;
-}
-.splash-winner--live
-  .board__piece
-  ~ .board__piece
-  ~ .board__piece
-  ~ .board__piece
-  .board__piece-body {
-  animation-delay: 720ms;
-}
-.splash-winner--live .board__band-core,
-.splash-winner--live .board__band-shine {
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  animation: band-draw 600ms 860ms var(--ease-out) forwards;
-}
-.splash-winner--live .board__band-shadow {
-  animation: winner-fade 300ms 1s both;
-}
-.splash-winner--live .splash-winner__head {
-  animation: winner-rise 420ms 120ms var(--ease-out) both;
-}
-.splash-winner--live .splash-winner__stats,
-.splash-winner--live .splash-winner__foot {
-  animation: winner-rise 420ms 900ms var(--ease-out) both;
-}
-.splash-winner--live .splash-winner__pieces .piece-glyph {
-  animation: winner-pop 360ms 1s var(--ease-spring) both;
-}
-.splash-winner--live .splash-winner__pieces .piece-glyph:nth-child(2) {
-  animation-delay: 1.1s;
-}
-.splash-winner--live .splash-winner__pieces .piece-glyph:nth-child(3) {
-  animation-delay: 1.2s;
-}
-.splash-winner--live .splash-winner__pieces .piece-glyph:nth-child(4) {
-  animation-delay: 1.3s;
-}
-@keyframes winner-arrive {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.6);
-  }
-}
-@keyframes winner-pop {
-  from {
-    opacity: 0;
-    transform: scale(0.4);
-  }
-}
-@keyframes winner-rise {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-}
-@keyframes winner-fade {
-  from {
-    opacity: 0;
-  }
-}
-.splash-sample {
-  margin: 0;
-  color: var(--text-3);
-  font-size: var(--fs-xs);
-}
-.splash-choices {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 12px;
-  text-align: center;
-}
-.splash-choices__grid {
-  width: min(100%, 700px);
+/* Podium: three board-stone steps, first in the middle and tallest. */
+.splash-podium {
+  position: absolute;
+  inset: 6% 5% 7%;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+  gap: 2.5cqmin;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.splash-podium__place {
+  --step: 26cqh;
+  --avatar: 20cqmin;
+  --cue: 0ms;
+  --token: var(--bronze-token);
+  --token-ink: #fff;
+  display: grid;
+  grid-row: 1;
+  grid-column: 3;
+  justify-items: center;
+  gap: 1.6cqmin;
+  min-width: 0;
+}
+.splash-podium__place--1 {
+  --step: 42cqh;
+  --avatar: 26cqmin;
+  --cue: 280ms;
+  --token: var(--gold-token);
+  --token-ink: #1a1a1a;
+  grid-column: 2;
+}
+.splash-podium__place--2 {
+  --step: 33cqh;
+  --cue: 140ms;
+  --token: var(--silver-token);
+  --token-ink: #1a1a1a;
+  grid-column: 1;
+}
+.splash-podium__avatar {
+  display: grid;
+  width: var(--avatar);
+  aspect-ratio: 1;
+  padding: 1.1cqmin;
+  border-radius: 50%;
+  background: var(--token);
+  box-shadow: 0 1.4cqmin 3cqmin rgb(0 0 0 / 0.4);
+}
+.splash-podium__avatar > * {
+  overflow: hidden;
+  border-radius: 50%;
+}
+.splash-podium__seat {
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 9cqmin;
+  font-weight: 900;
+}
+.splash-podium__name {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: clamp(10px, 3.4cqmin, 15px);
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The step is a slice of the board: a slab face over a darker plinth. */
+.splash-podium__step {
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  gap: 1.2cqmin;
+  width: 100%;
+  height: var(--step);
+  padding-top: 2.4cqmin;
+  border-radius: 1.8cqmin 1.8cqmin 0.8cqmin 0.8cqmin;
+  background: linear-gradient(
+    180deg,
+    var(--slab-light),
+    var(--slab) 22%,
+    var(--slab-dark)
+  );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.45),
+    0 1.6cqmin 0 var(--slab-plinth),
+    0 3cqmin 6cqmin rgb(0 0 0 / 0.35);
+  transform-origin: bottom;
+}
+.splash-podium__rank {
+  display: grid;
+  place-items: center;
+  width: 9cqmin;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--token);
+  color: var(--token-ink);
+  font-size: 4.6cqmin;
+  font-weight: 900;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.55),
+    0 2px 0 rgb(0 0 0 / 0.35);
+}
+.splash-podium__rating {
+  color: #fff;
+  font-size: 5.4cqmin;
+  font-stretch: var(--wide);
+  font-weight: 900;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.45);
+}
+.splash-scene--live .splash-podium__step {
+  animation: podium-rise 620ms calc(var(--cue) + 100ms) var(--ease-spring) both;
+}
+.splash-scene--live .splash-podium__avatar,
+.splash-scene--live .splash-podium__name {
+  animation: pop-in 420ms calc(var(--cue) + 520ms) var(--ease-spring) both;
+}
+@keyframes podium-rise {
+  from {
+    transform: scaleY(0.05);
+  }
+}
+.splash-standings .standings {
+  align-content: start;
+  gap: 6px;
+}
+
+/* Choices: the board shows a square one move from closing. */
+.splash-choices {
+  display: grid;
   gap: 8px;
 }
 .splash-choice {
   --choice: var(--line-strong);
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 2px 10px;
+  gap: 2px 12px;
   min-height: 56px;
   padding: 10px 14px;
   text-align: left;
@@ -359,7 +527,8 @@
     background-color var(--dur-fast),
     transform var(--dur-fast) var(--ease-out);
 }
-.splash-choice > :first-child {
+.splash-choice > :first-child,
+.splash-choice > .icon:last-child {
   grid-row: span 2;
 }
 .splash-choice strong {
@@ -367,6 +536,7 @@
   line-height: 1.2;
 }
 .splash-choice span {
+  grid-column: 2;
   color: var(--text-2);
   font-size: var(--fs-xs);
 }
@@ -384,6 +554,12 @@
     color-mix(in srgb, var(--choice) 16%, var(--surface-2)),
     var(--surface-2) 70%
   );
+  box-shadow: inset 4px 0 0 var(--choice);
+}
+.splash-choice--solo > .icon,
+.splash-choice--reddit > .icon {
+  color: var(--choice);
+  transition: transform var(--dur-fast) var(--ease-out);
 }
 .splash-choice:active:not(:disabled) {
   transform: scale(0.98);
@@ -396,10 +572,41 @@
   .splash-choice:not(:disabled):hover {
     border-color: var(--choice);
   }
+  .splash-choice:not(:disabled):hover > .icon {
+    transform: translateX(3px);
+  }
 }
+.splash-choices__soon {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.splash-choices__soon .splash-choice {
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 0;
+  padding: 6px 10px;
+  gap: 0 8px;
+}
+.splash-choices__soon strong {
+  font-size: var(--fs-xs);
+}
+.splash-choices__soon span {
+  font-size: var(--fs-2xs);
+}
+.splash-scene--live .splash-choice {
+  animation: rise-in 420ms calc(700ms + var(--order, 0) * 120ms) var(--ease-out)
+    both;
+}
+
+.splash-sample {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
 /* Narrow posts: stats become label-value rows so both numbers keep full size. */
 @media (max-width: 520px) {
-  .splash-winner__head h2 {
+  .splash-scene__title--one-line {
     font-size: var(--fs-md);
   }
   .splash-winner__stats {
@@ -415,15 +622,20 @@
   .splash-winner__stat dd {
     font-size: var(--fs-lg);
   }
-  .splash-winner__pieces {
+  .splash-winner__pieces,
+  .splash-standings .standing:nth-child(n + 2),
+  .splash-choice > .icon:last-child {
     display: none;
+  }
+  .splash-choice {
+    min-height: 44px;
+    padding: 6px 10px;
   }
 }
 /* The narrowest phones: choice titles take the full card width. */
 @media (max-width: 360px) {
   .splash-choice {
     grid-template-columns: minmax(0, 1fr);
-    padding: 8px 10px;
   }
   .splash-choice > :first-child {
     display: none;
@@ -436,11 +648,11 @@
   }
 }
 @media (max-width: 520px) and (max-height: 400px) {
-  .splash-winner__head .preview-panel__kicker,
-  .splash-winner__foot .splash-sample {
+  .splash-scene__head .preview-panel__kicker,
+  .splash-scene__foot .splash-sample {
     display: none;
   }
-  .splash-winner__foot {
+  .splash-scene__foot {
     padding-top: 6px;
   }
   .splash-winner__record {
@@ -458,8 +670,18 @@
     gap: 8px;
   }
   .preview__brand,
-  .preview__progress {
+  .preview__progress,
+  .splash-choice span,
+  .splash-choices__soon,
+  .splash-scene__foot .splash-sample,
+  .splash-standings .splash-scene__card > .preview-panel__body {
     display: none;
+  }
+  /* Steps read best wide; the podium takes the full width above the panel. */
+  .splash-standings .splash-scene__stage {
+    width: 100%;
+    max-width: none;
+    aspect-ratio: auto;
   }
   .preview__panel {
     border: 0;
@@ -483,28 +705,22 @@
     font-size: var(--fs-xl);
   }
   .splash-choices {
-    gap: 8px;
+    gap: 6px;
   }
 }
 @media (max-height: 380px) {
   .splash-carousel {
     gap: 4px;
   }
-  .splash-choices > h2,
   .splash-choice span,
-  .splash-choices .splash-sample {
+  .splash-choices__soon,
+  .splash-scene .splash-sample {
     display: none;
   }
-  /* The header already names the slide; the top three rows keep the room. */
-  .splash-standings-panel {
-    gap: 6px;
-  }
-  .splash-standings-panel h2,
-  .splash-standings-panel .splash-sample {
+  /* The header already names the slide; the podium keeps the room. */
+  .splash-standings h2,
+  .splash-standings .standings {
     display: none;
-  }
-  .splash-standings-panel .standing {
-    padding-block: 3px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

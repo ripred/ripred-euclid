@@ -36,9 +36,12 @@ describe("inline preview", () => {
           onInteract={() => {}}
         />,
       );
+      // The podium holds the top three; the list continues with the next three.
+      expect(html).toContain('aria-label="Top redditors"');
+      expect(html).toContain('aria-label="Chasing the podium"');
       expect(html).toContain("Player 0");
-      expect(html).toContain("Player 2");
-      expect(html).not.toContain("Player 3");
+      expect(html).toContain("Player 5");
+      expect(html).not.toContain("Player 6");
       expect(html).toContain('aria-label="Leaderboard mode"');
       expect(html.match(/aria-pressed=/g)).toHaveLength(2);
       expect(html).not.toContain("overflow-y:auto");
@@ -65,6 +68,21 @@ describe("inline preview", () => {
       expect(html).toContain(message);
     },
   );
+
+  it("keeps open podium steps visible until three players are ranked", () => {
+    const html = renderToStaticMarkup(
+      <PreviewLeaderboard
+        theme="dark"
+        rankings={{ hvh: rows.slice(0, 2), hva: [] }}
+        rankingsLoading={false}
+        rankingsError={null}
+        onInteract={() => {}}
+      />,
+    );
+    expect(html.match(/splash-podium__place--/g)).toHaveLength(3);
+    expect(html.match(/splash-podium__seat/g)).toHaveLength(1);
+    expect(html).toContain("Win rated games to claim the next step.");
+  });
 
   it("makes an initialization failure retryable and escapes error text", () => {
     const html = renderToStaticMarkup(
@@ -101,6 +119,8 @@ describe("inline preview", () => {
       expect(source("./vite.config.ts")).toContain(`${entry}: "${file}"`);
     }
     expect(source("./preview.css")).toContain("overflow: clip;");
+    // Taller windows keep the tall post's height instead of stretching it.
+    expect(source("./splash-carousel.css")).toContain("max-height: 512px;");
     expect(source("./preview.tsx")).not.toMatch(
       /onWheel=|onTouchStart=|onScroll=/,
     );

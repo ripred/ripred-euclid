@@ -14,7 +14,6 @@ function createBoard(
     W: options.W ?? 4,
     H: options.H ?? options.W ?? 4,
     winScore: options.winScore ?? 150,
-    scoring: "bbox",
     rng: stationaryRng,
   });
 }

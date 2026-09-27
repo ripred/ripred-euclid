@@ -40,7 +40,7 @@ it("renders all 500 sample players on the full leaderboard and disables sharing 
   expect(html).not.toContain("Share leaderboard");
 });
 
-it("keeps the splash limited to three of the 500 sample entries", () => {
+it("keeps the splash to the podium and the next three of 500 sample entries", () => {
   const html = renderToStaticMarkup(
     <PreviewLeaderboard
       theme="dark"
@@ -50,7 +50,8 @@ it("keeps the splash limited to three of the 500 sample entries", () => {
       onInteract={() => {}}
     />,
   );
-  expect(html.match(/<li /g)).toHaveLength(3);
+  expect(html.match(/<li /g)).toHaveLength(6);
   expect(html).toContain("500 sample players");
-  expect(html).not.toContain("sample_player_3");
+  expect(html).toContain("sample_player_5");
+  expect(html).not.toContain("sample_player_6");
 });

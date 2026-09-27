@@ -16,7 +16,6 @@ function resultFixture(
     W: 8,
     H: 8,
     winScore: 150,
-    scoring: "bbox",
   }).toJSON();
   board.m_players = board.m_players.map((player, index) => ({
     ...player,

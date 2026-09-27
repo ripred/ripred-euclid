@@ -1,25 +1,50 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  readPracticeDifficulty,
-  savePracticeDifficulty,
+  DEFAULT_PRACTICE_PREFERENCES,
+  readPracticePreferences,
+  savePracticePreferences,
 } from "./solo-preferences";
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe("practice difficulty preference", () => {
-  it("restores a saved choice and rejects stale values", () => {
-    const values = new Map<string, string>();
-    vi.stubGlobal("window", {
-      localStorage: {
-        getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => values.set(key, value),
-      },
+function stubStorage(initial: Record<string, string> = {}) {
+  const values = new Map(Object.entries(initial));
+  vi.stubGlobal("window", {
+    localStorage: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    },
+  });
+  return values;
+}
+
+describe("practice setup preference", () => {
+  it("restores a saved setup", () => {
+    stubStorage();
+    expect(readPracticePreferences()).toEqual(DEFAULT_PRACTICE_PREFERENCES);
+    const setup = { difficulty: "defensive", assist: true } as const;
+    savePracticePreferences(setup);
+    expect(readPracticePreferences()).toEqual(setup);
+  });
+
+  it("keeps valid fields when others are stale", () => {
+    stubStorage({
+      euclid_practice_setup: JSON.stringify({
+        difficulty: "invalid",
+        assist: true,
+      }),
     });
-    expect(readPracticeDifficulty()).toBe("beginner");
-    savePracticeDifficulty("defensive");
-    expect(readPracticeDifficulty()).toBe("defensive");
-    for (const key of values.keys()) values.set(key, "invalid");
-    expect(readPracticeDifficulty()).toBe("beginner");
+    expect(readPracticePreferences()).toEqual({
+      ...DEFAULT_PRACTICE_PREFERENCES,
+      assist: true,
+    });
+  });
+
+  it("falls back to defaults for unreadable records", () => {
+    stubStorage({ euclid_practice_setup: "{not json" });
+    expect(readPracticePreferences()).toEqual(DEFAULT_PRACTICE_PREFERENCES);
+    stubStorage({ euclid_practice_setup: "null" });
+    expect(readPracticePreferences()).toEqual(DEFAULT_PRACTICE_PREFERENCES);
   });
 
   it("works when browser storage is blocked", () => {
@@ -28,7 +53,9 @@ describe("practice difficulty preference", () => {
         throw new Error("Blocked");
       },
     });
-    expect(readPracticeDifficulty()).toBe("beginner");
-    expect(() => savePracticeDifficulty("brutal")).not.toThrow();
+    expect(readPracticePreferences()).toEqual(DEFAULT_PRACTICE_PREFERENCES);
+    expect(() =>
+      savePracticePreferences(DEFAULT_PRACTICE_PREFERENCES),
+    ).not.toThrow();
   });
 });

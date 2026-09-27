@@ -28,7 +28,6 @@ const game: H2HLiveGameSummary = {
   revision: 12,
   width: 6,
   height: 8,
-  scoring: "bbox",
   winScore: 75,
 };
 

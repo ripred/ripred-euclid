@@ -33,14 +33,21 @@ import type {
   SoloTerminalResult,
   SharePlayer,
   SharePoint,
-  ShareSquare,
 } from "../shared/types/api";
 import { createSoloTurnRng } from "./solo-rng";
+import {
+  MAX_IDENTIFIER_LENGTH,
+  isCanonicalIdentifier,
+  isCount,
+  isRecord,
+} from "../shared/guards";
+import { cloneSquare, squareIndexKey } from "../shared/share-squares";
+import { pointIndex } from "../shared/game/geometry";
 
-export const SOLO_SCHEMA_VERSION = 1 as const;
+/** Version 2 dropped the scoring field when Grid Footprint became the only rule. */
+export const SOLO_SCHEMA_VERSION = 2 as const;
 export const SOLO_AI_USER_ID = "euclid-ai";
 
-const MAX_IDENTIFIER_LENGTH = 256;
 const MAX_TIMESTAMP = 8_640_000_000_000_000;
 const NO_RANDOMNESS: RandomSource = () => 0;
 
@@ -116,10 +123,6 @@ type ReplayResult = {
   outcome: GameOutcome;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function invalidRequest(message: string): never {
   throw new SoloDomainError("invalid_request", message);
 }
@@ -140,12 +143,7 @@ function requireExactFields(
 }
 
 function requireIdentifier(value: unknown, field: string): string {
-  if (
-    typeof value !== "string" ||
-    value.length < 1 ||
-    value.length > MAX_IDENTIFIER_LENGTH ||
-    value.trim() !== value
-  ) {
+  if (!isCanonicalIdentifier(value)) {
     invalidRequest(
       `${field} must be a non-empty canonical string of at most ${MAX_IDENTIFIER_LENGTH} characters.`,
     );
@@ -154,12 +152,7 @@ function requireIdentifier(value: unknown, field: string): string {
 }
 
 function requireTimestamp(value: unknown, field: string): number {
-  if (
-    typeof value !== "number" ||
-    !Number.isSafeInteger(value) ||
-    value < 0 ||
-    value > MAX_TIMESTAMP
-  ) {
+  if (!isCount(value) || value > MAX_TIMESTAMP) {
     invalidRequest(
       `${field} must be a valid non-negative millisecond timestamp.`,
     );
@@ -168,7 +161,7 @@ function requireTimestamp(value: unknown, field: string): number {
 }
 
 function requireRevision(value: unknown, field = "expectedRevision"): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+  if (!isCount(value)) {
     invalidRequest(`${field} must be a non-negative safe integer.`);
   }
   return value;
@@ -230,7 +223,6 @@ function normalizeStoredRules(value: unknown): RankedSoloRules | PracticeRules {
     "mode",
     "W",
     "H",
-    "scoring",
     "winScore",
     "humanPlayer",
     "firstPlayer",
@@ -255,10 +247,8 @@ function normalizeStoredRules(value: unknown): RankedSoloRules | PracticeRules {
   }
 
   try {
+    // The stored board fields must match the standard board exactly.
     const rules = validatePracticeRules({
-      W: value.W,
-      H: value.H,
-      scoring: value.scoring,
       winScore: value.winScore,
       difficulty: value.difficulty,
       humanPlayer: value.humanPlayer,
@@ -305,9 +295,6 @@ export function validateSoloStartRequest(input: unknown): ValidatedSoloStart {
           mode: "practice",
           commandId,
           rules: {
-            W: rules.W,
-            H: rules.H,
-            scoring: rules.scoring,
             winScore: rules.winScore,
             difficulty: rules.difficulty,
             humanPlayer: rules.humanPlayer,
@@ -348,7 +335,7 @@ function normalizeHistory(value: unknown, rules: SoloRules): SharePoint[] {
       x >= rules.W ||
       y < 0 ||
       y >= rules.H ||
-      index !== y * rules.W + x
+      index !== pointIndex(x, y, rules.W)
     ) {
       return invalidSession("Move history contains an out-of-range point.");
     }
@@ -360,30 +347,12 @@ function normalizeHistory(value: unknown, rules: SoloRules): SharePoint[] {
   });
 }
 
-function squareSignature(square: ShareSquare): string {
-  return [square.p1.index, square.p2.index, square.p3.index, square.p4.index]
-    .sort((left, right) => left - right)
-    .join(",");
-}
-
-function cloneSquare(square: ShareSquare): ShareSquare {
-  return {
-    p1: { ...square.p1 },
-    p2: { ...square.p2 },
-    p3: { ...square.p3 },
-    p4: { ...square.p4 },
-    points: square.points,
-    remain: square.remain,
-    clr: square.clr,
-  };
-}
-
 function serializePlayer(player: Player): SharePlayer {
   return {
     m_squares: player.m_squares
       .map(cloneSquare)
       .sort((left, right) =>
-        squareSignature(left).localeCompare(squareSignature(right)),
+        squareIndexKey(left).localeCompare(squareIndexKey(right)),
       ),
     m_score: player.m_score,
     m_lastNumSquares: player.m_lastNumSquares,
@@ -412,7 +381,6 @@ function createInitialEngine(
   const engine = new Board(players[0], players[1], {
     W: rules.W,
     H: rules.H,
-    scoring: rules.scoring,
     winScore: rules.winScore,
     rng: NO_RANDOMNESS,
   });
@@ -474,7 +442,7 @@ function replaySoloHistory(
       .slice(squareCountBefore)
       .map(cloneSquare)
       .sort((left, right) =>
-        squareSignature(left).localeCompare(squareSignature(right)),
+        squareIndexKey(left).localeCompare(squareIndexKey(right)),
       );
     moves.push({
       type: "move",
@@ -521,7 +489,6 @@ function canonicalBoard(
   return {
     W: rules.W,
     H: rules.H,
-    scoring: rules.scoring,
     winScore: rules.winScore,
     m_board: [...replay.engine.m_board],
     m_players: [serializePlayer(first), serializePlayer(second)],
@@ -979,7 +946,7 @@ export function applySoloMove(
     );
   }
 
-  const index = request.y * record.rules.W + request.x;
+  const index = pointIndex(request.x, request.y, record.rules.W);
   if (record.board.m_board[index] !== 0) {
     return rejection(
       record,

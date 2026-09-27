@@ -45,6 +45,8 @@ import { RedisCasConflictExhaustedError } from "./redis-cas";
 import { SoloDomainError, rankedSoloSessionMetadata } from "./solo";
 import { SoloStore, SoloStoreError } from "./solo-store";
 import { RequestLimitError, reserveShareCooldown } from "./request-limits";
+import { readStringList } from "./stored-json";
+import { errorMessage } from "../shared/error-message";
 
 const app = express();
 app.use(express.json({ limit: "15mb" }));
@@ -79,12 +81,6 @@ router.use("/api/challenge-lab", challengeRouter(redis, challengeModerator));
 const nowISO = () => new Date().toISOString();
 const slog = (...values: unknown[]) =>
   console.log(`[EUCLID ${nowISO()}]`, ...values);
-
-function errorMessage(error: unknown, fallback = "Unknown error"): string {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === "string" && error) return error;
-  return fallback;
-}
 
 async function settleH2HEventBestEffort(
   event: H2HSettlementEvent | null,
@@ -131,19 +127,6 @@ async function drainH2HSettlementsBestEffort(
   }
 }
 
-function parseStringArray(raw: string | null | undefined): string[] {
-  if (!raw) return [];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) &&
-      parsed.every((value) => typeof value === "string")
-      ? parsed
-      : [];
-  } catch {
-    return [];
-  }
-}
-
 const NAMEKEY = (uid: string) => `euclid:name:${uid}`;
 const AVAKEY = (uid: string) => `euclid:avatar:${uid}`;
 const userAvatars = new UserAvatars(redis, (username) =>
@@ -171,17 +154,17 @@ const MCOUNT = (name: string) => `euclid:metric:count:${name}`;
 async function addUserToSet(name: string, uid: string | undefined | null) {
   if (!uid) return;
   const key = MSET(name);
-  const arr = parseStringArray(await redis.get(key));
+  const arr = readStringList(await redis.get(key));
   if (!arr.includes(uid)) {
     arr.push(uid);
     await redis.set(key, JSON.stringify(arr));
   }
 }
 async function scard(name: string): Promise<number> {
-  return parseStringArray(await redis.get(MSET(name))).length;
+  return readStringList(await redis.get(MSET(name))).length;
 }
 async function sget(name: string): Promise<Set<string>> {
-  return new Set(parseStringArray(await redis.get(MSET(name))));
+  return new Set(readStringList(await redis.get(MSET(name))));
 }
 async function incrCount(name: string, n = 1): Promise<number> {
   const key = MCOUNT(name);
@@ -473,7 +456,7 @@ function parseEloRecord(raw: string | null | undefined): RatingRecord | null {
 }
 
 async function getPlayers(): Promise<string[]> {
-  return parseStringArray(await redis.get(PLAYERS_KEY()));
+  return readStringList(await redis.get(PLAYERS_KEY()));
 }
 async function getElo(uid: string): Promise<RatingRecord> {
   const current = parseEloRecord(await redis.get(ELOKEY(uid)));
@@ -529,10 +512,6 @@ function formatShareDate(input: string | number | Date = Date.now()) {
     day: "numeric",
     year: "numeric",
   });
-}
-
-function shareScoringLabel(scoring: SerializableBoard["scoring"]) {
-  return scoring === "true" ? "True Area" : "Grid Footprint";
 }
 
 function parseSharePostDescriptor(input: unknown): SharePostDescriptor | null {
@@ -1374,7 +1353,7 @@ router.post("/api/share/h2h-result", async (req, res) => {
       headline: `${winnerName} Wins!`,
       details: byForfeit
         ? `${winnerName} advanced after ${loserName} left the match.`
-        : `${s1}-${s2} • ${shareScoringLabel(boardForShare.scoring)} scoring • ${boardForShare.W}x${boardForShare.H} board`,
+        : `Final score ${s1}-${s2}`,
       footer: `First to ${boardForShare.winScore} points • Shared from r/${subredditName}`,
       board: boardForShare,
       p1Name,

@@ -24,17 +24,17 @@ Pieces inside a square or along its edges don't get in the way. The corners are 
 
 _A position from the built-in teaching game, drawn with the same board renderer used during play._
 
-Ranked games use **Grid Footprint** scoring. Imagine an upright box around your square, count the grid points along one side, then square that number. A footprint three points wide scores 9; one four points wide scores 16. Tilted squares use the same rule. Practice also offers **True Area**, which scores the square's actual geometric area.
+Every game is played on an 8×8 board with **Grid Footprint** scoring. Imagine an upright box around your square, count the grid points along one side, then square that number. A footprint three points wide scores 9; one four points wide scores 16. Tilted squares use the same rule.
 
-The splash screen walks through a complete teaching sequence, then rotates through standings and game choices. **Play now** takes you straight to those choices. You can pause the rotation, use its arrows, or swipe between panels. Transitions fade through the current light or dark background, and the play, watch, and leaderboard controls stay in place.
+The splash screen walks through a complete teaching sequence, then rotates through standings and game choices. **Play now** takes you straight to those choices, and **Options** sets Euclid's Practice difficulty, square hints, and sound without opening the game. You can pause the rotation, use its arrows, or swipe between panels. Transitions fade through the current light or dark background, and the play, watch, and leaderboard controls stay in place.
 
 ## Pick a game
 
-| Mode                     | What you'll play                                                                                                                  | Rating          |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- | --------------- |
-| **Ranked vs Euclid**     | An 8×8 board, Grid Footprint scoring, first to 150. You move first; Euclid plays at **Tenderfoot**.                               | Solo Elo        |
-| **Practice vs Euclid**   | Choose an even board width and height from 4 through 16, scoring, target, and one of nine difficulty levels. Hints are available. | Unrated         |
-| **Redditor vs Redditor** | An 8×8 board, Grid Footprint scoring, first to 150. Includes matchmaking, chat, rematches, and live spectators.                   | Multiplayer Elo |
+| Mode                     | What you'll play                                                                                                        | Rating          |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------- | --------------- |
+| **Ranked vs Euclid**     | An 8×8 board, Grid Footprint scoring, first to 150. You move first; Euclid plays at **Tenderfoot**.                     | Solo Elo        |
+| **Practice vs Euclid**   | An 8×8 board, Grid Footprint scoring, and your choice of target and one of nine difficulty levels. Hints are available. | Unrated         |
+| **Redditor vs Redditor** | An 8×8 board, Grid Footprint scoring, first to 150. Includes matchmaking, chat, rematches, and live spectators.         | Multiplayer Elo |
 
 **Change difficulty** appears in Practice. Its slider has a tick for each of the nine levels and shows the selected level as you move it. Ranked keeps the same preset for everyone. Reloading resumes a saved solo game; canceling Ranked before your first move is unrated, while leaving after play begins records a loss.
 

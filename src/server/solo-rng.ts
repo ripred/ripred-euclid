@@ -1,4 +1,5 @@
 import { seededRandom } from "../shared/game/random";
+import { isCount, isNonBlankString } from "../shared/guards";
 import type { RandomSource } from "../shared/game/engine";
 
 /**
@@ -10,10 +11,10 @@ export function createSoloTurnRng(
   privateSeed: string,
   aiTurnOrdinal: number,
 ): RandomSource {
-  if (!privateSeed || !privateSeed.trim()) {
+  if (!isNonBlankString(privateSeed)) {
     throw new TypeError("privateSeed must be a non-empty string.");
   }
-  if (!Number.isSafeInteger(aiTurnOrdinal) || aiTurnOrdinal < 0) {
+  if (!isCount(aiTurnOrdinal)) {
     throw new RangeError("aiTurnOrdinal must be a non-negative safe integer.");
   }
 

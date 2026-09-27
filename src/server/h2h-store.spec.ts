@@ -1197,7 +1197,6 @@ describe("H2H live listing and stale cleanup", () => {
         revision: 7,
         width: H2H_RULES.W,
         height: H2H_RULES.H,
-        scoring: H2H_RULES.scoring,
         winScore: H2H_RULES.winScore,
       },
     ]);

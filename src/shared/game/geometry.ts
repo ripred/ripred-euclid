@@ -3,6 +3,45 @@ export interface GridPoint {
   y: number;
 }
 
+/** Row-major index of the point at (x, y). */
+export const pointIndex = (x: number, y: number, width: number): number =>
+  y * width + x;
+
+/** Identifies a set of corners whatever their order: sorted indices. */
+export const cornerKey = (indices: readonly number[]): string =>
+  [...indices].sort((left, right) => left - right).join(",");
+
+/** Corners sorted by angle around their centre, so they draw as a polygon. */
+export function orderAroundCentre<T extends GridPoint>(
+  corners: readonly T[],
+): T[] {
+  const cx = corners.reduce((sum, p) => sum + p.x, 0) / corners.length;
+  const cy = corners.reduce((sum, p) => sum + p.y, 0) / corners.length;
+  return [...corners].sort(
+    (a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx),
+  );
+}
+
+/** A square's corners around its centre, starting from the top-left one. */
+export function orderSquareCorners<T extends GridPoint>(
+  corners: readonly [T, T, T, T],
+): [T, T, T, T] {
+  const ordered = orderAroundCentre(corners);
+  let start = 0;
+  ordered.forEach((point, index) => {
+    const first = ordered[start]!;
+    if (point.y < first.y || (point.y === first.y && point.x < first.x))
+      start = index;
+  });
+  const at = (step: number) => ordered[(start + step) % 4]!;
+  return [at(0), at(1), at(2), at(3)];
+}
+
+/** Cells of an empty board, in row-major order; 0 marks an open point. */
+export function emptyCells(width: number, height: number): number[] {
+  return new Array<number>(width * height).fill(0);
+}
+
 export interface SquarePattern {
   readonly id: string;
   readonly corners: readonly number[];
@@ -62,8 +101,8 @@ export function squareCatalog(
     for (let x = 0; x < width; x++) {
       for (const corners of squaresWithCorner(width, height, x, y)) {
         const indices = [
-          y * width + x,
-          ...corners.map((p) => p.y * width + p.x),
+          pointIndex(x, y, width),
+          ...corners.map((p) => pointIndex(p.x, p.y, width)),
         ].sort((a, b) => a - b);
         const id = indices.join("-");
         if (patterns.has(id)) continue;

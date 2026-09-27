@@ -48,16 +48,23 @@ export function StandingsList({
   rows,
   label,
   limit,
+  from = 1,
   size = "md",
   empty,
 }: {
   rows: readonly RankingsShareRow[];
   label: string;
   limit?: number;
+  /** Rank of the first row shown, for lists that continue a podium. */
+  from?: number;
   size?: "sm" | "md" | "lg";
   empty: string;
 }) {
-  const shown = limit === undefined ? rows : rows.slice(0, limit);
+  const start = from - 1;
+  const shown = rows.slice(
+    start,
+    limit === undefined ? undefined : start + limit,
+  );
   if (shown.length === 0) return <p className="standings__empty">{empty}</p>;
   return (
     <ol className="standings" aria-label={label}>
@@ -65,7 +72,7 @@ export function StandingsList({
         <StandingRow
           key={`${row.userId}-${index}`}
           row={row}
-          rank={index + 1}
+          rank={from + index}
           size={size}
         />
       ))}

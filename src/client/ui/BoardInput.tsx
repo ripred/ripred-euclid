@@ -1,3 +1,4 @@
+import { pointIndex } from "./board-geometry";
 import type { useBoardInput } from "./use-board-input";
 import "./board-input.css";
 export function BoardInput({
@@ -32,7 +33,7 @@ export function BoardInput({
       {Array.from({ length: height }, (_, y) => (
         <div key={y} role="row" className="game__row">
           {Array.from({ length: width }, (_, x) => {
-            const index = y * width + x;
+            const index = pointIndex(x, y, width);
             const available = controls.enabled && controls.isOpen(index);
             return (
               <div

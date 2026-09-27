@@ -1,8 +1,5 @@
-import { errorMessage } from "./error-message";
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
+import { errorMessage } from "../shared/error-message";
+import { isRecord } from "../shared/guards";
 
 /** Share transport handling; each caller still validates its own response fields. */
 export async function fetchJsonRecord(

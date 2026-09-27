@@ -1,4 +1,5 @@
-import { totalSquareScore, type SquareScoringMode } from "../scoring";
+import { totalSquareScore } from "../scoring";
+import { isRecord } from "../guards";
 
 export type PlayerIndex = 0 | 1;
 export type PlayerColor = 1 | 2;
@@ -98,6 +99,15 @@ export function playerIndexForColor(color: PlayerColor): PlayerIndex {
   return color === 1 ? 0 : 1;
 }
 
+/** Every game is played on this board: Ranked, Practice and Redditor matches. */
+export const STANDARD_BOARD = Object.freeze({ W: 8, H: 8 } as const);
+export const STANDARD_WIN_SCORE = 150 as const;
+/** The most one player can score on the standard board. */
+export const STANDARD_MAX_SCORE = totalSquareScore(
+  STANDARD_BOARD.W,
+  STANDARD_BOARD.H,
+);
+
 export const SOLO_RULES_VERSION = 1 as const;
 export type SoloRulesVersion = typeof SOLO_RULES_VERSION;
 export type SoloMode = "ranked" | "practice";
@@ -105,9 +115,8 @@ export type SoloMode = "ranked" | "practice";
 export interface SoloRules {
   readonly rulesVersion: SoloRulesVersion;
   readonly mode: SoloMode;
-  readonly W: number;
-  readonly H: number;
-  readonly scoring: SquareScoringMode;
+  readonly W: typeof STANDARD_BOARD.W;
+  readonly H: typeof STANDARD_BOARD.H;
   readonly winScore: number;
   readonly humanPlayer: PlayerIndex;
   readonly firstPlayer: PlayerIndex;
@@ -116,10 +125,7 @@ export interface SoloRules {
 
 export type RankedSoloRules = SoloRules & {
   readonly mode: "ranked";
-  readonly W: 8;
-  readonly H: 8;
-  readonly scoring: "bbox";
-  readonly winScore: 150;
+  readonly winScore: typeof STANDARD_WIN_SCORE;
   readonly humanPlayer: 0;
   readonly firstPlayer: 0;
   readonly difficulty: "tenderfoot";
@@ -129,17 +135,15 @@ export type PracticeRules = SoloRules & { readonly mode: "practice" };
 
 export type PracticeRulesInput = Pick<
   PracticeRules,
-  "W" | "H" | "scoring" | "winScore" | "difficulty"
+  "winScore" | "difficulty"
 > &
   Partial<Pick<PracticeRules, "humanPlayer" | "firstPlayer">>;
 
 export const RANKED_SOLO_RULES: Readonly<RankedSoloRules> = Object.freeze({
   rulesVersion: SOLO_RULES_VERSION,
   mode: "ranked",
-  W: 8,
-  H: 8,
-  scoring: "bbox",
-  winScore: 150,
+  ...STANDARD_BOARD,
+  winScore: STANDARD_WIN_SCORE,
   humanPlayer: 0,
   firstPlayer: 0,
   difficulty: "tenderfoot",
@@ -152,9 +156,6 @@ export const DEFAULT_PRACTICE_RULES: Readonly<PracticeRules> = Object.freeze({
 });
 
 const PRACTICE_RULE_FIELDS = new Set<keyof PracticeRulesInput>([
-  "W",
-  "H",
-  "scoring",
   "winScore",
   "difficulty",
   "humanPlayer",
@@ -168,29 +169,15 @@ function assertPlayerIndex(value: unknown, field: string): PlayerIndex {
   return value;
 }
 
-function assertBoardDimension(value: unknown, field: string): number {
-  if (
-    typeof value !== "number" ||
-    !Number.isInteger(value) ||
-    value < 4 ||
-    value > 16 ||
-    value % 2 !== 0
-  ) {
-    throw new RangeError(`${field} must be an even integer from 4 through 16.`);
-  }
-  return value;
-}
-
 /**
  * Validates untrusted Practice configuration and returns the canonical rules
- * stored by the server. Ranked configuration never passes through this path.
+ * stored by the server. Practice is always played on the standard board;
+ * Ranked configuration never passes through this path.
  */
-export function validatePracticeRules(input: unknown): PracticeRules {
-  if (!input || typeof input !== "object" || Array.isArray(input)) {
+export function validatePracticeRules(candidate: unknown): PracticeRules {
+  if (!isRecord(candidate)) {
     throw new TypeError("Practice rules must be an object.");
   }
-
-  const candidate = input as Record<string, unknown>;
   const unknownField = Object.keys(candidate).find(
     (field) => !PRACTICE_RULE_FIELDS.has(field as keyof PracticeRulesInput),
   );
@@ -200,28 +187,20 @@ export function validatePracticeRules(input: unknown): PracticeRules {
     );
   }
 
-  const W = assertBoardDimension(candidate.W, "W");
-  const H = assertBoardDimension(candidate.H, "H");
-  const scoring = candidate.scoring;
-  if (scoring !== "bbox" && scoring !== "true") {
-    throw new TypeError('scoring must be "bbox" or "true".');
-  }
-
   const difficulty = candidate.difficulty;
   if (!isAiDifficulty(difficulty)) {
     throw new TypeError("difficulty is not supported.");
   }
 
   const winScore = candidate.winScore;
-  const maximumScore = totalSquareScore(W, H, scoring);
   if (
     typeof winScore !== "number" ||
     !Number.isInteger(winScore) ||
     winScore < 1 ||
-    winScore > maximumScore
+    winScore > STANDARD_MAX_SCORE
   ) {
     throw new RangeError(
-      `winScore must be an integer from 1 through ${maximumScore}.`,
+      `winScore must be an integer from 1 through ${STANDARD_MAX_SCORE}.`,
     );
   }
 
@@ -237,9 +216,7 @@ export function validatePracticeRules(input: unknown): PracticeRules {
   return {
     rulesVersion: SOLO_RULES_VERSION,
     mode: "practice",
-    W,
-    H,
-    scoring,
+    ...STANDARD_BOARD,
     winScore,
     humanPlayer,
     firstPlayer,
