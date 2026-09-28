@@ -13,7 +13,7 @@ export async function fetchRankings(
   const record = await fetchJsonRecord(
     "/api/rankings",
     "Unable to load the leaderboard.",
-    signal,
+    { signal: signal ?? null },
   );
   if (
     !record ||

@@ -69,3 +69,17 @@ export const SHOWCASE = {
     },
   ] as BoardSquareShape[],
 } as const;
+
+/** How each challenge is named and drawn wherever the splash mentions it. */
+export const CHALLENGE_COPY = {
+  daily: {
+    owner: 1,
+    tone: "red",
+    name: "Daily Challenge",
+  },
+  weekly: {
+    owner: 2,
+    tone: "blue",
+    name: "Weekly Challenge",
+  },
+} as const;

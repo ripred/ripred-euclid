@@ -1,5 +1,8 @@
 export type ExpandedEntry =
   | "game"
+  | "challenge"
+  | "daily"
+  | "weekly"
   | "leaderboard"
   | "watch"
   | "solo"
@@ -8,8 +11,13 @@ export type ExpandedEntry =
 /** Ordinary entry documents select a local screen. */
 export function expandedInitialMode(
   entry: string | undefined,
-): "rankings" | "spectate" | null {
+): "challenge" | "daily" | "weekly" | "rankings" | "spectate" | null {
   switch (entry) {
+    case "daily":
+    case "weekly":
+      return entry;
+    case "challenge":
+      return "challenge";
     case "leaderboard":
       return "rankings";
     case "watch":

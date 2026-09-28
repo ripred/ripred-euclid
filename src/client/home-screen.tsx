@@ -1,3 +1,11 @@
+import type { ChallengePeriod } from "../shared/challenge-spotlights";
+import { CHALLENGE_PERIODS } from "../shared/challenge-spotlights";
+import type { CompetitionAvailability } from "../shared/competitions";
+import {
+  competitionLabel,
+  competitionAvailabilityText,
+  formatCompetitionDate,
+} from "./competition-display";
 import type { SoloMode } from "../shared/game/rules";
 import {
   shouldLockHomeNavigation,
@@ -40,6 +48,9 @@ export interface HomeScreenProps {
   /** The selected solo path; Ranked uses fixed server rules. */
   soloMode?: SoloMode;
   onSoloModeChange?: ((mode: SoloMode) => void) | undefined;
+  competitions?: Record<ChallengePeriod, CompetitionAvailability> | undefined;
+  competitionNow?: number | undefined;
+  onChallenge?: ((period: ChallengePeriod) => void) | undefined;
   onPlayEuclid: () => void;
   onPlayRedditor: () => void;
   onContinueSolo: () => void;
@@ -536,6 +547,56 @@ export function HomeScreen(props: HomeScreenProps) {
               onCancelSearch={onCancelSearch}
             />
           </div>
+
+          {props.competitions &&
+            props.onChallenge &&
+            CHALLENGE_PERIODS.some(
+              (period) => props.competitions?.[period].enabled,
+            ) && (
+              <section
+                className="home-challenges"
+                aria-label="Subreddit challenges"
+              >
+                {CHALLENGE_PERIODS.filter(
+                  (period) => props.competitions?.[period].enabled,
+                ).map((period) => {
+                  const competition = props.competitions![period];
+                  return (
+                    <article className="panel home-card" key={period}>
+                      <div className="home-card__copy">
+                        <p className="eyebrow">Subreddit competition</p>
+                        <h2>{competitionLabel(period)}</h2>
+                        <p>
+                          {competitionAvailabilityText(
+                            competition,
+                            props.competitionNow ?? 0,
+                          )}
+                        </p>
+                        <p className="field__hint">
+                          {competition.status === "scheduled"
+                            ? "Opens"
+                            : "Closes"}{" "}
+                          {formatCompetitionDate(
+                            competition.status === "scheduled"
+                              ? competition.opensAt
+                              : competition.endsAt,
+                          )}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={navigationLocked}
+                        aria-describedby={lockDescriptionId}
+                        onClick={() => props.onChallenge?.(period)}
+                      >
+                        Open {period} challenge
+                      </button>
+                    </article>
+                  );
+                })}
+              </section>
+            )}
 
           <nav className="home-nav" aria-label="More Euclid options">
             <ul>

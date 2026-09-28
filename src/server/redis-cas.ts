@@ -31,13 +31,32 @@ export type RedisCasWrite =
   | { action: "set"; key: string; value: string; expiration?: Date }
   | { action: "delete"; key: string };
 
-export type RedisMultiCasDecision<TResult> =
+export type RedisTransactionDecision<TResult, TWrite> =
   | {
       action: "commit";
-      writes: readonly RedisCasWrite[];
+      writes: readonly TWrite[];
       result: TResult;
     }
   | { action: "no-change"; result: TResult };
+
+export type RedisMultiCasDecision<TResult> = RedisTransactionDecision<
+  TResult,
+  RedisCasWrite
+>;
+
+interface RedisTransactionAdapter<
+  TWrite,
+  TTransaction extends RedisCasTransaction,
+> {
+  validateWrites(writes: readonly TWrite[], watchKeys: readonly string[]): void;
+  queueWrite(transaction: TTransaction, write: TWrite): Promise<unknown>;
+}
+type RedisTransactionClient<TTransaction extends RedisCasTransaction> = Omit<
+  RedisCasClient,
+  "watch"
+> & {
+  watch(...keys: string[]): Promise<TTransaction>;
+};
 
 /** Adds or replaces a string write in a Redis multi-key CAS write map. */
 export function setRedisCasWrite(
@@ -151,15 +170,57 @@ export async function redisMultiCas<TResult>(
   decide: (snapshot: RedisCasSnapshot) => RedisMultiCasDecision<TResult>,
   options: RedisCasOptions = {},
 ): Promise<TResult> {
-  const keys = normalizeWatchKeys(watchKeys);
-  const maxAttempts = normalizeMaxAttempts(options.maxAttempts);
+  return redisWatchedTransaction(
+    redis,
+    watchKeys,
+    [],
+    decide,
+    {
+      validateWrites: assertValidWrites,
+      queueWrite: queueRedisStringWrite,
+    },
+    options,
+  );
+}
 
+/**
+ * Shared WATCH/MULTI/EXEC machinery. Only stringKeys are read with GET; other
+ * watched keys participate in conflicts without assuming their Redis type.
+ * The adapter validates and queues exactly one Redis command per write.
+ */
+export async function redisWatchedTransaction<
+  TResult,
+  TWrite,
+  TTransaction extends RedisCasTransaction,
+>(
+  redis: RedisTransactionClient<TTransaction>,
+  stringKeys: readonly string[],
+  otherKeys: readonly string[],
+  decide: (
+    snapshot: RedisCasSnapshot,
+  ) => RedisTransactionDecision<TResult, TWrite>,
+  adapter: RedisTransactionAdapter<TWrite, TTransaction>,
+  options: RedisCasOptions = {},
+): Promise<TResult> {
+  const strings = [...new Set(stringKeys)];
+  const keys = normalizeWatchKeys([...strings, ...otherKeys]);
+  const maxAttempts = normalizeMaxAttempts(options.maxAttempts);
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const result = await runAttempt(redis, keys, decide);
+    const result = await runAttempt(redis, keys, strings, decide, adapter);
     if (result.status === "committed") return result.result;
   }
-
   throw new RedisCasConflictExhaustedError(keys, maxAttempts);
+}
+
+/** Shared string queueing keeps SET expiration handling identical in all transactions. */
+export async function queueRedisStringWrite(
+  transaction: RedisCasTransaction,
+  write: RedisCasWrite,
+): Promise<unknown> {
+  if (write.action === "delete") return transaction.del(write.key);
+  return write.expiration
+    ? transaction.set(write.key, write.value, { expiration: write.expiration })
+    : transaction.set(write.key, write.value);
 }
 
 type AttemptResult<TResult> =
@@ -168,17 +229,25 @@ type AttemptResult<TResult> =
 
 type TransactionPhase = "watched" | "multi" | "closed";
 
-async function runAttempt<TResult>(
-  redis: RedisCasClient,
+async function runAttempt<
+  TResult,
+  TWrite,
+  TTransaction extends RedisCasTransaction,
+>(
+  redis: RedisTransactionClient<TTransaction>,
   watchKeys: readonly string[],
-  decide: (snapshot: RedisCasSnapshot) => RedisMultiCasDecision<TResult>,
+  stringKeys: readonly string[],
+  decide: (
+    snapshot: RedisCasSnapshot,
+  ) => RedisTransactionDecision<TResult, TWrite>,
+  adapter: RedisTransactionAdapter<TWrite, TTransaction>,
 ): Promise<AttemptResult<TResult>> {
   const transaction = await redis.watch(...watchKeys);
   let phase: TransactionPhase = "watched";
 
   try {
     const values = await Promise.all(
-      watchKeys.map(
+      stringKeys.map(
         async (key) => [key, (await redis.get(key)) ?? undefined] as const,
       ),
     );
@@ -192,22 +261,11 @@ async function runAttempt<TResult>(
       return { status: "committed", result: decision.result };
     }
 
-    assertValidWrites(decision.writes, watchKeys);
+    adapter.validateWrites(decision.writes, watchKeys);
     await transaction.multi();
     phase = "multi";
     for (const write of decision.writes) {
-      if (write.action === "set") {
-        // Expiration belongs to SET itself, so a committed value cannot lose its TTL.
-        if (write.expiration) {
-          await transaction.set(write.key, write.value, {
-            expiration: write.expiration,
-          });
-        } else {
-          await transaction.set(write.key, write.value);
-        }
-      } else {
-        await transaction.del(write.key);
-      }
+      await adapter.queueWrite(transaction, write);
     }
 
     const responses = await transaction.exec();
@@ -248,9 +306,9 @@ function normalizeMaxAttempts(value: number | undefined): number {
   return attempts;
 }
 
-function assertSynchronousDecision<TResult>(
-  decision: RedisMultiCasDecision<TResult>,
-): asserts decision is RedisMultiCasDecision<TResult> {
+function assertSynchronousDecision<TResult, TWrite>(
+  decision: RedisTransactionDecision<TResult, TWrite>,
+): asserts decision is RedisTransactionDecision<TResult, TWrite> {
   if (isPromiseLike(decision)) {
     throw new TypeError("Redis CAS decisions must be synchronous and pure.");
   }
@@ -326,7 +384,7 @@ async function releaseAfterError(
   }
 }
 
-function isRedisWatchConflict(error: unknown): boolean {
+export function isRedisWatchConflict(error: unknown): boolean {
   let candidate: unknown = error;
   for (let depth = 0; depth < 4 && candidate; depth++) {
     if (typeof candidate !== "object" && typeof candidate !== "function") {

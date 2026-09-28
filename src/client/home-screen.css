@@ -533,3 +533,25 @@
     font-size: var(--fs-md);
   }
 }
+
+.home-challenges {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: var(--sp-4);
+}
+
+.home-grid:has(.home-challenges) {
+  grid-template-areas:
+    "play records"
+    "challenges challenges"
+    "navigation navigation";
+}
+.home-challenges {
+  grid-area: challenges;
+}
+@media (max-width: 860px) {
+  .home-grid:has(.home-challenges) {
+    grid-template-areas: "play" "challenges" "navigation" "records";
+  }
+}

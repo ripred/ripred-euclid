@@ -1,5 +1,10 @@
 import type { ExpandedAction } from "./expanded-entry";
 import { ChallengeScreen } from "./challenge-screen";
+import { CompetitionScreen } from "./competition-screen";
+import {
+  useCompetitionAvailability,
+  useCompetitionClock,
+} from "./use-competition-availability";
 import React, {
   useCallback,
   useEffect,
@@ -238,6 +243,8 @@ function createClientCommandId(prefix: string): string {
 
 /* ===== App (UI + flows) ===== */
 type Mode =
+  | "daily"
+  | "weekly"
   | "challenge"
   | "ai"
   | "multiplayer"
@@ -275,7 +282,13 @@ export const App = ({
   initialMode = null,
   initialAction = null,
 }: {
-  initialMode?: "rankings" | "spectate" | null;
+  initialMode?:
+    | "challenge"
+    | "daily"
+    | "weekly"
+    | "rankings"
+    | "spectate"
+    | null;
   initialAction?: ExpandedAction | null;
 } = {}) => {
   const pendingInitialAction = useRef(initialAction);
@@ -2485,7 +2498,7 @@ export const App = ({
     const secret = "ripred";
     const onKey = (e: KeyboardEvent) => {
       // Playground configuration and play never enter ordinary-game shortcuts.
-      if (mode === "challenge") return;
+      if (mode === "challenge" || mode === "daily" || mode === "weekly") return;
       const k = e.key || "";
       if (!k) return;
       if (chatOpen) return;
@@ -2661,6 +2674,12 @@ export const App = ({
   /* =========================
      CONTENT ROUTER
      ========================= */
+  const { availability: challengeAvailability } = useCompetitionAvailability(
+    initState?.type === "init" && mode === null,
+    homeRefreshVersion,
+  );
+  const challengeNow = useCompetitionClock(challengeAvailability?.serverNow);
+
   let content: React.ReactElement;
 
   if (!initState && !initError) {
@@ -2711,6 +2730,13 @@ export const App = ({
           error={homeError}
           soloMode={soloMode}
           onSoloModeChange={setSoloMode}
+          competitions={challengeAvailability?.competitions}
+          competitionNow={challengeNow}
+          onChallenge={(period) => {
+            if (navigationLocked) return;
+            stopHomePresenceMonitoring();
+            setMode(period);
+          }}
           onPlayEuclid={() => void startSoloFromHome()}
           onPlayRedditor={() => void startMultiplayerQueue()}
           onContinueSolo={() => void continueSoloFromHome()}
@@ -2737,8 +2763,26 @@ export const App = ({
         />
       </>
     );
+  } else if (mode === "daily" || mode === "weekly") {
+    content = (
+      <CompetitionScreen
+        key={mode}
+        period={mode}
+        username={initState?.username ?? ""}
+        onLeave={returnHome}
+      />
+    );
   } else if (mode === "challenge") {
-    content = <ChallengeScreen onLeave={() => setMode(null)} />;
+    content =
+      initState?.type === "init" && initState.isModerator === true ? (
+        <ChallengeScreen onLeave={() => setMode(null)} />
+      ) : (
+        <HomeStatusScreen
+          heading="Moderator access required"
+          detail="The challenge playground is available only to moderators of this subreddit."
+          actions={[{ label: "Back to Euclid", onClick: returnHome }]}
+        />
+      );
   } else if (mode === "options") {
     content = (
       <SetupScreen

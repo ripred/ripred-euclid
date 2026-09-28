@@ -2,6 +2,13 @@ import { UserAvatars } from "./user-avatars";
 import { userAvatarRouter } from "./user-avatar-routes";
 import { EMPTY_CHALLENGE_SPOTLIGHTS } from "../shared/challenge-spotlights";
 import { challengeRouter } from "./challenge-routes";
+import { CompetitionService } from "./competition-service";
+import { competitionRouter } from "./competition-routes";
+import { publicChallengeSpotlights } from "./challenge-results";
+import {
+  readSubredditSettings,
+  subredditSettingsRouter,
+} from "./subreddit-settings";
 import express, { type Response } from "express";
 import { randomUUID } from "node:crypto";
 import type {
@@ -57,8 +64,9 @@ const router = express.Router();
 const h2hStore = new H2HStore(redis);
 const h2hSettlements = new H2HSettlementService(redis);
 const soloStore = new SoloStore(redis);
+const competitions = new CompetitionService(redis);
 
-async function challengeModerator(): Promise<string | null> {
+async function currentModeratorId(): Promise<string | null> {
   const userId = context.userId;
   const subredditName = context.subredditName;
   if (!userId || !subredditName) return null;
@@ -73,7 +81,37 @@ async function challengeModerator(): Promise<string | null> {
     ? userId
     : null;
 }
-router.use("/api/challenge-lab", challengeRouter(redis, challengeModerator));
+router.use("/api/challenge-lab", challengeRouter(redis, currentModeratorId));
+router.use(
+  "/api/competitions",
+  competitionRouter(
+    competitions,
+    async () => {
+      const userId = context.userId;
+      if (!userId) return null;
+      const username = await reddit.getCurrentUsername();
+      return username ? { userId, username } : null;
+    },
+    currentModeratorId,
+  ),
+);
+router.use(
+  "/api/subreddit-settings",
+  subredditSettingsRouter(redis, currentModeratorId, (settings) =>
+    competitions.saveSettings(settings),
+  ),
+);
+// Devvit restricts /internal endpoints to platform calls. The local adapter
+// supplies its own trusted loopback authentication for the same route.
+router.post("/internal/competitions/maintenance", async (_req, res) => {
+  try {
+    await competitions.reconcile();
+    res.json({ status: "ok" });
+  } catch (error) {
+    console.error("Challenge maintenance failed", error);
+    res.status(503).json({ message: "Challenge maintenance will retry." });
+  }
+});
 
 /* =========================
    UTIL / CONSTANTS
@@ -669,8 +707,14 @@ function sendShareError(
    ========================= */
 router.use("/api/users", userAvatarRouter(userAvatars));
 
-router.get("/api/challenge-spotlights", (_req, res) => {
-  res.json(EMPTY_CHALLENGE_SPOTLIGHTS);
+router.get("/api/challenge-spotlights", async (_req, res) => {
+  try {
+    await competitions.reconcile();
+    res.json(await publicChallengeSpotlights(redis));
+  } catch {
+    // The splash works without winners; it never waits on this request.
+    res.json(EMPTY_CHALLENGE_SPOTLIGHTS);
+  }
 });
 
 router.get<
@@ -706,9 +750,10 @@ router.get<
 
     res.json({
       type: "init",
-      canManageChallenges: await challengeModerator()
+      isModerator: await currentModeratorId()
         .then(Boolean)
         .catch(() => false),
+      subredditSettings: await readSubredditSettings(redis),
       postId,
       username,
       appVersion,

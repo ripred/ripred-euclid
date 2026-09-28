@@ -6,10 +6,18 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import type {
-  ChallengeSpotlights,
-  ChallengeWinner,
+import {
+  CHALLENGE_PERIODS,
+  CHALLENGE_SETTING,
+  type ChallengePeriod,
+  type ChallengeWinner,
 } from "../shared/challenge-spotlights";
+import type { SubredditSettings } from "../shared/subreddit-settings";
+import type { CompetitionAvailabilityResponse } from "../shared/competitions";
+import {
+  competitionAvailabilityText,
+  formatCompetitionDate,
+} from "./competition-display";
 import type { ExpandedEntry } from "./expanded-entry";
 import { formatChallengeTime } from "./challenge-time";
 import type { RankingsShareRow } from "../shared/types/api";
@@ -21,14 +29,14 @@ import { PlayerAvatar } from "./ui/PlayerAvatar";
 import { RedditAvatar } from "./ui/RedditAvatar";
 import { staggerStyle } from "./ui/stagger";
 import { useCountUp } from "./ui/use-count-up";
-import { PODIUM_PLACES, SHOWCASE, useSceneCue } from "./splash-scene";
+import {
+  CHALLENGE_COPY,
+  PODIUM_PLACES,
+  SHOWCASE,
+  useSceneCue,
+} from "./splash-scene";
 
-export type SplashSlideId =
-  | "rules"
-  | "leaderboard"
-  | "daily"
-  | "weekly"
-  | "play";
+export type SplashSlideId = "rules" | "leaderboard" | ChallengePeriod | "play";
 export type ExpandSplash = (
   event: MouseEvent<HTMLButtonElement>,
   entry: ExpandedEntry,
@@ -229,21 +237,6 @@ export function Podium({
   );
 }
 
-const WINNER_COPY = {
-  daily: {
-    owner: 1,
-    tone: "red",
-    title: "Daily Challenge Winner",
-    when: "Yesterday’s puzzle",
-  },
-  weekly: {
-    owner: 2,
-    tone: "blue",
-    title: "Weekly Challenge Winner",
-    when: "Last week’s puzzle",
-  },
-} as const;
-
 /** Waits for the square to close before the numbers start counting. */
 const WINNER_COUNT_DELAY_MS = 1100;
 
@@ -258,12 +251,12 @@ export function ChallengeWinnerCard({
   preview,
   active,
 }: {
-  period: "daily" | "weekly";
+  period: ChallengePeriod;
   winner: ChallengeWinner;
   preview: boolean;
   active: boolean;
 }) {
-  const { owner, tone, title, when } = WINNER_COPY[period];
+  const { owner, tone, name: challenge } = CHALLENGE_COPY[period];
   const { live, cued, reduced } = useSceneCue(active, WINNER_COUNT_DELAY_MS);
   const time = useCountUp(cued ? winner.elapsedMs : 0, {
     disabled: reduced || !cued,
@@ -294,9 +287,13 @@ export function ChallengeWinnerCard({
     >
       <SceneHead
         icon="trophy"
-        kicker={title}
+        kicker={`${challenge} Winner`}
         title={name}
-        subtitle={when}
+        subtitle={
+          winner.endsAt
+            ? `Ended ${formatCompetitionDate(winner.endsAt)}`
+            : "Completed challenge"
+        }
         oneLine
       />
       <dl className="splash-winner__stats">
@@ -360,15 +357,23 @@ const SPLASH_CHOICES = [
 ] as const;
 
 export function SplashChoices({
-  challenges,
+  settings,
+  availability,
+  now,
   active,
   onExpand,
 }: {
-  challenges: ChallengeSpotlights;
+  settings: SubredditSettings;
+  availability: CompetitionAvailabilityResponse | null;
+  now: number;
   active: boolean;
   onExpand: ExpandSplash;
 }) {
   const { live } = useSceneCue(active, 0);
+  // Only challenges this subreddit has switched on are offered.
+  const offered = CHALLENGE_PERIODS.filter(
+    (period) => settings[CHALLENGE_SETTING[period]],
+  );
   return (
     <SplashScene
       tone="red"
@@ -397,7 +402,10 @@ export function SplashChoices({
         />
       }
     >
-      <SceneHead kicker="Your move" title="Two Ways to Play!" />
+      <SceneHead
+        kicker="Your move"
+        title={offered.length ? "Choose a game" : "Two Ways to Play!"}
+      />
       <div className="splash-choices">
         {/* Red and blue match the home screen's solo and multiplayer cards. */}
         {SPLASH_CHOICES.map(({ entry, owner, title, detail }, index) => (
@@ -413,18 +421,26 @@ export function SplashChoices({
             <Icon name="arrow" size={18} />
           </button>
         ))}
-        {challenges.preview && (
-          <div className="splash-choices__soon">
-            <button className="splash-choice" disabled>
-              <Icon name="trophy" size={18} />
-              <strong>Daily Challenge</strong>
-              <span>2–3 mixed squares · Not open</span>
-            </button>
-            <button className="splash-choice" disabled>
-              <Icon name="trophy" size={18} />
-              <strong>Weekly Challenge</strong>
-              <span>3–4 oblique squares · Not open</span>
-            </button>
+        {offered.length > 0 && (
+          <div className="splash-choices__challenges">
+            {offered.map((period) => (
+              <button
+                key={period}
+                className="splash-choice splash-choice--challenge"
+                onClick={(event) => onExpand(event, period)}
+              >
+                <Icon name="trophy" size={18} />
+                <strong>{CHALLENGE_COPY[period].name}</strong>
+                <span>
+                  {availability
+                    ? competitionAvailabilityText(
+                        availability.competitions[period],
+                        now,
+                      )
+                    : "View challenge"}
+                </span>
+              </button>
+            ))}
           </div>
         )}
       </div>
@@ -435,11 +451,6 @@ export function SplashChoices({
         >
           Game menu &amp; settings
         </button>
-        {challenges.preview && (
-          <p className="splash-sample">
-            Challenge choices preview · Both schedules are off
-          </p>
-        )}
       </div>
     </SplashScene>
   );

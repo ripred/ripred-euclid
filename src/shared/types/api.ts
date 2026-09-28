@@ -7,6 +7,7 @@ import type {
   RankedSoloRules,
   SoloRulesVersion,
 } from "../game/rules";
+import type { SubredditSettings } from "../subreddit-settings";
 
 export type ShareBucket = "hvh" | "hva";
 
@@ -506,7 +507,9 @@ export type SharePostDescriptor = {
 };
 
 export type GameInitResponse = {
-  canManageChallenges?: boolean;
+  /** Whether the viewer moderates this subreddit; the server re-checks. */
+  isModerator?: boolean;
+  subredditSettings: SubredditSettings;
   type: "init";
   postId: string;
   username: string;

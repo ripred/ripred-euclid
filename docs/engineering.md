@@ -33,6 +33,7 @@ Home records, resume and queue status, and live scoring effects are projections 
 ## Application surfaces
 
 - The default inline post uses a carousel that fades between panels through the current theme background: the complete six-lesson teaching game, compact live standings, available finalized daily and weekly winners, then game choices. Winner cards show move count, solve time, and total daily/weekly wins; they contain no solution boards. Arrows, slide buttons, swipe, and Pause control the rotation. Focusing a slide control pauses the rotation with an explicit Resume action; resting the pointer over a slide does not pause it. Hidden tabs stop playback, and reduced-motion viewers start paused. Preview onboarding completes only after the full demo finishes.
+- Enabled daily and weekly competitions appear in the splash choices and expanded home. Their shared expanded screen shows server-derived availability, opening time, deadline, countdown, personal best, and optional paginated standings. Public availability refreshes every 30 seconds while visible; an open competition screen refreshes every 15 seconds and at its opening or closing boundary. Returning to a visible tab refreshes state. Disabled challenges have no choice or winner slide, and a stale direct entry shows a disabled state.
 - **Play now**, **Watch live**, and **Full leaderboard** occupy a fixed footer outside the slides. Play now jumps to choices. **Play Euclid** opens the `solo` entry and **Play Another Redditor** opens `reddit`; both wait for authoritative presence and saved-game checks before using the existing home actions. Existing queues or matches remain in the home controls. **Game menu & settings** opens the ordinary `game` entry without starting a match. Watch and leaderboard open their existing expanded screens.
 - Solo gameplay shortcuts require a fresh key press during the displayed human turn. Buffered keys, held-key repeats, and partial shortcut input do not carry into the next turn; gameplay keys are ignored while a move is pending or the game has ended. Chat typing is unaffected.
 - Expanded solo, multiplayer, and spectator games share a viewport-bounded layout. Board sizing accounts for the actual title, scores, chat, and action controls as they resize or wrap. Unusually small expanded frames retain scrolling rather than clipping controls or shrinking cells below their minimum size.
@@ -56,7 +57,9 @@ src/shared/
   game/rules.ts           Ranked rules and strict Practice validation
   scoring.ts              Grid Footprint, True Area, totals, and target guidance
   challenge.ts            Public puzzle state, settings, and accepted placements
-  challenge-spotlights.ts Finalized winner contracts and empty production state
+  challenge-spotlights.ts Period mapping, finalized winners, and visibility filtering
+  competitions.ts        Shared templates, availability, attempts, and standings
+  subreddit-settings.ts  Moderator switches, defaults, and saved-setting validation
   user-avatar.ts          Shared username validation
   types/api.ts            Browser/server contracts
 
@@ -66,14 +69,20 @@ src/client/
   game-screen.tsx         Board, scores, input, chat, and result controls
   preview.tsx             Teaching sequence, standings, winner panels, and choices
   splash-carousel.tsx     Fade transitions, navigation, and playback controls
-  challenge-screen.tsx    Moderator settings, generation, play, and restart
+  splash-options.tsx      Personal options and moderator-only subreddit controls
+  challenge-screen.tsx    Private moderator generation, play, and restart
+  challenge-template-controls.tsx  Saved/pending settings and daily/weekly Apply
+  competition-screen.tsx Shared daily/weekly play, countdown, results, and retries
+  competition-api.ts     Validated competition requests and responses
+  use-competition-availability.ts  Shared visibility polling and display clock
   ChallengeTimer.tsx      Display clock synchronized with the server attempt
   rankings-screen.tsx     Full solo and multiplayer standings
   watch-view.tsx          Live lobby, recorded demo, replay, and result controls
-  expanded-entry.ts       Direct solo, Redditor, rankings, and watch routing
+  expanded-entry.ts       Direct game, playground, competition, and watch routing
   share-preview.tsx       Inline summaries and expanded frozen results
   ui/BoardDiagram.tsx     Passive board artwork shared by every surface
   ui/BoardInput.tsx       Shared keyboard, pointer, and touch board controls
+  ui/ChallengeBoard.tsx   Shared private/public puzzle board and blocked-spot editor
   ui/PlayerAvatar.tsx     Image display and initial fallback
   ui/RedditAvatar.tsx     Cancellable lookup when a surface has only a username
   design/                 Shared tokens and base styling
@@ -86,12 +95,20 @@ src/server/
   challenge-generator.ts  Puzzle construction and minimum-move certification
   challenge-store.ts      Private attempts, timing, revisions, and expiration
   challenge-routes.ts     Moderator authorization and playground endpoints
+  competition-model.ts   UTC windows, stored templates, and instance definitions
+  competition-service.ts Generation, template application, rollover, and settlement
+  competition-gameplay.ts Attempts, canonical timing, best results, and standings
+  competition-redis.ts   Atomic string and sorted-set competition transactions
+  competition-routes.ts  Public play and protected moderator template endpoints
+  challenge-results.ts   Enabled competitions' latest finalized winner projection
+  subreddit-settings.ts Shared settings persistence and moderator save endpoint
+  moderator.ts          Reusable server-side moderator authorization
   user-avatars.ts         Shared avatar cache and lookup coalescing
   user-avatar-routes.ts   Public username-to-avatar endpoint
   request-limits.ts       Receipt budgets, retention, and share cooldowns
   redis-cas.ts            Optimistic Redis transactions
 
-tools/local-devvit/       In-memory Reddit services and local-only sample data
+tools/local-devvit/       Local Reddit services, persistent Redis, and maintenance
 tools/render-readme-images.mjs  Reproducible documentation illustrations
 ```
 
@@ -111,23 +128,55 @@ The September 11, 2026 full audit reported three high-severity affected developm
 
 API reference: [RedditClient.getSnoovatarUrl](https://developers.reddit.com/docs/api/public-api/classes/RedditClient#getsnoovatarurl).
 
-## Challenge playground details
+## Challenge competitions
 
-The challenge feature branch includes a private moderator playground on the standard 8×8 board. Its home-screen entry is currently hidden; the screen, engine, and protected endpoints remain in the code. The playground supports minimum moves and target squares (1–4 each), construction geometry, shared corners, and optional multiple optimal solutions. Any valid square counts during play. The minimum is certified, not a move limit; there is no undo or hint action.
+For the player rules, defaults, and moderator controls, see [Daily and weekly challenges](../README.md#daily-and-weekly-challenges). Both periods use one parameterized lifecycle, gameplay service, and client screen. The generator, move validation, timer display, and board controls are shared with the private playground.
 
-The **Daily starting point** preset selects 3 mixed squares in 2 moves; **Weekly starting point** selects 4 oblique squares in 3 moves. Suggested ranges are 2–3 daily squares or 3–4 weekly squares, each in 2–4 moves. Presets remain editable and do not enable a schedule.
+### Calendar and moderator settings
 
-Blocked spots can be marked directly before generation. **Total blocked spots** includes those mandatory selections; the generator chooses any additional blocks. Blocked spots cannot be square corners, but may lie inside squares or along their edges. Generation rejects boards with pre-completed squares or an uncertified minimum. A bounded failure preserves the current attempt.
+Windows use UTC midnight, displayed as GMT, with Monday as the weekly boundary. A puzzle instance has its own ID and an immutable closing time. Replacement creates another instance within the same calendar window. State and mutation checks use server time; a completing move must be accepted before the deadline, including after a transaction retry.
 
-A completed attempt stops automatically. **Restart puzzle** keeps the same board and the best completed result: fewest moves, then shortest elapsed time. The server starts timing after generation or restart and freezes the clock on the accepted completing move. Refreshes and background tabs do not pause time; client timestamps cannot set the result. Leaving deletes the private session; disconnected sessions expire after two hours without a mutation. No attempt is added to rankings, spectator lists, shares, or public posts. Daily/weekly scheduling and official results are not enabled in this playground.
+Subreddit settings are stored independently of personal browser preferences. Both challenge switches default off, application timing defaults to `next-start`, and live standings default on. The reader preserves earlier two-switch records and fills the new fields with defaults. Every settings or template mutation checks current subreddit moderator membership on the server. The playground remains available while public competitions are disabled.
 
-To test locally:
+Each period has a saved template and an optional pending version. Load uses the pending version when present. Apply strips the playground seed, validates options, and checks the expected template revision. A later pending Apply replaces that period's earlier pending change. Changing the timing selector alone does not replace a board or reschedule an already saved template.
 
-```bash
-npm run dev:local
-```
+An immediate Apply requires explicit acknowledgement that the current entries will reset. Generation and certification finish before the new instance is published; failure preserves the existing template, board, and entries. Successful replacement marks the previous instance superseded, starts empty standings, keeps the calendar deadline, and awards no winner to the superseded instance. Applying while disabled does not enable play. Command receipts let the same Apply request recover from a lost reply without creating another replacement; stale moderator edits require refreshed settings.
 
-The `local_moderator` fixture grants moderator permission in the local adapter, but does not restore the hidden playground entry. Other local identities cannot use the challenge endpoints. Published builds check current subreddit moderator membership on the server for every challenge request. A separate tab using the same identity shares one private session and must reconcile stale revisions.
+Disabling takes effect immediately for visibility and accepted play, preserving the current instance and its accepted results. That instance still settles at its original deadline. Re-enabling before expiry resumes it; an unfinished attempt includes the disabled interval in its elapsed time. If there is no current usable board, the application timing controls immediate activation or the next scheduled start. The live-standings switch applies immediately to both periods; the API hides cross-player standings and personal rank while retaining the player's own result.
+
+### Generation and rollover
+
+`devvit.json` declares the every-minute `challenge-maintenance` task at `/internal/competitions/maintenance`, using Devvit's [recurring scheduler](https://developers.reddit.com/docs/capabilities/server/scheduler). Competition requests also reconcile lifecycle state, so a delayed tick does not extend a competition. Reconciliation settles expired instances before promoting templates or opening the next puzzle. It prepares the next enabled puzzle during the final five minutes before a boundary.
+
+Generation uses a fresh private seed and checks the exact requested minimum. At most three generation attempts are made for a target window/template or immediate Apply command. Leases prevent competing workers from publishing separate boards. A failed target stays unavailable with a moderator-visible error instead of falling back to an uncertified puzzle; changing or reapplying settings permits a new generation attempt. Public state exposes neither seeds nor solution witnesses.
+
+### Attempts, standings, and settlement
+
+Before the first Start, reading availability or opening the screen does not start a timer or reveal the puzzle board. An authenticated Start creates a server-timed attempt; retries play the same puzzle with a new attempt ID and timestamp. The best completed result persists independently of the active attempt. Navigation, refreshes, disconnection, and hidden tabs never restart or pause the timer. Moves carry the instance ID, attempt ID, expected revision, and command ID. Receipts preserve accepted retry responses; mismatched reuse and stale tabs cannot mutate a newer attempt. Mutations share a 120-request-per-minute allowance per user.
+
+The server ranks each player's best result by moves, elapsed milliseconds, and the order in which that exact result was first accepted. Equal repeats preserve the earlier achievement. One Redis sorted set per instance uses equal scores and fixed-width lexicographic members, avoiding lossy numeric score packing. An improvement removes the old member and adds the new one in the same transaction as the attempt, best result, command receipt, and winner candidate. Standings pages contain 20 entries; personal rank uses the same index.
+
+Settlement finalizes a non-superseded instance once, records its summary, increments the winner's daily or weekly total, and updates the latest winner spotlight atomically. A competition with no completed entry records no winner. Disabled competitions may settle, but their winner projection stays hidden until enabled. Challenge results do not change solo or multiplayer Elo.
+
+Attempts, best results, gameplay receipts, and standings expire 90 days after the instance's deadline. An unsettled instance stays available for settlement even after a longer outage; once settled or superseded, its detailed record uses the same deadline-based retention. Compact summaries, win totals, configuration, and moderator Apply receipts remain durable.
+
+## Private challenge playground
+
+Open **Options → Subreddit → Challenge playground** using a moderator account. It supports minimum moves and target squares (1–4 each), construction geometry, shared corners, and optional multiple optimal solutions. Any valid square counts during play. The certified minimum is not a move limit, and there is no undo or hint action. Its Generate and Restart actions affect only that moderator's private session; the separate Apply controls publish recurring settings as described above.
+
+Blocked spots can be marked directly before generation. **Total blocked spots** includes those mandatory selections; the generator chooses any additional blocks. Blocked spots cannot be square corners, but may lie inside squares or along their edges. Generation rejects pre-completed squares or an uncertified minimum. A bounded failure preserves the current attempt.
+
+Generation or **Restart puzzle** starts timing; the accepted completing move stops it. Restart keeps the same board and the best completed result, ordered by moves then elapsed time. Leaving deletes the private session; disconnected sessions expire after two hours without a mutation. Attempts never enter competition standings, live games, shares, or Elo. Two tabs using the same moderator identity share this session and must reconcile stale revisions.
+
+## Local runtime
+
+Follow the [local quick start](../README.md#try-it-locally). The `local_moderator` fixture exposes the Subreddit tab and protected playground/template endpoints only through the local adapter; published builds check actual Reddit membership.
+
+The local Redis adapter stores strings, sorted sets, and expiration timestamps in `.local/euclid-state.json`, relative to the server's working directory. `EUCLID_LOCAL_STATE` selects an alternate absolute or relative path. `.local/` is ignored by Git. Each mutation, including a transaction, atomically saves the next snapshot before exposing it to readers, so settings, attempts, results, and expiry survive a restart. This is a single-process development adapter; do not run multiple servers against the same state file. Use separate files for isolated identities or fixtures when their games must not share state.
+
+Startup and an every-minute local timer invoke the same internal maintenance endpoint. The local endpoint requires a loopback request and a random process token, allows no client clock override, and does not overlap a slow maintenance run. Production uses the declared Devvit scheduler. Clock injection belongs to automated tests.
+
+Fictional solo/multiplayer leaderboard data stays a display fixture. Challenge samples are opt-in with `EUCLID_SAMPLE_CHALLENGES=1`; insertion uses `SET NX` and never overwrites an existing winner record. Use a separate state file for sample previews so persisted fixtures do not mix with functional competition tests. Sample winners remain labeled and obey the same visibility switches as real winners.
 
 ## Devvit operation
 
@@ -136,10 +185,12 @@ The `local_moderator` fixture grants moderator permission in the local adapter, 
 - inline `preview.html` as the default tall post entrypoint;
 - `index.html` as the expanded `game` entrypoint;
 - `solo.html` and `reddit.html` as explicit expanded game launch entrypoints;
+- `challenge.html` as the private moderator playground, plus `daily.html` and `weekly.html` for public competitions;
 - `leaderboard.html` as the expanded `leaderboard` entrypoint;
 - `watch.html` as the expanded `watch` entrypoint;
 - the server bundle at `dist/server/index.cjs`;
 - the moderator **Create Euclid Game Post** menu action;
+- the every-minute challenge maintenance task described above;
 - `r/ripred_euclid_dev` as the playtest subreddit.
 
 The beta community is `EuclidTheGame`; the development playtest target is `ripred_euclid_dev`. Uploading a version does not install it, and installing the app does not update the subreddit icon or banners. Use these commands for the release steps:
@@ -175,8 +226,9 @@ Before installing a release beyond the test subreddit:
 6. Watch the full splash rotation in Reddit desktop card/compact views and the native mobile app. Check theme changes, pointer hover, keyboard focus, Pause/Resume, reduced motion, hidden tabs, orientation, height-only resizing, and increased zoom. Keep **Play now**, **Watch live**, and **Full leaderboard** visible through every phase. Verify that solo/Redditor choices expand correctly and respect existing games and queues. Inline content must leave the parent feed's scrolling available; expanded views must keep all controls reachable.
 7. Verify leaderboard shares render their canonical frozen snapshot and result shares retain their exact terminal-revision replay, including when a rematch has already begun. Inline summaries must fit without scrolling and keep their expansion action visible at desktop/mobile widths and increased zoom. After expansion, every snapshot row and the entire replay and footer must remain reachable, including by scrolling and keyboard navigation where needed.
 
-8. Before restoring the playground entry, use a moderator account to generate and play puzzles, restart attempts, mark blocked points, and exercise stale revisions from two tabs. Check that an ordinary account cannot reach the playground endpoints. Verify timing and best-result ordering, and confirm that attempts never appear in watch lists, rankings, or shares.
-9. Check winner-card and current-player Snoovatars in a Devvit runtime, including missing images and failed lookups. Local sample avatars only establish the adapter and display behavior.
+8. Use a moderator account to generate and play private puzzles, restart attempts, mark blocked points, load saved/pending settings, and exercise stale revisions from two tabs. Confirm an ordinary account cannot modify subreddit settings or reach playground/template endpoints. Verify private timing and best-result ordering, and that attempts never appear in public standings, watch lists, or shares.
+9. Exercise daily and weekly entry from both splash and expanded home. Verify Start, completing moves, Retry, resume after reload, hidden-tab timing, pagination, and live-standings privacy. Disable during an attempt, confirm direct requests cannot continue, then re-enable and check the preserved board and elapsed time. Verify queued template activation, immediate replacement confirmation and reset, GMT boundaries, expiry, a no-entry period, and one winner award after repeated maintenance. Use isolated clock-controlled tests for boundary races, not a production clock override.
+10. Restart the local server with an unfinished attempt and saved moderator settings, and verify recovery from the same state file. Check winner-card and current-player Snoovatars in a Devvit runtime, including missing images and failed lookups. Local sample avatars and scheduler ticks do not establish Reddit scheduler execution or account lookup behavior.
 
 The full real-surface checklist requires three distinct Reddit identities, simultaneous player sessions, a fresh browser-storage context, and a physical Reddit mobile-app session. Ranked win, loss, and tie outcomes also cannot be selected deterministically from the release surface; use naturally completed games unless an isolated, non-production QA fixture is designed and approved.
 

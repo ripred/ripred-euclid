@@ -13,6 +13,9 @@ export default defineConfig({
       input: {
         default: "preview.html",
         game: "index.html",
+        challenge: "challenge.html",
+        daily: "daily.html",
+        weekly: "weekly.html",
         solo: "solo.html",
         reddit: "reddit.html",
         leaderboard: "leaderboard.html",

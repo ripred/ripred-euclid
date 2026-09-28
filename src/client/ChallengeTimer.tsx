@@ -4,7 +4,12 @@ import type { ChallengeSnapshot } from "../shared/challenge";
 import { formatChallengeTime } from "./challenge-time";
 
 /** Interpolate a server reading with a monotonic clock; tab inactivity still counts. */
-export function ChallengeTimer({ snapshot }: { snapshot: ChallengeSnapshot }) {
+export function ChallengeTimer({
+  snapshot,
+}: {
+  snapshot: Pick<ChallengeSnapshot, "elapsedMs" | "complete"> &
+    Partial<ChallengeSnapshot>;
+}) {
   const [reading, setReading] = useState({
     snapshot,
     elapsed: snapshot.elapsedMs,

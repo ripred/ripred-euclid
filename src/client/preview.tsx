@@ -33,18 +33,32 @@ import {
   type SplashSlide,
 } from "./splash-carousel";
 import {
+  CHALLENGE_COPY,
   PODIUM_COUNT_DELAY_MS,
   PODIUM_SIZE,
   useSceneCue,
 } from "./splash-scene";
 import { SplashOptions } from "./splash-options";
 import { useReducedMotion } from "./ui/use-reduced-motion";
+import { fetchJsonRecord } from "./fetch-json";
 import {
+  DEFAULT_SUBREDDIT_SETTINGS,
+  validateSubredditSettings,
+  type SubredditSettings,
+} from "../shared/subreddit-settings";
+import {
+  CHALLENGE_PERIODS,
   EMPTY_CHALLENGE_SPOTLIGHTS,
+  readChallengeSpotlights,
+  spotlightsFor,
   type ChallengeSpotlights,
 } from "../shared/challenge-spotlights";
 import { StandingsList } from "./ui/Standings";
 import { buildWatchDemo } from "./watch-demo";
+import {
+  useCompetitionAvailability,
+  useCompetitionClock,
+} from "./use-competition-availability";
 
 /* The recorded teaching game, replayed move by move. */
 const DEMO_BOARD = buildWatchDemo();
@@ -303,13 +317,44 @@ export const PreviewApp = () => {
   const [challenges, setChallenges] = useState<ChallengeSpotlights>(
     EMPTY_CHALLENGE_SPOTLIGHTS,
   );
-  const activeSlide: SplashSlideId =
+  // Moderators' subreddit-wide switches; the server re-checks every change.
+  const [subredditSettings, setSubredditSettings] = useState<SubredditSettings>(
+    DEFAULT_SUBREDDIT_SETTINGS,
+  );
+  useEffect(() => {
+    if (initState?.type === "init")
+      setSubredditSettings(
+        validateSubredditSettings(initState.subredditSettings) ??
+          DEFAULT_SUBREDDIT_SETTINGS,
+      );
+  }, [initState]);
+  const { availability } = useCompetitionAvailability(
+    initState?.type === "init",
+    subredditSettings,
+  );
+  const competitionNow = useCompetitionClock(availability?.serverNow);
+  const displaySettings = availability
+    ? {
+        ...subredditSettings,
+        dailyChallenges: availability.competitions.daily.enabled,
+        weeklyChallenges: availability.competitions.weekly.enabled,
+      }
+    : subredditSettings;
+  const visibleChallenges = spotlightsFor(challenges, displaySettings);
+  const requestedSlide: SplashSlideId =
     surfaceMode === "intro" || surfaceMode === "demo" ? "rules" : surfaceMode;
+  // Removing the displayed challenge immediately returns to a remaining slide,
+  // including while rotation is paused or the spotlight refresh fails.
+  const activeSlide: SplashSlideId =
+    (requestedSlide === "daily" || requestedSlide === "weekly") &&
+    !visibleChallenges[requestedSlide]
+      ? "leaderboard"
+      : requestedSlide;
   const slideIds: SplashSlideId[] = [
     "rules",
     "leaderboard",
-    ...(challenges.daily ? ["daily" as const] : []),
-    ...(challenges.weekly ? ["weekly" as const] : []),
+    ...(visibleChallenges.daily ? ["daily" as const] : []),
+    ...(visibleChallenges.weekly ? ["weekly" as const] : []),
     "play",
   ];
   const selectSlide = (id: SplashSlideId) => {
@@ -323,17 +368,19 @@ export const PreviewApp = () => {
   useEffect(() => {
     if (initState?.type !== "init") return;
     const controller = new AbortController();
-    void fetch("/api/challenge-spotlights", { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) return;
-        const results = (await response.json()) as ChallengeSpotlights;
-        if (!controller.signal.aborted) setChallenges(results);
+    // The server leaves out winners of challenges that are switched off.
+    void fetchJsonRecord("/api/challenge-spotlights", "", {
+      signal: controller.signal,
+    })
+      .then((record) => {
+        if (!controller.signal.aborted)
+          setChallenges(readChallengeSpotlights(record));
       })
       .catch(() => {
         /* Standings and games remain available without spotlights. */
       });
     return () => controller.abort();
-  }, [initState]);
+  }, [initState, subredditSettings, availability]);
 
   useEffect(() => {
     return installThemeModeSync((nextTheme) => {
@@ -643,12 +690,12 @@ export const PreviewApp = () => {
       ),
     },
   ];
-  for (const period of ["daily", "weekly"] as const) {
-    const winner = challenges[period];
+  for (const period of CHALLENGE_PERIODS) {
+    const winner = visibleChallenges[period];
     if (winner)
       slides.push({
         id: period,
-        title: period === "daily" ? "Daily winner" : "Weekly winner",
+        title: `${CHALLENGE_COPY[period].name} Winner`,
         content: (
           <ChallengeWinnerCard
             period={period}
@@ -664,7 +711,9 @@ export const PreviewApp = () => {
     title: "Choose a game",
     content: (
       <SplashChoices
-        challenges={challenges}
+        settings={displaySettings}
+        availability={availability}
+        now={competitionNow}
         active={activeSlide === "play"}
         onExpand={openExpanded}
       />
@@ -686,7 +735,18 @@ export const PreviewApp = () => {
         optionsOpen={optionsOpen}
         onOpenOptions={() => setOptionsOpen(true)}
       />
-      {optionsOpen && <SplashOptions onClose={() => setOptionsOpen(false)} />}
+      {optionsOpen && (
+        <SplashOptions
+          onClose={() => setOptionsOpen(false)}
+          isModerator={
+            initState.type === "init" && initState.isModerator === true
+          }
+          settings={subredditSettings}
+          onSettingsChange={setSubredditSettings}
+          onPlayground={(event) => openExpanded(event, "challenge")}
+          expansionError={expansionError}
+        />
+      )}
     </div>
   );
 };

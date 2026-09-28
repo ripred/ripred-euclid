@@ -12,6 +12,15 @@
       "game": {
         "entry": "index.html"
       },
+      "challenge": {
+        "entry": "challenge.html"
+      },
+      "daily": {
+        "entry": "daily.html"
+      },
+      "weekly": {
+        "entry": "weekly.html"
+      },
       "leaderboard": {
         "entry": "leaderboard.html"
       },
@@ -29,6 +38,14 @@
   "server": {
     "dir": "dist/server",
     "entry": "index.cjs"
+  },
+  "scheduler": {
+    "tasks": {
+      "challenge-maintenance": {
+        "endpoint": "/internal/competitions/maintenance",
+        "cron": "* * * * *"
+      }
+    }
   },
   "menu": {
     "items": [

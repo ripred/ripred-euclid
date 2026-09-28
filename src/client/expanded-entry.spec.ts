@@ -9,13 +9,22 @@ describe("expanded entry selection", () => {
       expect(expandedInitialAction(entry)).toBe(entry);
     },
   );
-  it.each(["game", "watch", "leaderboard", "unknown", undefined])(
-    "does not auto-start from %s",
-    (entry) => {
-      expect(expandedInitialAction(entry)).toBeNull();
-    },
-  );
   it.each([
+    "game",
+    "challenge",
+    "daily",
+    "weekly",
+    "watch",
+    "leaderboard",
+    "unknown",
+    undefined,
+  ])("does not auto-start from %s", (entry) => {
+    expect(expandedInitialAction(entry)).toBeNull();
+  });
+  it.each([
+    ["challenge", "challenge"],
+    ["daily", "daily"],
+    ["weekly", "weekly"],
     ["watch", "spectate"],
     ["leaderboard", "rankings"],
     ["game", null],

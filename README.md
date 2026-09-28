@@ -8,7 +8,7 @@ Euclid is a turn-based strategy game you play right inside Reddit. Place a dot, 
 
 Play against Euclid, challenge another Redditor, or watch a match and see what you would have done differently. Practice lets you try different boards and difficulty levels without putting your rating on the line.
 
-[Visit r/EuclidTheGame](https://www.reddit.com/r/EuclidTheGame/) · [Run it locally](#try-it-locally) · [Challenge development](#a-few-pieces-a-few-squares)
+[Visit r/EuclidTheGame](https://www.reddit.com/r/EuclidTheGame/) · [Run it locally](#try-it-locally) · [Daily and weekly challenges](#daily-and-weekly-challenges)
 
 The Reddit community is the beta home. This README describes the code in this checkout, which can be ahead of the version installed there.
 
@@ -42,28 +42,29 @@ You can place pieces with a mouse or keyboard (arrow keys to move, Enter or Spac
 
 The two leaderboards keep solo and multiplayer results separate. **Watch live** opens the Redditor match lobby; if nobody is playing, you can watch the recorded teaching game instead.
 
-## A few pieces, a few squares
+## Daily and weekly challenges
 
-The challenge playground starts with some pieces already on the standard 8×8 board. Your job is to complete a specified number of squares using as few additional pieces as you can. Oblique angles, shared corners, and blocked points make a small puzzle surprisingly tricky.
+Challenges start with some pieces already on the standard 8×8 board. Your job is to complete a specified number of squares using as few additional pieces as you can. Oblique angles, shared corners, and blocked points make a small puzzle surprisingly tricky.
 
 ![An unsolved example challenge: complete three squares in two moves on an 8 by 8 board with six blocked points](docs/images/challenge-board.svg)
 
 _A fixed example puzzle. Crossed points are blocked; the solution isn't drawn._
 
-The **private moderator playground** remains in the code for testing the puzzle engine, but its home-screen button is currently hidden. It supports 1–4 target squares and 1–4 minimum moves, with configurable geometry and blocked points.
+When subreddit moderators enable them, **Daily challenge** and **Weekly challenge** appear in the splash choices and game menu. Everyone plays the same puzzle for that competition. Daily challenges run from **00:00 GMT to the next 00:00 GMT**; weekly challenges run from **Monday 00:00 GMT to the next Monday 00:00 GMT**. The screen shows the opening time, deadline, and time remaining.
 
-The generator checks that the puzzle really needs the requested minimum number of moves. That minimum is something to aim for, not a limit: you can use extra pieces. There's no undo or hint button. You can abandon an attempt or restart the same puzzle and try to beat your best result.
+Sign in and select **Start challenge** to reveal the board and start the timer. Complete the target number of squares before the deadline. The certified minimum is something to aim for, not a move limit. There's no undo or hint button. **Retry same puzzle** starts a fresh timed attempt and keeps your best completed result. Reloading, leaving the screen, or switching tabs doesn't pause an attempt.
 
-A timer runs from generation or restart until the completing move reaches the server. Your best result uses **fewest moves first, then shortest time**. Switching tabs doesn't stop the clock. Attempts stay private: they don't appear in live games, shared posts, or public rankings.
+Standings use **fewest moves, then shortest time, then first achieved**. Only your best completed attempt counts. Challenge results are separate from solo and multiplayer Elo. Moderators can hide live standings; you still see your own result. At the deadline the server finalizes the winner, and enabled challenges can show their latest winner in the splash rotation.
 
-The editable starting presets are:
+### Moderator controls
 
-| Preset                | Squares | Minimum moves | Geometry |
-| --------------------- | ------- | ------------- | -------- |
-| Daily starting point  | 3       | 2             | Mixed    |
-| Weekly starting point | 4       | 3             | Oblique  |
+Only subreddit moderators see **Options → Subreddit**. Its daily and weekly switches default to off; saved changes apply to everyone in that subreddit. Disabling a challenge removes its choices and winner slides and blocks play. It preserves the current puzzle and accepted results, which still settle at their deadline. Re-enabling an unexpired puzzle resumes it, including the elapsed time of an unfinished attempt.
 
-Daily and weekly scheduling, engagement controls, official entries, and winner settlement are still to come. The splash already has winner panels with avatars, solve times, and previous win counts. Local previews use clearly labeled sample winners; the server returns no winners until official competitions exist, and challenge entry buttons remain disabled.
+Open **Challenge playground** from that tab to test puzzles privately, even when both competitions are off. The controls support 1–4 target squares and 1–4 minimum moves, geometry, shared corners, multiple solutions, and blocked points. **Load daily settings** and **Load weekly settings** load the saved configuration, including a pending change. **Generate** tests those options privately; **Apply to Daily** or **Apply to Weekly** saves them for the shared competition. A test seed is never saved to a competition.
+
+**Apply changes** defaults to **Next scheduled start**. Applying settings queues them for the next daily or weekly boundary; applying again replaces that pending change. Choose **Immediately** to replace the current puzzle after confirmation. Replacement resets that competition's current entries and standings without awarding the superseded puzzle a winner, and keeps the normal deadline. The existing puzzle stays intact if generation fails. Applying settings never enables a disabled challenge. When enabling a challenge without a current board, the same timing choice determines whether it opens now or at its next scheduled start.
+
+The daily default is three mixed squares in two moves; the weekly default is four oblique squares in three moves. The playground's private attempts do not enter competition standings, live games, shares, or Elo. See the [engineering notes](docs/engineering.md#challenge-competitions) for generation, persistence, and settlement details.
 
 ## Try it locally
 
@@ -74,13 +75,13 @@ npm ci
 npm run dev:local
 ```
 
-Open [the game](http://127.0.0.1:7474/index.html) or [the splash carousel](http://127.0.0.1:7474/preview.html). The local adapter runs the real client and server with in-memory substitutes for the Reddit services, so you can play without a Reddit login. Restarting the server resets local games and results.
+Open [the game](http://127.0.0.1:7474/index.html) or [the splash carousel](http://127.0.0.1:7474/preview.html). The local adapter runs the real client and server with substitutes for the Reddit services, so you can play without a Reddit login. Settings, games, attempts, standings, and results survive server restarts in the ignored `.local/euclid-state.json` file. Set `EUCLID_LOCAL_STATE` to use a separate state file for an isolated local run.
 
-The local `local_moderator` identity has permission to test the challenge endpoints, but there is currently no home-screen entry to the playground. That moderator identity exists only in the local adapter; Reddit builds check actual subreddit moderator membership on the server.
+Open [the moderator preview](http://127.0.0.1:7474/preview.html?as=local_moderator) to use the Subreddit tab and playground locally. That moderator identity exists only in the local adapter; Reddit builds check actual subreddit moderator membership on the server.
 
 For a multiplayer test, open `index.html?as=alice` and `index.html?as=bob` in separate tabs. Each tab keeps its own local identity. A third tab can watch through `watch.html`.
 
-The local [full leaderboard](http://127.0.0.1:7474/leaderboard.html) includes **500 fictional players per mode** to exercise a populated list. The splash shows the top three. Sample results can't be shared, and the fixture data isn't included in uploaded builds.
+The local [full leaderboard](http://127.0.0.1:7474/leaderboard.html) includes **500 fictional players per mode** to exercise a populated list. The splash shows the top three. Challenge winner samples are off by default; use `EUCLID_SAMPLE_CHALLENGES=1 npm run dev:local` with a separate state file to preview them. Samples are inserted only if no winner record exists, remain subject to the challenge switches, and are labeled as samples. Sample results can't be shared, and fixture data isn't included in uploaded builds.
 
 ## Working on the game
 
@@ -95,6 +96,7 @@ npm run type-check
 npm run lint
 npm test
 npm run test:dependencies
+npm run test:local-adapter
 npm run build
 npm run check:devvit
 git diff --check

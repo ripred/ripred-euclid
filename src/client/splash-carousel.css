@@ -576,21 +576,21 @@
     transform: translateX(3px);
   }
 }
-.splash-choices__soon {
+.splash-choices__challenges {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
-.splash-choices__soon .splash-choice {
+.splash-choices__challenges .splash-choice {
   grid-template-columns: auto minmax(0, 1fr);
   min-height: 0;
   padding: 6px 10px;
   gap: 0 8px;
 }
-.splash-choices__soon strong {
+.splash-choices__challenges strong {
   font-size: var(--fs-xs);
 }
-.splash-choices__soon span {
+.splash-choices__challenges span {
   font-size: var(--fs-2xs);
 }
 .splash-scene--live .splash-choice {
@@ -672,7 +672,6 @@
   .preview__brand,
   .preview__progress,
   .splash-choice span,
-  .splash-choices__soon,
   .splash-scene__foot .splash-sample,
   .splash-standings .splash-scene__card > .preview-panel__body {
     display: none;
@@ -713,7 +712,6 @@
     gap: 4px;
   }
   .splash-choice span,
-  .splash-choices__soon,
   .splash-scene .splash-sample {
     display: none;
   }

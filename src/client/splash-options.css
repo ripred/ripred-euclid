@@ -12,6 +12,50 @@
   margin: auto;
   animation: rise-in 260ms var(--ease-out) both;
 }
+.splash-options--moderator {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+.splash-options__tabs {
+  justify-self: start;
+}
+.splash-options__panel {
+  min-height: 0;
+  overflow-y: auto;
+}
+.splash-options__panel > .splash-scene {
+  height: 100%;
+}
+.splash-options__subreddit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 620px;
+  margin: auto;
+  padding: 16px;
+}
+.splash-options__subreddit fieldset {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.splash-options__subreddit legend {
+  margin-bottom: 6px;
+  font-weight: 650;
+}
+.splash-options__subreddit p {
+  margin: 0;
+}
+.splash-options__subreddit fieldset:disabled .switch {
+  opacity: 0.6;
+}
+.splash-options__playground {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+}
 .splash-options__scene .splash-scene__card {
   justify-content: center;
   gap: 18px;

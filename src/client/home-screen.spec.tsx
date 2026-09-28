@@ -243,3 +243,67 @@ describe("home dashboard structure", () => {
     expect(openingButtonTag(markup, ">Leaving…<")).toContain("disabled");
   });
 });
+
+describe("home challenge entries", () => {
+  it.each([
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true],
+  ])("shows only enabled daily=%s weekly=%s challenges", (daily, weekly) => {
+    const make = (period: "daily" | "weekly", enabled: boolean) => ({
+      period,
+      enabled,
+      status: "open" as const,
+      instanceId: period,
+      opensAt: Date.UTC(2026, 8, 27),
+      endsAt: Date.UTC(2026, 8, 28),
+      showStandings: true,
+    });
+    const markup = renderToStaticMarkup(
+      <HomeScreen
+        {...homeProps({
+          competitions: {
+            daily: make("daily", daily),
+            weekly: make("weekly", weekly),
+          },
+          competitionNow: Date.UTC(2026, 8, 27, 12),
+          onChallenge: () => undefined,
+        })}
+      />,
+    );
+    expect(markup.includes("Open daily challenge")).toBe(daily);
+    expect(markup.includes("Open weekly challenge")).toBe(weekly);
+    if (daily || weekly) expect(markup).toContain("Closes in 12h 00m 00s");
+  });
+  it("shows a scheduled entry with its GMT start time and locks it during matchmaking", () => {
+    const item = {
+      period: "daily" as const,
+      enabled: true,
+      status: "scheduled" as const,
+      instanceId: null,
+      opensAt: Date.UTC(2026, 8, 28),
+      endsAt: Date.UTC(2026, 8, 29),
+      showStandings: true,
+    };
+    const markup = renderToStaticMarkup(
+      <HomeScreen
+        {...homeProps({
+          competitions: {
+            daily: item,
+            weekly: { ...item, period: "weekly", enabled: false },
+          },
+          competitionNow: Date.UTC(2026, 8, 27, 12),
+          onChallenge: () => undefined,
+          busyAction: "h2h",
+        })}
+      />,
+    );
+    expect(markup).toContain("Opens in 12h 00m 00s");
+    expect(markup).toContain("28 Sept 2026, 00:00 GMT");
+    const index = markup.indexOf("Open daily challenge");
+    expect(markup.slice(markup.lastIndexOf("<button", index), index)).toContain(
+      "disabled",
+    );
+  });
+});

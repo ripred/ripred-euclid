@@ -7,16 +7,9 @@ import {
   type ChallengeOptions,
   type ChallengeSnapshot,
 } from "../shared/challenge";
-import { squareCatalog } from "../shared/game/geometry";
 import { requestChallenge, challengeCommand } from "./challenge-api";
-import { BoardDiagram } from "./ui/BoardDiagram";
-import { BoardInput } from "./ui/BoardInput";
-import { useBoardInput } from "./ui/use-board-input";
-import {
-  BOARD_BLEED,
-  pointLabel,
-  type BoardSquareShape,
-} from "./ui/board-geometry";
+import { ChallengeBoard } from "./ui/ChallengeBoard";
+import { ChallengeTemplateControls } from "./challenge-template-controls";
 import { PageShell } from "./ui/PageShell";
 import { Dialog } from "./ui/Dialog";
 import "./challenge-screen.css";
@@ -25,8 +18,6 @@ import { ChallengeTimer } from "./ChallengeTimer";
 import { Switch } from "./ui/Switch";
 
 type Action = "generate" | "restart" | "leave";
-const coordinates = (index: number) =>
-  pointLabel(index % 8, Math.floor(index / 8));
 
 export function ChallengeScreen({ onLeave }: { onLeave: () => void }) {
   const [moves, setMoves] = useState("2");
@@ -45,9 +36,7 @@ export function ChallengeScreen({ onLeave }: { onLeave: () => void }) {
   const [error, setError] = useState("");
   const [uncertain, setUncertain] = useState(false);
   const [confirmation, setConfirmation] = useState<Action | null>(null);
-  const [width, setWidth] = useState(480);
-  const container = useRef<HTMLDivElement>(null);
-  const grid = useRef<HTMLDivElement>(null);
+  const [templateBusy, setTemplateBusy] = useState(false);
   const pending = useRef(false);
   const live = useRef(true);
 
@@ -82,17 +71,6 @@ export function ChallengeScreen({ onLeave }: { onLeave: () => void }) {
       live.current = false;
       abort.abort();
     };
-  }, []);
-
-  useEffect(() => {
-    const element = container.current;
-    if (!element) return;
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry) setWidth(entry.contentRect.width);
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
   }, []);
 
   const numeric = (text: string) => (/^\d+$/.test(text) ? Number(text) : NaN);
@@ -180,67 +158,20 @@ export function ChallengeScreen({ onLeave }: { onLeave: () => void }) {
     else act(action);
   }
 
-  const displayedBlocked = editing
-    ? manual
-    : (snapshot?.puzzle.blocked ?? manual);
-  const cells = Array<number>(64).fill(0);
-  if (!editing && snapshot)
-    for (const point of [...snapshot.puzzle.initial, ...snapshot.placements])
-      cells[point] = 1;
-  const cellSize = Math.max(
-    16,
-    Math.min(68, Math.floor(Math.max(0, width - 20) / 8)),
-  );
-  const squares: BoardSquareShape[] =
-    editing || !snapshot
-      ? []
-      : squareCatalog(8)
-          .filter((s) => snapshot.completedSquares.includes(s.id))
-          .map((s) => ({
-            key: s.id,
-            owner: 1,
-            tone: "history",
-            corners: s.corners.map((p) => ({ x: p % 8, y: Math.floor(p / 8) })),
-          }));
-  const input = useBoardInput({
-    width: 8,
-    height: 8,
-    cellSize,
-    gridRef: grid,
-    enabled:
-      !busy &&
-      !uncertain &&
-      !confirmation &&
-      (editing || (!!snapshot && !snapshot.complete)),
-    revision: `${snapshot?.attemptId}:${snapshot?.revision}:${editing}:${manual.join(",")}`,
-    isOpen: (point) =>
-      editing || (cells[point] === 0 && !displayedBlocked.includes(point)),
-    onPlace: (point) => {
-      if (editing) {
-        const next = manual.includes(point)
-          ? manual.filter((p) => p !== point)
-          : [...manual, point];
-        if (next.length > 60) {
-          setError("At least four points must remain available.");
-          return;
-        }
-        setManual(next);
-        if (!Number.isFinite(numeric(blocks)) || numeric(blocks) < next.length)
-          setBlocks(String(next.length));
-      } else void mutate("move", { point });
-    },
-  });
-  const markers =
-    input.aimIndex !== null && !editing
-      ? [
-          {
-            x: input.aimIndex % 8,
-            y: Math.floor(input.aimIndex / 8),
-            owner: 1 as const,
-            kind: "pending" as const,
-          },
-        ]
-      : [];
+  function place(point: number) {
+    if (editing) {
+      const next = manual.includes(point)
+        ? manual.filter((p) => p !== point)
+        : [...manual, point];
+      if (next.length > 60) {
+        setError("At least four points must remain available.");
+        return;
+      }
+      setManual(next);
+      if (!Number.isFinite(numeric(blocks)) || numeric(blocks) < next.length)
+        setBlocks(String(next.length));
+    } else void mutate("move", { point });
+  }
 
   return (
     <PageShell
@@ -250,7 +181,7 @@ export function ChallengeScreen({ onLeave }: { onLeave: () => void }) {
       back={{
         label: "Leave playground",
         onClick: () => (uncertain ? onLeave() : ask("leave")),
-        disabled: busy,
+        disabled: busy || templateBusy,
       }}
     >
       <p className="muted">
@@ -264,36 +195,10 @@ export function ChallengeScreen({ onLeave }: { onLeave: () => void }) {
             ask("generate");
           }}
         >
-          <fieldset disabled={busy || uncertain || !!confirmation}>
+          <fieldset
+            disabled={busy || templateBusy || uncertain || !!confirmation}
+          >
             <legend className="panel__title">Next puzzle</legend>
-            <div className="challenge-actions">
-              <button
-                type="button"
-                className="btn btn--sm"
-                onClick={() => {
-                  setMoves("2");
-                  setGoal("3");
-                  setGeometry("mixed");
-                }}
-              >
-                Daily starting point
-              </button>
-              <button
-                type="button"
-                className="btn btn--sm"
-                onClick={() => {
-                  setMoves("3");
-                  setGoal("4");
-                  setGeometry("oblique");
-                }}
-              >
-                Weekly starting point
-              </button>
-            </div>
-            <p className="field__hint">
-              Daily: 2–3 mixed squares in 2–4 moves. Weekly: 3–4 oblique squares
-              in 2–4 moves.
-            </p>
             <label className="field">
               <span className="field__label">Minimum moves</span>
               <input
@@ -401,6 +306,22 @@ export function ChallengeScreen({ onLeave }: { onLeave: () => void }) {
               Generate
             </button>
           </fieldset>
+          <ChallengeTemplateControls
+            options={options}
+            disabled={busy || uncertain || !!confirmation}
+            onBusyChange={setTemplateBusy}
+            onLoad={(template) => {
+              setMoves(String(template.minimumMoves));
+              setGoal(String(template.targetSquares));
+              setBlocks(String(template.blockedCount));
+              setGeometry(template.geometry);
+              setShared(template.sharedCorner);
+              setMultiple(template.multipleSolutions);
+              setManual([...template.blockedPoints]);
+              setSeed("");
+              setEditing(template.blockedPoints.length > 0);
+            }}
+          />
         </form>
         <section className="panel challenge-play" aria-label="Puzzle play">
           <div className="challenge-status" role="status" aria-live="polite">
@@ -443,55 +364,30 @@ export function ChallengeScreen({ onLeave }: { onLeave: () => void }) {
               </p>
             )}
             {busy && <p className="field__hint">Working…</p>}
-            {input.aimIndex !== null && (
-              <p className="field__hint">
-                Tap {coordinates(input.aimIndex)} again to{" "}
-                {editing ? "toggle its block" : "place"}.
-              </p>
-            )}
           </div>
-          <div ref={container} className="challenge-board-container">
-            <div
-              className="challenge-board"
-              style={{ width: cellSize * 8, height: cellSize * 8 }}
-            >
-              <div
-                className="challenge-board-art"
-                style={{
-                  left: -BOARD_BLEED.left * cellSize,
-                  top: -BOARD_BLEED.top * cellSize,
-                  right: -BOARD_BLEED.right * cellSize,
-                  bottom: -BOARD_BLEED.bottom * cellSize,
-                }}
-              >
-                <BoardDiagram
-                  width={8}
-                  height={8}
-                  cells={cells}
-                  squares={squares}
-                  blockedPoints={displayedBlocked}
-                  markers={markers}
-                  arrivingIndex={
-                    editing ? null : (snapshot?.placements.at(-1) ?? null)
-                  }
-                />
-              </div>
-              <BoardInput
-                width={8}
-                height={8}
-                cellSize={cellSize}
-                controls={input}
-                label={
-                  editing
-                    ? "Blocked spot editor, 8 by 8"
-                    : "Challenge board, 8 by 8"
-                }
-                describeCell={(p) =>
-                  `${coordinates(p)}, ${displayedBlocked.includes(p) ? "blocked" : cells[p] ? "occupied" : "empty"}${editing ? ", activate to toggle block" : ""}`
-                }
-              />
-            </div>
-          </div>
+          <ChallengeBoard
+            puzzle={snapshot?.puzzle ?? null}
+            placements={snapshot?.placements ?? []}
+            completedSquares={snapshot?.completedSquares ?? []}
+            blockedPoints={
+              editing ? manual : (snapshot?.puzzle.blocked ?? manual)
+            }
+            revision={`${snapshot?.attemptId}:${snapshot?.revision}:${editing}:${manual.join(",")}`}
+            enabled={
+              !busy &&
+              !templateBusy &&
+              !uncertain &&
+              !confirmation &&
+              (editing || (!!snapshot && !snapshot.complete))
+            }
+            onPlace={place}
+            editing={editing}
+            label={
+              editing
+                ? "Blocked spot editor, 8 by 8"
+                : "Challenge board, 8 by 8"
+            }
+          />
           <p className="field__hint">
             Use arrow keys to move and Enter or Space to place. Placements
             cannot be undone. You may use more than the minimum, or restart the
@@ -516,7 +412,7 @@ export function ChallengeScreen({ onLeave }: { onLeave: () => void }) {
             )}
             <button
               className="btn"
-              disabled={!snapshot || busy || uncertain}
+              disabled={!snapshot || busy || templateBusy || uncertain}
               onClick={() => ask("restart")}
             >
               Restart puzzle

@@ -26,6 +26,7 @@
     "prettier": "prettier-package-json --write ./package.json && prettier --write .",
     "test": "vitest run",
     "test:dependencies": "node --test tools/dependency-security.mjs",
+    "test:local-adapter": "node --test tools/local-devvit/*.test.mjs",
     "type-check": "tsc --build"
   },
   "dependencies": {

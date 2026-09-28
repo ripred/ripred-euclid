@@ -4,9 +4,22 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChallengeScreen } from "./challenge-screen";
 import {
+  DEFAULT_CHALLENGE_OPTIONS,
   placeChallengePoint,
   type ChallengeSnapshot,
 } from "../shared/challenge";
+import { byPeriod } from "../shared/challenge-spotlights";
+import { DEFAULT_SUBREDDIT_SETTINGS } from "../shared/subreddit-settings";
+
+const savedOptions = {
+  ...DEFAULT_CHALLENGE_OPTIONS,
+  minimumMoves: 3,
+  targetSquares: 4,
+  sharedCorner: false,
+  multipleSolutions: true,
+  blockedCount: 3,
+  blockedPoints: [4, 9],
+};
 
 let root: Root, host: HTMLDivElement;
 let current: ChallengeSnapshot | null;
@@ -95,6 +108,25 @@ beforeEach(async () => {
         ? (JSON.parse(String(init.body)) as Record<string, unknown>)
         : {};
       requests.push({ action, body });
+      if (action === "templates")
+        return {
+          ok: true,
+          json: async () => ({
+            settings: DEFAULT_SUBREDDIT_SETTINGS,
+            serverNow: 1,
+            templates: byPeriod(() => ({
+              active: {
+                revision: 1,
+                options: savedOptions,
+                savedAt: 1,
+                effectiveAt: 0,
+              },
+              pending: null,
+              revision: 1,
+              generationError: null,
+            })),
+          }),
+        };
       if (action === "generate") {
         if (failGenerate)
           return {
@@ -138,6 +170,15 @@ afterEach(async () => {
 });
 
 describe("challenge playground interactions", () => {
+  it("loads every saved generation option and clears a test seed before generating", async () => {
+    await input("Seed (optional)", "previous-private-seed");
+    await click(button("Load daily settings"));
+    expect(host.querySelectorAll(".board__blocked-point")).toHaveLength(2);
+    await click(button("Generate"));
+    expect(
+      requests.find((request) => request.action === "generate")?.body.options,
+    ).toEqual(savedOptions);
+  });
   it("edits numbers and blocks before generating and validates whole numbers", async () => {
     await input("Minimum moves", "2.5");
     expect(button("Generate").matches(":disabled")).toBe(true);

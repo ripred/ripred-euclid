@@ -26,6 +26,44 @@
   margin: calc(var(--sp-2) * -1) 0 0;
 }
 
+.challenge-templates {
+  display: grid;
+  gap: var(--sp-3);
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+
+.challenge-templates p,
+.challenge-templates .field__hint {
+  margin: 0;
+}
+
+.challenge-templates__timing {
+  font-size: var(--fs-sm);
+}
+
+.challenge-template {
+  display: grid;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.challenge-template h3 {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+.challenge-template__version {
+  display: grid;
+  gap: var(--sp-1);
+  font-size: var(--fs-xs);
+}
+
 .challenge-play {
   display: grid;
   gap: var(--sp-3);

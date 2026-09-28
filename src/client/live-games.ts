@@ -47,7 +47,7 @@ export async function fetchLiveGames(
   const payload = await fetchJsonRecord(
     "/api/games/list",
     "Unable to load live games. Try again.",
-    signal,
+    { signal: signal ?? null },
   );
   if (
     !payload ||

@@ -1,0 +1,53 @@
+.competition-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(240px, 0.8fr);
+  align-items: start;
+  gap: var(--sp-4);
+}
+.competition-play {
+  display: grid;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.competition-period {
+  margin: var(--sp-4) 0;
+}
+.competition-period > p:first-child {
+  margin: 0 0 var(--sp-2);
+  font-weight: 750;
+}
+.competition-best {
+  border-top: 1px solid var(--line);
+  padding-top: var(--sp-3);
+}
+.competition-results {
+  padding: 0;
+  margin: var(--sp-3) 0;
+  list-style: none;
+}
+.competition-results li {
+  display: flex;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.competition-results__rank {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+  min-width: 2ch;
+}
+.competition-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+@media (max-width: 760px) {
+  .competition-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.competition-final {
+  margin-top: var(--sp-4);
+}
