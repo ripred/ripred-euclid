@@ -133,7 +133,7 @@ export function competitionRouter(
       await report(res, error);
     }
   });
-  for (const action of ["start", "move", "retry"] as const)
+  for (const action of ["start", "move", "retry", "abandon"] as const)
     router.post(`/:period/${action}`, async (req, res) => {
       try {
         const user = await identity();

@@ -2026,7 +2026,7 @@ export const App = ({
     clearMultiplayerState({ nextMode: "watch-demo" });
   };
 
-  const playFromWatch = () => {
+  const returnFromWatch = () => {
     if (spectatingRef.current) clearMultiplayerState({ refreshHome: true });
     else returnHome();
   };
@@ -2820,7 +2820,7 @@ export const App = ({
         onRefresh={liveGames.refresh}
         onWatch={watchGame}
         onDemo={watchDemo}
-        onPlay={playFromWatch}
+        onBack={returnFromWatch}
       />
     );
   } else if (
@@ -2833,7 +2833,7 @@ export const App = ({
         headline={mode === "watch-demo" ? undefined : watchRecording!.headline}
         theme={watchTheme}
         onAnother={stopWatching}
-        onPlay={playFromWatch}
+        onBack={returnFromWatch}
       />
     );
   } else if (mode === "admin") {
@@ -3285,7 +3285,7 @@ export const App = ({
         theme={watchTheme}
         onAnother={stopWatching}
         onDemo={watchDemo}
-        onPlay={playFromWatch}
+        onBack={returnFromWatch}
       />
     );
   } else if (mode === "multiplayer" && !isBoardValid(board)) {
@@ -3532,7 +3532,7 @@ export const App = ({
                     watchRecording ? () => setShowWatchReplay(true) : undefined
                   }
                   onAnother={stopWatching}
-                  onPlay={playFromWatch}
+                  onBack={returnFromWatch}
                 />
               ) : (
                 closeButton

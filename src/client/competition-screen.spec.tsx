@@ -36,11 +36,16 @@ const fresh = (): ChallengeSnapshot => ({
   bestElapsedMs: null,
 });
 let state: CompetitionStateResponse;
+let stateReadOverride: CompetitionStateResponse | null;
 let standings: CompetitionStandingsResponse;
 let host: HTMLDivElement, root: Root;
 let loseMoveReply: boolean;
+let loseAbandonReply: boolean;
+let failAbandon: boolean;
 let failRecovery: boolean;
 let replaceOnMove: boolean;
+let heldAction: string | null;
+let heldRequest: Promise<void>;
 const requests: { url: string; body: Record<string, unknown> | null }[] = [];
 const leave = vi.fn();
 
@@ -66,6 +71,7 @@ beforeEach(() => {
     authenticated: true,
     latestResult: null,
   };
+  stateReadOverride = null;
   standings = {
     instanceId: "daily-1",
     visible: true,
@@ -75,8 +81,12 @@ beforeEach(() => {
     serverNow: NOW,
   };
   loseMoveReply = false;
+  loseAbandonReply = false;
+  failAbandon = false;
   failRecovery = false;
   replaceOnMove = false;
+  heldAction = null;
+  heldRequest = Promise.resolve();
   requests.length = 0;
   leave.mockReset();
   vi.stubGlobal(
@@ -105,10 +115,36 @@ beforeEach(() => {
             }),
         };
       const action = url.split("/").at(-1);
+      if (action === heldAction) await heldRequest;
       if (action === "state" && failRecovery) throw new Error("Still offline");
-      if (action === "start") state.snapshot = fresh();
+      if (action === "state" && stateReadOverride)
+        return {
+          ok: true,
+          json: async () => structuredClone(stateReadOverride),
+        };
+      if (action === "start")
+        state.snapshot = {
+          ...fresh(),
+          puzzleId: state.competition.instanceId!,
+        };
       if (action === "retry")
-        state.snapshot = { ...fresh(), attemptId: "attempt-2" };
+        state.snapshot = {
+          ...fresh(),
+          puzzleId: state.competition.instanceId!,
+          attemptId: "attempt-2",
+        };
+      if (action === "abandon") {
+        if (failAbandon)
+          return {
+            ok: false,
+            json: async () => ({ message: "Abandon unavailable." }),
+          };
+        state.snapshot = null;
+        if (loseAbandonReply) {
+          loseAbandonReply = false;
+          throw new Error("Abandon reply lost");
+        }
+      }
       if (action === "move" && replaceOnMove) {
         state = {
           ...state,
@@ -187,6 +223,14 @@ function point(index: number) {
   return cell!;
 }
 const mutations = () => requests.filter(({ body }) => body !== null);
+function hold(action: string) {
+  heldAction = action;
+  let release!: () => void;
+  heldRequest = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return release;
+}
 
 describe("public competition play", () => {
   it.each(["daily", "weekly"] as const)(
@@ -222,6 +266,64 @@ describe("public competition play", () => {
     await click(button("Back to Euclid"));
     expect(leave).toHaveBeenCalledOnce();
     expect(mutations()).toEqual([]);
+  });
+  it.each([
+    [1, 1, "Complete 1 Square In 1 move"],
+    [1, 2, "Complete 1 Square In 2 moves"],
+    [3, 1, "Complete 3 Squares In 1 move"],
+    [3, 4, "Complete 3 Squares In 4 moves"],
+  ] as const)(
+    "shows the objective for %s squares and %s moves without a progress fraction",
+    async (targetSquares, minimumMoves, objective) => {
+      state.snapshot = fresh();
+      state.snapshot.puzzle = {
+        ...state.snapshot.puzzle,
+        targetSquares,
+        minimumMoves,
+      };
+      await mount();
+      expect(host.querySelector(".competition-objective h2")?.textContent).toBe(
+        objective,
+      );
+      expect(
+        host.querySelector(".competition-progress")?.textContent,
+      ).toContain("Squares completed: 0 · Pieces placed: 0");
+      expect(
+        host.querySelector(".competition-objective")?.textContent,
+      ).not.toMatch(/\d+\s*\/\s*\d+/);
+      expect(mutations()).toEqual([]);
+    },
+  );
+  it("keeps metadata in Details and standings and blocks board input until it closes", async () => {
+    state.snapshot = fresh();
+    await mount();
+    expect(host.textContent).not.toContain("One puzzle for this subreddit");
+    expect(host.textContent).not.toContain("Fewest moves wins");
+    expect(host.querySelector("#competition-standings-title")).toBeNull();
+    expect(point(8).getAttribute("aria-disabled")).toBe("false");
+
+    await click(button("Details & standings"));
+    const dialog = host.querySelector('[role="dialog"]');
+    expect(dialog?.getAttribute("aria-modal")).toBe("true");
+    expect(dialog?.textContent).toContain("Daily challenge details");
+    expect(dialog?.textContent).toContain("One puzzle for this subreddit");
+    expect(dialog?.textContent).toContain("Fewest moves wins");
+    expect(dialog?.querySelector("#competition-standings-title")).toBeTruthy();
+    expect(point(8).getAttribute("aria-disabled")).toBe("true");
+    await click(point(8));
+    await act(async () =>
+      point(9).dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      ),
+    );
+    expect(mutations()).toEqual([]);
+
+    await click(button("Close details"));
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    expect(point(8).getAttribute("aria-disabled")).toBe("false");
+    await click(point(8));
+    expect(mutations()).toHaveLength(1);
+    expect(mutations()[0]?.body?.point).toBe(8);
   });
   it("submits revisioned placements, completes, and retries while preserving the best result", async () => {
     await mount();
@@ -345,6 +447,183 @@ describe("public competition play", () => {
   );
 });
 
+describe("abandoning a competition attempt", () => {
+  it.each(["daily", "weekly"] as const)(
+    "leaves the %s challenge only after confirmed abandonment and starts fresh on reentry",
+    async (period) => {
+      state.competition.period = period;
+      state.competition.instanceId = `${period}-1`;
+      state.snapshot = {
+        ...fresh(),
+        puzzleId: `${period}-1`,
+        placements: [8],
+        revision: 2,
+      };
+      const best = {
+        username: "player",
+        moves: 2,
+        elapsedMs: 2500,
+        achievedAt: NOW - 1000,
+      };
+      state.personalBest = best;
+      const release = hold("abandon");
+      await mount(period);
+      await click(button("Abandon Challenge"));
+      expect(mutations()).toEqual([
+        {
+          url: `/api/competitions/${period}/abandon`,
+          body: {
+            instanceId: `${period}-1`,
+            attemptId: "attempt-1",
+            expectedRevision: 2,
+            commandId: expect.any(String),
+          },
+        },
+      ]);
+      expect(leave).not.toHaveBeenCalled();
+      expect(state.snapshot?.placements).toEqual([8]);
+
+      await act(async () => release());
+      expect(leave).toHaveBeenCalledOnce();
+      expect(state.snapshot).toBeNull();
+      expect(state.personalBest).toEqual(best);
+
+      await act(async () => root.render(null));
+      await mount(period);
+      expect(host.querySelector('[role="grid"]')).toBeNull();
+      expect(button("Start challenge").disabled).toBe(false);
+      expect(host.textContent).toContain("Your best: 2 moves · 0:02.5");
+      expect(host.textContent).not.toContain("Pieces placed: 1");
+      expect(mutations()).toHaveLength(1);
+      await click(button("Start challenge"));
+      expect(mutations().at(-1)).toMatchObject({
+        url: `/api/competitions/${period}/start`,
+        body: {
+          instanceId: `${period}-1`,
+          attemptId: null,
+          expectedRevision: 0,
+        },
+      });
+      expect(host.textContent).toContain("Pieces placed: 0");
+      expect(state.personalBest).toEqual(best);
+    },
+  );
+
+  it("reconciles a lost abandonment reply before returning to the menu", async () => {
+    state.snapshot = { ...fresh(), placements: [8], revision: 2 };
+    await mount();
+    loseAbandonReply = true;
+    const releaseRecovery = hold("state");
+    await click(button("Abandon Challenge"));
+    expect(state.snapshot).toBeNull();
+    expect(leave).not.toHaveBeenCalled();
+    expect(mutations()).toHaveLength(1);
+    expect(requests.at(-1)?.url).toBe("/api/competitions/daily/state");
+
+    await act(async () => releaseRecovery());
+    expect(leave).toHaveBeenCalledOnce();
+    expect(mutations()).toHaveLength(1);
+  });
+
+  it.each([false, undefined])(
+    "does not treat an empty recovery response with authenticated=%s as confirmed abandonment",
+    async (authenticated) => {
+      state.snapshot = { ...fresh(), placements: [8], revision: 2 };
+      await mount();
+      failAbandon = true;
+      // A signed-out state read hides the user's board without deleting the
+      // attempt. A response omitting identity confirmation is insufficient too.
+      stateReadOverride = { ...state, snapshot: null };
+      if (authenticated === undefined) delete stateReadOverride.authenticated;
+      else stateReadOverride.authenticated = authenticated;
+      await click(button("Abandon Challenge"));
+
+      expect(requests.at(-1)?.url).toBe("/api/competitions/daily/state");
+      expect(state.snapshot?.attemptId).toBe("attempt-1");
+      expect(state.snapshot?.placements).toEqual([8]);
+      expect(leave).not.toHaveBeenCalled();
+      expect(host.textContent).toContain("Abandon unavailable.");
+      expect(mutations()).toHaveLength(1);
+    },
+  );
+
+  it("stays on the existing attempt when abandonment fails and refresh still finds it", async () => {
+    state.snapshot = { ...fresh(), placements: [8], revision: 2 };
+    await mount();
+    failAbandon = true;
+    await click(button("Abandon Challenge"));
+    expect(leave).not.toHaveBeenCalled();
+    expect(host.textContent).toContain("Abandon unavailable.");
+    expect(host.textContent).toContain("Pieces placed: 1");
+    expect(requests.at(-1)?.url).toBe("/api/competitions/daily/state");
+    expect(point(9).getAttribute("aria-disabled")).toBe("false");
+    expect(mutations()).toHaveLength(1);
+    expect(state.snapshot?.attemptId).toBe("attempt-1");
+
+    failAbandon = false;
+    await click(button("Abandon Challenge"));
+    expect(leave).toHaveBeenCalledOnce();
+    expect(mutations()).toHaveLength(2);
+  });
+
+  it("locks the attempt when abandonment and recovery both fail", async () => {
+    state.snapshot = { ...fresh(), placements: [8], revision: 2 };
+    await mount();
+    failAbandon = true;
+    failRecovery = true;
+    await click(button("Abandon Challenge"));
+    expect(leave).not.toHaveBeenCalled();
+    expect(point(9).getAttribute("aria-disabled")).toBe("true");
+    expect(button("Retry same puzzle").disabled).toBe(true);
+    expect(button("Abandon Challenge").disabled).toBe(true);
+    await click(point(9));
+    await click(button("Retry same puzzle"));
+    await click(button("Abandon Challenge"));
+    expect(mutations()).toHaveLength(1);
+
+    failRecovery = false;
+    await click(button("Refresh challenge"));
+    expect(leave).not.toHaveBeenCalled();
+    expect(point(9).getAttribute("aria-disabled")).toBe("false");
+    expect(button("Abandon Challenge").disabled).toBe(false);
+  });
+
+  it.each(["move", "retry", "abandon"] as const)(
+    "blocks concurrent move, retry, abandon, and navigation while %s is pending",
+    async (action) => {
+      state.snapshot = fresh();
+      await mount();
+      const release = hold(action);
+      await click(
+        action === "move"
+          ? point(8)
+          : button(
+              action === "retry" ? "Retry same puzzle" : "Abandon Challenge",
+            ),
+      );
+      expect(mutations()).toHaveLength(1);
+      expect(mutations()[0]?.url).toBe(`/api/competitions/daily/${action}`);
+      expect(point(9).getAttribute("aria-disabled")).toBe("true");
+      for (const label of [
+        "Retry same puzzle",
+        "Abandon Challenge",
+        "Back to Euclid",
+        "Details & standings",
+      ]) {
+        expect(button(label).disabled).toBe(true);
+        await click(button(label));
+      }
+      await click(point(9));
+      expect(mutations()).toHaveLength(1);
+      expect(leave).not.toHaveBeenCalled();
+
+      await act(async () => release());
+      expect(mutations()).toHaveLength(1);
+      expect(leave).toHaveBeenCalledTimes(action === "abandon" ? 1 : 0);
+    },
+  );
+});
+
 describe("competition results", () => {
   it("hides live standings and rank while preserving the player's best", async () => {
     state.competition.showStandings = false;
@@ -358,6 +637,7 @@ describe("competition results", () => {
     await mount();
     expect(host.textContent).toContain("Your best:");
     expect(host.textContent).not.toContain("Rank 4");
+    await click(button("Details & standings"));
     expect(host.textContent).toContain("Live standings are hidden");
     expect(requests.some(({ url }) => url.includes("/standings"))).toBe(false);
   });
@@ -372,6 +652,7 @@ describe("competition results", () => {
     standings.visible = false;
     await mount();
     expect(host.textContent).not.toContain("Rank 4");
+    await click(button("Details & standings"));
     expect(host.textContent).toContain("Live standings are hidden");
   });
 
@@ -387,6 +668,7 @@ describe("competition results", () => {
       },
     ];
     await mount();
+    await click(button("Details & standings"));
     expect(host.textContent).toContain("u/fast_player");
     expect(host.textContent).toContain("2 moves · 0:02.5");
     await click(button("Next page"));
@@ -414,6 +696,8 @@ describe("competition results", () => {
       },
     };
     await mount();
+    expect(host.textContent).not.toContain("Latest finalized result");
+    await click(button("Details & standings"));
     expect(host.textContent).toContain("Latest finalized result");
     expect(host.textContent).toContain("Period ended 27 Sept 2026, 00:00 GMT");
     expect(host.textContent).toContain("u/winner");

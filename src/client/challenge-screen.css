@@ -138,6 +138,33 @@
   padding: var(--sp-2) 0 var(--sp-4);
 }
 
+/* Competition parents assign the remaining viewport space to this flex item.
+   Keep the touch hint outside the measured board slot so it cannot add height. */
+.challenge-board-fit {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.challenge-board-container--fit {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+.challenge-board-fit__hint {
+  flex: none;
+  margin: 0;
+  text-align: center;
+  font-size: var(--fs-xs);
+}
+
 .challenge-board {
   position: relative;
   margin: 0 auto;

@@ -18,6 +18,7 @@ import {
 } from "./competition-display";
 import { useCompetitionClock } from "./use-competition-availability";
 import { formatChallengeTime } from "./challenge-time";
+import { challengeObjective } from "./challenge-display";
 import { ChallengeTimer } from "./ChallengeTimer";
 import { ChallengeBoard } from "./ui/ChallengeBoard";
 import { Dialog } from "./ui/Dialog";
@@ -49,6 +50,7 @@ export function CompetitionScreen({
   const [notice, setNotice] = useState("");
   const [uncertain, setUncertain] = useState(false);
   const [confirmRetry, setConfirmRetry] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const [standings, setStandings] =
     useState<CompetitionStandingsResponse | null>(null);
   const [standingsError, setStandingsError] = useState("");
@@ -167,9 +169,19 @@ export function CompetitionScreen({
     period,
   ]);
 
-  async function mutate(action: "start" | "retry" | "move", point?: number) {
+  async function mutate(
+    action: "start" | "retry" | "move" | "abandon",
+    point?: number,
+  ) {
     const current = stateRef.current;
-    if (!current || !open || !signedIn || pending.current || busy || uncertain)
+    if (
+      !current ||
+      (!open && action !== "abandon") ||
+      !signedIn ||
+      pending.current ||
+      busy ||
+      uncertain
+    )
       return;
     pending.current = true;
     ++requestVersion.current;
@@ -184,6 +196,7 @@ export function CompetitionScreen({
       if (mounted.current) {
         adopt(next);
         setNotice("");
+        if (action === "abandon" && !next.snapshot) onLeave();
       }
     } catch (failure) {
       if (!mounted.current) return;
@@ -192,7 +205,16 @@ export function CompetitionScreen({
       setUncertain(true);
       try {
         const next = await requestCompetitionState(period);
-        if (mounted.current) adopt(next);
+        if (mounted.current) {
+          adopt(next);
+          if (
+            action === "abandon" &&
+            next.authenticated === true &&
+            !next.snapshot &&
+            next.competition.instanceId === current.competition.instanceId
+          )
+            onLeave();
+        }
       } catch {
         /* A visible Refresh action recovers without replaying a move. */
       }
@@ -211,223 +233,279 @@ export function CompetitionScreen({
       titleId="competition-title"
       narrow={false}
       className="competition-screen"
-      back={{ label: "Back to Euclid", onClick: onLeave }}
+      back={{
+        label: "Back to Euclid",
+        onClick: onLeave,
+        disabled: pending.current,
+      }}
     >
-      <p className="muted">
-        One puzzle for this subreddit · Unlimited retries · Independent of
-        ratings
-      </p>
+      <div className="competition-toolbar">
+        <p role="timer" aria-live="off">
+          {competition
+            ? competitionAvailabilityText(competition, now)
+            : "Loading challenge…"}
+        </p>
+        <button
+          type="button"
+          className="btn btn--sm"
+          disabled={!state || busy}
+          onClick={() => setShowDetails(true)}
+        >
+          Details &amp; standings
+        </button>
+      </div>
+      {notice && (
+        <p className="notice" role="status">
+          {notice}
+        </p>
+      )}
       {!state ? (
-        <section className="panel">
+        <section className="panel competition-idle">
           <p role="status">
             {busy ? "Loading challenge…" : "Challenge unavailable."}
           </p>
         </section>
       ) : !competition?.enabled || competition.status === "disabled" ? (
-        <section className="panel">
+        <section className="panel competition-idle">
           <h2>Challenge disabled</h2>
           <p>Subreddit moderators have disabled this challenge.</p>
         </section>
       ) : (
-        <>
-          <section
-            className="panel competition-period"
-            aria-label="Challenge period"
-          >
-            <p role="timer" aria-live="off">
-              {competitionAvailabilityText(competition, now)}
+        <section
+          className={`panel competition-play${open && signedIn && snapshot ? " competition-play--active" : ""}`}
+          aria-label="Challenge play"
+        >
+          {!open ? (
+            <>
+              <h2>
+                {competition.status === "scheduled"
+                  ? "Next challenge scheduled"
+                  : expired
+                    ? "Challenge closed"
+                    : "Puzzle unavailable"}
+              </h2>
+              <p>
+                {competition.status === "scheduled"
+                  ? "Return at the opening time to begin. The timer starts only when you select Start."
+                  : expired
+                    ? "This period has ended. No more placements will be accepted."
+                    : "A certified puzzle is not available. Please check back later."}
+              </p>
+            </>
+          ) : !signedIn ? (
+            <>
+              <h2>Sign in to play</h2>
+              <p>
+                Sign in to Reddit to start this challenge and save your result.
+              </p>
+            </>
+          ) : !snapshot ? (
+            <>
+              <h2>Ready for the challenge?</h2>
+              <p>
+                Start reveals the board and begins your timer. Complete the
+                target squares using as few placements as possible.
+              </p>
+              <button
+                type="button"
+                className="btn btn--primary"
+                disabled={busy || uncertain}
+                onClick={() => void mutate("start")}
+              >
+                {busy ? "Opening…" : "Start challenge"}
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="competition-objective">
+                <h2>{challengeObjective(snapshot.puzzle)}</h2>
+                <div className="competition-progress" role="status">
+                  <span>
+                    {snapshot.complete
+                      ? "Puzzle complete"
+                      : `Squares completed: ${snapshot.completedSquares.length}`}{" "}
+                    · Pieces placed: {snapshot.placements.length}
+                  </span>
+                  <ChallengeTimer snapshot={snapshot} />
+                </div>
+              </div>
+              <div className="competition-board-slot">
+                <ChallengeBoard
+                  fitToSpace
+                  puzzle={snapshot.puzzle}
+                  placements={snapshot.placements}
+                  completedSquares={snapshot.completedSquares}
+                  revision={`${snapshot.attemptId}:${snapshot.revision}`}
+                  enabled={
+                    !busy &&
+                    !uncertain &&
+                    !confirmRetry &&
+                    !showDetails &&
+                    !snapshot.complete
+                  }
+                  onPlace={(point) => void mutate("move", point)}
+                />
+              </div>
+              <div className="competition-actions">
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={busy || uncertain}
+                  onClick={() =>
+                    snapshot.placements.length && !snapshot.complete
+                      ? setConfirmRetry(true)
+                      : void mutate("retry")
+                  }
+                >
+                  Retry same puzzle
+                </button>
+                {!snapshot.complete && (
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={busy || uncertain}
+                    onClick={() => void mutate("abandon")}
+                  >
+                    Abandon Challenge
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+          {state.personalBest && (
+            <p className="competition-best">
+              <strong>Your best:</strong>{" "}
+              <ResultLine result={state.personalBest} />
+              {showStandings &&
+              !(standingsCurrent && standings?.visible === false) &&
+              state.personalRank !== null
+                ? ` · Rank ${state.personalRank}`
+                : ""}
             </p>
+          )}
+        </section>
+      )}
+      {error && (
+        <p className="notice notice--attention" role="alert">
+          {error}
+        </p>
+      )}
+      {(error || uncertain || !state) && (
+        <button
+          type="button"
+          className="btn"
+          disabled={busy}
+          onClick={() => void refresh(true)}
+        >
+          Refresh challenge
+        </button>
+      )}
+      {showDetails && state && competition && (
+        <Dialog
+          labelledBy="competition-details-title"
+          onDismiss={() => setShowDetails(false)}
+          className="competition-details"
+        >
+          <div className="competition-details__header">
+            <h2 id="competition-details-title">
+              {competitionLabel(period)} details
+            </h2>
+            <button
+              type="button"
+              className="btn btn--sm"
+              autoFocus
+              onClick={() => setShowDetails(false)}
+            >
+              Close details
+            </button>
+          </div>
+          <section aria-label="Challenge period">
             <p className="field__hint">
               {competition.status === "scheduled" ? "Opens" : "Opened"}{" "}
               {formatCompetitionDate(competition.opensAt)}
               <br />
               Closes {formatCompetitionDate(competition.endsAt)}
             </p>
-          </section>
-          {notice && (
-            <p className="notice" role="status">
-              {notice}
+            <p>
+              One puzzle for this subreddit · Unlimited retries · Independent of
+              ratings
             </p>
-          )}
-          <div className="competition-layout">
-            <section
-              className="panel competition-play"
-              aria-label="Challenge play"
-            >
-              {!open ? (
-                <>
-                  <h2>
-                    {competition.status === "scheduled"
-                      ? "Next challenge scheduled"
-                      : expired
-                        ? "Challenge closed"
-                        : "Puzzle unavailable"}
-                  </h2>
-                  <p>
-                    {competition.status === "scheduled"
-                      ? "Return at the opening time to begin. The timer starts only when you select Start."
-                      : expired
-                        ? "This period has ended. No more placements will be accepted."
-                        : "A certified puzzle is not available. Please check back later."}
+            <p className="field__hint">
+              Arrow keys move focus; Enter or Space places a piece. No undo or
+              hints. The move target is the certified minimum, not a move limit.
+              Fewest moves wins, then shortest time, then first achieved.
+            </p>
+          </section>
+          <section
+            className="panel competition-standings"
+            aria-labelledby="competition-standings-title"
+          >
+            <h2 id="competition-standings-title">Live standings</h2>
+            {!showStandings ||
+            (standingsCurrent && standings?.visible === false) ? (
+              <p>
+                Live standings are hidden by subreddit moderators. Your own
+                result remains available.
+              </p>
+            ) : (
+              <>
+                {standingsError ? (
+                  <p className="notice notice--attention" role="alert">
+                    {standingsError}
                   </p>
-                </>
-              ) : !signedIn ? (
-                <>
-                  <h2>Sign in to play</h2>
-                  <p>
-                    Sign in to Reddit to start this challenge and save your
-                    result.
+                ) : null}
+                {standingsBusy && (
+                  <p className="field__hint" role="status">
+                    Refreshing standings…
                   </p>
-                </>
-              ) : !snapshot ? (
-                <>
-                  <h2>Ready for the challenge?</h2>
-                  <p>
-                    Start reveals the board and begins your timer. Timing
-                    continues if you leave or reconnect. Complete the target
-                    squares using as few placements as possible.
-                  </p>
-                  <button
-                    type="button"
-                    className="btn btn--primary"
-                    disabled={busy || uncertain}
-                    onClick={() => void mutate("start")}
+                )}
+                {standingsCurrent &&
+                standings?.visible &&
+                standings.standings.length ? (
+                  <ol
+                    className="competition-results"
+                    start={offset + 1}
+                    aria-label="Challenge standings"
                   >
-                    {busy ? "Opening…" : "Start challenge"}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div className="challenge-status__head">
-                    <h2>
-                      {snapshot.complete
-                        ? "Puzzle complete"
-                        : "Complete the squares"}
-                    </h2>
-                    <ChallengeTimer snapshot={snapshot} />
-                  </div>
-                  <ul className="challenge-stats">
-                    <li>
-                      Squares: {snapshot.completedSquares.length} /{" "}
-                      {snapshot.puzzle.targetSquares}
-                    </li>
-                    <li>Pieces placed: {snapshot.placements.length}</li>
-                    <li>Minimum: {snapshot.puzzle.minimumMoves}</li>
-                  </ul>
-                  <ChallengeBoard
-                    puzzle={snapshot.puzzle}
-                    placements={snapshot.placements}
-                    completedSquares={snapshot.completedSquares}
-                    revision={`${snapshot.attemptId}:${snapshot.revision}`}
-                    enabled={
-                      !busy && !uncertain && !confirmRetry && !snapshot.complete
-                    }
-                    onPlace={(point) => void mutate("move", point)}
-                  />
-                  <p className="field__hint">
-                    Arrow keys move focus; Enter or Space places a piece. No
-                    undo or hints. Fewest moves wins, then shortest time, then
-                    first achieved.
-                  </p>
+                    {standings.standings.map((result) => (
+                      <li key={`${result.rank}:${result.username}`}>
+                        <span className="competition-results__rank">
+                          {result.rank}
+                        </span>
+                        <div>
+                          <strong>u/{result.username}</strong>
+                          <br />
+                          <ResultLine result={result} />
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                ) : !standingsBusy && !standingsError ? (
+                  <p>No completed entries yet.</p>
+                ) : null}
+                <div className="competition-pagination">
                   <button
+                    className="btn btn--sm"
                     type="button"
-                    className="btn"
-                    disabled={busy || uncertain}
-                    onClick={() =>
-                      snapshot.placements.length && !snapshot.complete
-                        ? setConfirmRetry(true)
-                        : void mutate("retry")
-                    }
+                    disabled={standingsBusy || offset === 0}
+                    onClick={() => setOffset(Math.max(0, offset - 20))}
                   >
-                    Retry same puzzle
+                    Previous page
                   </button>
-                </>
-              )}
-              {state.personalBest && (
-                <p className="competition-best">
-                  <strong>Your best:</strong>{" "}
-                  <ResultLine result={state.personalBest} />
-                  {showStandings &&
-                  !(standingsCurrent && standings?.visible === false) &&
-                  state.personalRank !== null
-                    ? ` · Rank ${state.personalRank}`
-                    : ""}
-                </p>
-              )}
-            </section>
-            <section
-              className="panel competition-standings"
-              aria-labelledby="competition-standings-title"
-            >
-              <h2 id="competition-standings-title">Live standings</h2>
-              {!showStandings ||
-              (standingsCurrent && standings?.visible === false) ? (
-                <p>
-                  Live standings are hidden by subreddit moderators. Your own
-                  result remains available.
-                </p>
-              ) : (
-                <>
-                  {standingsError ? (
-                    <p className="notice notice--attention" role="alert">
-                      {standingsError}
-                    </p>
-                  ) : null}
-                  {standingsBusy && (
-                    <p className="field__hint" role="status">
-                      Refreshing standings…
-                    </p>
-                  )}
-                  {standingsCurrent &&
-                  standings?.visible &&
-                  standings.standings.length ? (
-                    <ol
-                      className="competition-results"
-                      start={offset + 1}
-                      aria-label="Challenge standings"
-                    >
-                      {standings.standings.map((result) => (
-                        <li key={`${result.rank}:${result.username}`}>
-                          <span className="competition-results__rank">
-                            {result.rank}
-                          </span>
-                          <div>
-                            <strong>u/{result.username}</strong>
-                            <br />
-                            <ResultLine result={result} />
-                          </div>
-                        </li>
-                      ))}
-                    </ol>
-                  ) : !standingsBusy && !standingsError ? (
-                    <p>No completed entries yet.</p>
-                  ) : null}
-                  <div className="competition-pagination">
-                    <button
-                      className="btn btn--sm"
-                      type="button"
-                      disabled={standingsBusy || offset === 0}
-                      onClick={() => setOffset(Math.max(0, offset - 20))}
-                    >
-                      Previous page
-                    </button>
-                    <button
-                      className="btn btn--sm"
-                      type="button"
-                      disabled={
-                        standingsBusy ||
-                        !standingsCurrent ||
-                        !standings?.hasMore
-                      }
-                      onClick={() => setOffset(offset + 20)}
-                    >
-                      Next page
-                    </button>
-                  </div>
-                </>
-              )}
-            </section>
-          </div>
+                  <button
+                    className="btn btn--sm"
+                    type="button"
+                    disabled={
+                      standingsBusy || !standingsCurrent || !standings?.hasMore
+                    }
+                    onClick={() => setOffset(offset + 20)}
+                  >
+                    Next page
+                  </button>
+                </div>
+              </>
+            )}
+          </section>
           {state.latestResult && !state.latestResult.superseded && (
             <section
               className="panel competition-final"
@@ -454,22 +532,7 @@ export function CompetitionScreen({
               )}
             </section>
           )}
-        </>
-      )}
-      {error && (
-        <p className="notice notice--attention" role="alert">
-          {error}
-        </p>
-      )}
-      {(error || uncertain || !state) && (
-        <button
-          type="button"
-          className="btn"
-          disabled={busy}
-          onClick={() => void refresh(true)}
-        >
-          Refresh challenge
-        </button>
+        </Dialog>
       )}
       {confirmRetry && (
         <Dialog

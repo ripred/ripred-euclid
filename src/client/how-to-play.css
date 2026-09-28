@@ -21,6 +21,12 @@
   width: 96px;
 }
 
+.lesson__board .board__blocked,
+.lesson__board .board__marker {
+  animation: none;
+  opacity: 1;
+}
+
 .lesson h3 {
   display: flex;
   align-items: center;
@@ -38,6 +44,7 @@
 
 .lesson__step {
   display: inline-grid;
+  flex: none;
   place-items: center;
   width: 20px;
   height: 20px;
@@ -70,7 +77,7 @@
 
 /* Home strip: the same lessons side by side. */
 .how-to-play--strip .lessons {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .how-to-play--strip .lesson {
@@ -86,6 +93,12 @@
   width: 100%;
   max-width: 180px;
   justify-self: center;
+}
+
+@media (max-width: 1040px) {
+  .how-to-play--strip .lessons {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {

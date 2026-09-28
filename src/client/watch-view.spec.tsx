@@ -15,7 +15,7 @@ const callbacks = {
   onRefresh: noOp,
   onWatch: noOp,
   onDemo: noOp,
-  onPlay: noOp,
+  onBack: noOp,
 };
 
 const game: H2HLiveGameSummary = {
@@ -32,6 +32,22 @@ const game: H2HLiveGameSummary = {
 };
 
 describe("spectator lobby", () => {
+  it.each([
+    { games: [], loading: false, error: null },
+    { games: [], loading: true, error: null },
+    { games: [], loading: false, error: "Please try later." },
+    { games: [game], loading: false, error: null },
+  ])("keeps a header exit available in lobby state %j", (state) => {
+    const markup = renderToStaticMarkup(
+      <WatchLobby {...callbacks} {...state} />,
+    );
+    const header = markup.match(/<header\b[^>]*>(.*?)<\/header>/)?.[1];
+    expect(header).toContain("Back to game menu</button>");
+    expect(header).not.toContain("disabled");
+    expect(markup.match(/Back to game menu<\/button>/g)).toHaveLength(1);
+    expect(markup).not.toContain(">Play</button>");
+  });
+
   it("shows ordered names and scores alongside match rules and exact activity time", () => {
     const markup = renderToStaticMarkup(
       <WatchLobby {...callbacks} games={[game]} loading={false} error={null} />,
@@ -58,7 +74,7 @@ describe("spectator lobby", () => {
     expect(loading).not.toContain("1 live game");
     expect(loading).not.toContain("No live games");
     expect(loading).toContain('disabled=""');
-    expect(loading).toContain(">Play</button>");
+    expect(loading).not.toContain(">Play</button>");
 
     const failed = renderToStaticMarkup(
       <WatchLobby
@@ -77,7 +93,7 @@ describe("spectator lobby", () => {
     expect(failed).not.toContain("No live games");
   });
 
-  it("offers an explicit demo and Play in the empty lobby for either theme", () => {
+  it("offers an explicit demo and one menu exit in the empty lobby for either theme", () => {
     for (const theme of ["dark", "light"] as const) {
       const markup = renderToStaticMarkup(
         <WatchLobby
@@ -92,7 +108,7 @@ describe("spectator lobby", () => {
       expect(markup).toContain("No live games right now");
       expect(markup).toContain("recorded teaching demo");
       expect(markup).toContain(">Watch demo</button>");
-      expect(markup).toContain(">Play</button>");
+      expect(markup).not.toContain(">Play</button>");
       expect(markup).toContain(">Refresh</button>");
       expect(markup).not.toContain("Real game replay");
     }
@@ -125,7 +141,7 @@ describe("spectator continuation", () => {
           initialFocus
           onReplay={canReplay ? noOp : undefined}
           onAnother={noOp}
-          onPlay={noOp}
+          onBack={noOp}
         />,
       );
       const focusedButtons = markup.match(
@@ -140,22 +156,25 @@ describe("spectator continuation", () => {
 
   it("does not request automatic focus outside a result dialog", () => {
     const markup = renderToStaticMarkup(
-      <WatchActions onReplay={noOp} onAnother={noOp} onPlay={noOp} />,
+      <WatchActions onReplay={noOp} onAnother={noOp} onBack={noOp} />,
     );
     expect(markup).not.toContain("autofocus");
   });
 
   it("offers replay only when a confirmed recording callback exists", () => {
-    const actions = { onAnother: noOp, onPlay: noOp, onDemo: noOp };
+    const actions = { onAnother: noOp, onBack: noOp, onDemo: noOp };
     const ended = renderToStaticMarkup(
       <WatchActions {...actions} onReplay={noOp} />,
     );
     expect(ended).toContain(">Replay</button>");
     expect(ended).toContain(">Another live game</button>");
-    expect(ended).toContain(">Play</button>");
+    expect(ended.match(/Back to game menu<\/button>/g)).toHaveLength(1);
+    expect(ended).not.toContain(">Play</button>");
     expect(ended).not.toContain("Watch demo");
 
     const unavailable = renderToStaticMarkup(<WatchUnavailable {...actions} />);
+    expect(unavailable.match(/Back to game menu<\/button>/g)).toHaveLength(1);
+    expect(unavailable).not.toContain(">Play</button>");
     expect(unavailable).toContain("no confirmed final board to replay");
     expect(unavailable).toContain(">Watch demo</button>");
     expect(unavailable).not.toContain(">Replay</button>");
@@ -164,9 +183,11 @@ describe("spectator continuation", () => {
 
   it("reuses the replay board but never labels the teaching sequence as a real game", () => {
     const markup = renderToStaticMarkup(
-      <WatchReplay board={null} theme="light" onAnother={noOp} onPlay={noOp} />,
+      <WatchReplay board={null} theme="light" onAnother={noOp} onBack={noOp} />,
     );
     expect(markup).toContain("Watch demo</h1>");
+    expect(markup.match(/Back to game menu<\/button>/g)).toHaveLength(1);
+    expect(markup).not.toContain(">Play</button>");
     expect(markup).toContain("not a live match");
     expect(markup).toContain("Teaching demo");
     expect(markup).toContain("Demo starting position");
@@ -184,10 +205,12 @@ describe("spectator continuation", () => {
         theme="dark"
         headline="Second_Player wins by forfeit"
         onAnother={noOp}
-        onPlay={noOp}
+        onBack={noOp}
       />,
     );
     expect(markup).toContain("Match replay</h1>");
+    expect(markup.match(/Back to game menu<\/button>/g)).toHaveLength(1);
+    expect(markup).not.toContain(">Play</button>");
     expect(markup).toContain("Second_Player wins by forfeit");
     expect(markup).toContain("Real game replay");
     expect(markup).toContain("This does not affect the result.");

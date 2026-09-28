@@ -71,7 +71,7 @@ export const competitionReceiptKey = (
 
 interface GameplayReceipt {
   fingerprint: string;
-  snapshot: ChallengeSnapshot;
+  snapshot: ChallengeSnapshot | null;
 }
 interface GameplayInput extends CompetitionCommand {
   point?: number;
@@ -312,7 +312,7 @@ export class CompetitionGameplay {
   async mutate(
     period: ChallengePeriod,
     identity: CompetitionIdentity,
-    action: "start" | "move" | "retry",
+    action: "start" | "move" | "retry" | "abandon",
     input: unknown,
   ): Promise<CompetitionStateResponse> {
     if (!identity.userId || !identity.username)
@@ -367,7 +367,10 @@ export class CompetitionGameplay {
             .periods[period],
           settings = readSettings(values.get(SUBREDDIT_SETTINGS_KEY));
         const instance = readCompetitionInstance(values.get(instanceKey));
-        if (settings[CHALLENGE_SETTING[period]] !== true)
+        if (
+          action !== "abandon" &&
+          settings[CHALLENGE_SETTING[period]] !== true
+        )
           throw new ChallengeError("forbidden", "This challenge is disabled.");
         if (
           !instance ||
@@ -379,14 +382,18 @@ export class CompetitionGameplay {
             "stale",
             "This challenge has changed. Refresh to load its current board.",
           );
-        if (instance.settled || now >= instance.endsAt)
+        if (
+          action !== "abandon" &&
+          (instance.settled || now >= instance.endsAt)
+        )
           throw new ChallengeError("expired", "This challenge has closed.");
-        if (now < instance.opensAt)
+        if (action !== "abandon" && now < instance.opensAt)
           throw new ChallengeError(
             "unavailable",
             "This challenge has not opened yet.",
           );
         const best = readBest(values.get(bestKey));
+        const previous = readAttempt(values.get(attemptKey));
         const receipt = parseJson(values.get(receiptKey)) as
           | GameplayReceipt
           | undefined;
@@ -395,6 +402,16 @@ export class CompetitionGameplay {
             throw new ChallengeError(
               "stale",
               "This command identifier was already used for a different request.",
+            );
+          // Receipts may outlive an attempt; replay must not restore its board.
+          if (
+            (action === "abandon" && previous) ||
+            (action !== "abandon" &&
+              (!previous || previous.attemptId !== receipt.snapshot?.attemptId))
+          )
+            throw new ChallengeError(
+              "stale",
+              "Your attempt changed in another request or tab. Refresh to continue.",
             );
           return {
             action: "no-change",
@@ -407,7 +424,6 @@ export class CompetitionGameplay {
             },
           };
         }
-        const previous = readAttempt(values.get(attemptKey));
         if (
           (previous &&
             (previous.attemptId !== c.attemptId ||
@@ -420,6 +436,28 @@ export class CompetitionGameplay {
           );
         if (!previous && action !== "start")
           throw new ChallengeError("invalid", "Start this challenge first.");
+        const expiration = new Date(instance.endsAt + COMPETITION_DETAILS_TTL);
+        if (action === "abandon") {
+          const writes: CompetitionWrite[] = [
+            { action: "delete", key: attemptKey },
+            {
+              action: "set",
+              key: receiptKey,
+              value: JSON.stringify({
+                fingerprint,
+                snapshot: null,
+              } satisfies GameplayReceipt),
+              expiration,
+            },
+          ];
+          if (historyKey && !readAttempt(values.get(historyKey))?.complete)
+            writes.push({ action: "delete", key: historyKey });
+          return {
+            action: "commit",
+            writes,
+            result: { snapshot: null, best, instance, config, settings },
+          };
+        }
         let snapshot: ChallengeSnapshot;
         if (action === "start" && previous) snapshot = previous;
         else if (action === "start" || action === "retry")
@@ -438,7 +476,6 @@ export class CompetitionGameplay {
             elapsedMs: 0,
           };
         else snapshot = placeChallengePoint(previous!, c.point as number, now);
-        const expiration = new Date(instance.endsAt + COMPETITION_DETAILS_TTL);
         const writes: CompetitionWrite[] = [];
         if (
           historyKey &&

@@ -13,7 +13,7 @@ import {
   type H2HHomePresentation,
   type SoloContinuationPresentation,
 } from "./home-ui";
-import { HowToPlay } from "./how-to-play";
+import { HowToPlay, HowToPlaySummary } from "./how-to-play";
 import { BoardMacro, BrandMark, TokenCluster, Wordmark } from "./ui/Brand";
 import { Icon, type IconName } from "./ui/Icon";
 import { PieceGlyph } from "./ui/BoardDiagram";
@@ -643,7 +643,7 @@ export function HomeScreen(props: HomeScreenProps) {
           <div className="home-learn__head">
             <h2 id="home-learn-title">Learn in a minute</h2>
             <p className="muted">
-              Three ideas carry the whole game. Mastering them takes a lifetime.
+              <HowToPlaySummary />
             </p>
           </div>
           <HowToPlay layout="strip" />

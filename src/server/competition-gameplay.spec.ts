@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { ChallengeSnapshot } from "../shared/challenge";
+import {
+  CHALLENGE_PERIODS,
+  type ChallengePeriod,
+} from "../shared/challenge-spotlights";
 import type {
   CompetitionCommand,
   CompetitionStateResponse,
@@ -27,7 +31,7 @@ import { CompetitionMemoryRedis } from "./testing/competition-memory-redis";
 
 const alice: CompetitionIdentity = { userId: "alice-id", username: "alice" };
 const bob: CompetitionIdentity = { userId: "bob-id", username: "bob" };
-function fixture() {
+function fixture(period: ChallengePeriod = "daily") {
   let now = Date.parse("2026-09-27T12:00:00Z"),
     ids = 0,
     commands = 0;
@@ -38,14 +42,14 @@ function fixture() {
     weeklyChallenges: true,
   };
   const state = readCompetitionState(undefined);
-  state.periods.daily.currentId = "day1";
-  state.periods.daily.activationAt = competitionWindow("daily", now).opensAt;
+  state.periods[period].currentId = "day1";
+  state.periods[period].activationAt = competitionWindow(period, now).opensAt;
   redis.seed(COMPETITION_STATE_KEY, JSON.stringify(state));
   redis.seed(SUBREDDIT_SETTINGS_KEY, JSON.stringify(settings));
   const instance: CompetitionInstance = {
     id: "day1",
-    period: "daily",
-    ...competitionWindow("daily", now),
+    period,
+    ...competitionWindow(period, now),
     templateRevision: 0,
     certified: {
       puzzle: {
@@ -79,12 +83,12 @@ function fixture() {
     commandId,
   });
   const start = (identity = alice) =>
-    store.mutate("daily", identity, "start", cmd(null));
+    store.mutate(period, identity, "start", cmd(null));
   const move = (
     current: CompetitionStateResponse,
     identity = alice,
     point = 9,
-  ) => store.mutate("daily", identity, "move", { ...cmd(current), point });
+  ) => store.mutate(period, identity, "move", { ...cmd(current), point });
   return {
     store,
     redis,
@@ -105,6 +109,210 @@ function fixture() {
 }
 
 describe("public competition gameplay", () => {
+  describe.each(CHALLENGE_PERIODS)("%s abandonment", (period) => {
+    it("deletes only the owner's unfinished attempt and leaves no result or standings entry", async () => {
+      const f = fixture(period);
+      const started = await f.start();
+      const current = await f.move(started, alice, 63);
+      const other = await f.start(bob);
+      const attemptKey = competitionAttemptKey(f.instance.id, alice.userId);
+      const historyKey = competitionAttemptHistoryKey(
+        f.instance.id,
+        alice.userId,
+        current.snapshot!.attemptId,
+      );
+      f.redis.seed(historyKey, JSON.stringify(current.snapshot));
+      const instanceBefore = f.redis.value(
+        competitionInstanceKey(f.instance.id),
+      );
+      const abandoned = await f.store.mutate(
+        period,
+        alice,
+        "abandon",
+        f.cmd(current),
+      );
+      expect(abandoned).toMatchObject({
+        snapshot: null,
+        personalBest: null,
+        personalRank: null,
+      });
+      expect(f.redis.value(attemptKey)).toBeUndefined();
+      expect(f.redis.value(historyKey)).toBeUndefined();
+      expect(
+        f.redis.value(competitionBestKey(f.instance.id, alice.userId)),
+      ).toBeUndefined();
+      expect(f.redis.value(competitionInstanceKey(f.instance.id))).toBe(
+        instanceBefore,
+      );
+      expect((await f.store.standings(period)).standings).toEqual([]);
+      expect((await f.store.state(period, alice)).snapshot).toBeNull();
+      expect((await f.store.state(period, bob)).snapshot).toEqual(
+        other.snapshot,
+      );
+      const restarted = await f.start();
+      expect(restarted.snapshot?.attemptId).not.toBe(
+        current.snapshot?.attemptId,
+      );
+      expect(restarted.snapshot?.placements).toEqual([]);
+    });
+
+    it("preserves completed history, best result, and standings while abandoning another attempt", async () => {
+      const f = fixture(period);
+      const done = await f.move(await f.start());
+      const historyKey = competitionAttemptHistoryKey(
+        f.instance.id,
+        alice.userId,
+        done.snapshot!.attemptId,
+      );
+      const history = f.redis.value(historyKey);
+      const standings = await f.store.standings(period);
+      const instance = f.redis.value(competitionInstanceKey(f.instance.id));
+      const retry = await f.store.mutate(period, alice, "retry", f.cmd(done));
+      const abandoned = await f.store.mutate(
+        period,
+        alice,
+        "abandon",
+        f.cmd(retry),
+      );
+      expect(abandoned.snapshot).toBeNull();
+      expect(abandoned.personalBest).toEqual(done.personalBest);
+      expect(abandoned.personalRank).toBe(done.personalRank);
+      expect(f.redis.value(historyKey)).toBe(history);
+      expect(f.redis.value(competitionInstanceKey(f.instance.id))).toBe(
+        instance,
+      );
+      expect(await f.store.standings(period)).toEqual(standings);
+      const completedAgain = await f.move(await f.start());
+      await f.store.mutate(period, alice, "abandon", f.cmd(completedAgain));
+      expect(
+        f.redis.json<ChallengeSnapshot>(
+          competitionAttemptHistoryKey(
+            f.instance.id,
+            alice.userId,
+            completedAgain.snapshot!.attemptId,
+          ),
+        )?.complete,
+      ).toBe(true);
+      expect((await f.store.state(period, alice)).personalBest).toEqual(
+        done.personalBest,
+      );
+    });
+
+    it("replays abandonment safely without resurrecting old start/move receipts or deleting a newer attempt", async () => {
+      const f = fixture(period);
+      const startCommand = f.cmd(null);
+      const started = await f.store.mutate(
+        period,
+        alice,
+        "start",
+        startCommand,
+      );
+      const moveCommand = { ...f.cmd(started), point: 63 };
+      const current = await f.store.mutate(period, alice, "move", moveCommand);
+      const abandonCommand = f.cmd(current);
+      await f.store.mutate(period, alice, "abandon", abandonCommand);
+      expect(
+        (await f.store.mutate(period, alice, "abandon", abandonCommand))
+          .snapshot,
+      ).toBeNull();
+      for (const [action, input] of [
+        ["start", startCommand],
+        ["move", moveCommand],
+      ] as const)
+        await expect(
+          f.store.mutate(period, alice, action, input),
+        ).rejects.toMatchObject({ code: "stale" });
+      await expect(
+        f.store.mutate(period, alice, "abandon", {
+          ...abandonCommand,
+          expectedRevision: abandonCommand.expectedRevision + 1,
+        }),
+      ).rejects.toMatchObject({ code: "stale" });
+      expect((await f.store.state(period, alice)).snapshot).toBeNull();
+      const fresh = await f.start();
+      for (const input of [abandonCommand, f.cmd(current)])
+        await expect(
+          f.store.mutate(period, alice, "abandon", input),
+        ).rejects.toMatchObject({ code: "stale" });
+      for (const [action, input] of [
+        ["start", startCommand],
+        ["move", moveCommand],
+      ] as const)
+        await expect(
+          f.store.mutate(period, alice, action, input),
+        ).rejects.toMatchObject({ code: "stale" });
+      expect((await f.store.state(period, alice)).snapshot).toEqual(
+        fresh.snapshot,
+      );
+    });
+
+    it("rechecks the attempt, revision, and instance before committing abandonment", async () => {
+      for (const change of ["attempt", "revision", "instance"] as const) {
+        const f = fixture(period);
+        const started = await f.start();
+        const attemptKey = competitionAttemptKey(f.instance.id, alice.userId);
+        f.redis.beforeExec = (writes) => {
+          if (
+            !writes.some(
+              (write) => write.key === attemptKey && write.action === "delete",
+            )
+          )
+            return;
+          f.redis.beforeExec = undefined;
+          if (change === "instance") {
+            f.state.periods[period].currentId = "replacement";
+            f.redis.externalSet(COMPETITION_STATE_KEY, JSON.stringify(f.state));
+          } else {
+            f.redis.externalSet(
+              attemptKey,
+              JSON.stringify({
+                ...started.snapshot,
+                ...(change === "attempt"
+                  ? { attemptId: "newer-attempt" }
+                  : { revision: started.snapshot!.revision + 1 }),
+              }),
+            );
+          }
+        };
+        await expect(
+          f.store.mutate(period, alice, "abandon", f.cmd(started)),
+        ).rejects.toMatchObject({ code: "stale" });
+        expect(f.redis.value(attemptKey)).toBeDefined();
+        expect(
+          f.redis.commits
+            .flat()
+            .some(
+              (write) => write.key === attemptKey && write.action === "delete",
+            ),
+        ).toBe(false);
+      }
+    });
+
+    it("allows cleanup after disabling or closing the current challenge", async () => {
+      for (const change of ["disabled", "closed"] as const) {
+        const f = fixture(period);
+        const started = await f.start();
+        if (change === "disabled")
+          f.redis.seed(
+            SUBREDDIT_SETTINGS_KEY,
+            JSON.stringify({
+              ...f.settings,
+              dailyChallenges: false,
+              weeklyChallenges: false,
+            }),
+          );
+        else f.setTime(f.instance.endsAt);
+        expect(
+          (await f.store.mutate(period, alice, "abandon", f.cmd(started)))
+            .snapshot,
+        ).toBeNull();
+        expect(
+          f.redis.value(competitionAttemptKey(f.instance.id, alice.userId)),
+        ).toBeUndefined();
+      }
+    });
+  });
+
   it("keeps a board private until Start and excludes certification from every public response", async () => {
     const f = fixture();
     expect((await f.store.state("daily", null)).snapshot).toBeNull();

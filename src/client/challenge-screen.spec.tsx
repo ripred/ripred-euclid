@@ -197,7 +197,7 @@ describe("challenge playground interactions", () => {
       blockedPoints: [63],
       blockedCount: 3,
     });
-    expect(host.textContent).toContain("Squares: 0 / 1");
+    expect(host.textContent).toContain("Complete 1 Square In 2 moves");
   });
   it("allows extra placements, completes automatically and restarts without undo", async () => {
     await click(button("Generate"));

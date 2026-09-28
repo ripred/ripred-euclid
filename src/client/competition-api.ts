@@ -23,7 +23,7 @@ export async function requestCompetitionAvailability(
 
 export async function requestCompetitionState(
   period: ChallengePeriod,
-  action: "state" | "start" | "retry" | "move" = "state",
+  action: "state" | "start" | "retry" | "move" | "abandon" = "state",
   body?: CompetitionCommand & { point?: number },
   signal?: AbortSignal,
 ): Promise<CompetitionStateResponse> {
@@ -71,7 +71,7 @@ export async function requestCompetitionStandings(
 
 export function competitionCommand(
   state: CompetitionStateResponse,
-  action: "start" | "retry" | "move",
+  action: "start" | "retry" | "move" | "abandon",
 ): CompetitionCommand {
   if (!state.competition.instanceId)
     throw new Error("This challenge is not open.");

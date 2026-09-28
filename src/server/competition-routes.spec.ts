@@ -4,6 +4,10 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_CHALLENGE_OPTIONS } from "../shared/challenge";
+import {
+  CHALLENGE_PERIODS,
+  type ChallengePeriod,
+} from "../shared/challenge-spotlights";
 import type {
   CompetitionAvailabilityResponse,
   CompetitionStateResponse,
@@ -81,14 +85,15 @@ const enable = () =>
   service.saveSettings({
     ...DEFAULT_SUBREDDIT_SETTINGS,
     dailyChallenges: true,
+    weeklyChallenges: true,
     challengeApplyTiming: "immediately",
   });
-async function start() {
+async function start(period: ChallengePeriod = "daily") {
   const info = (await (
     await request("availability")
   ).json()) as CompetitionAvailabilityResponse;
-  return request("daily/start", {
-    instanceId: info.competitions.daily.instanceId,
+  return request(`${period}/start`, {
+    instanceId: info.competitions[period].instanceId,
     attemptId: null,
     expectedRevision: 0,
     commandId: `start-${++serial}`,
@@ -115,9 +120,49 @@ describe("competition endpoint permissions and responses", () => {
     ).json()) as CompetitionStateResponse;
     expect(state.snapshot).toBeNull();
     expect(state.authenticated).toBe(false);
-    for (const action of ["start", "retry", "move"])
+    for (const action of ["start", "retry", "move", "abandon"])
       expect((await request(`daily/${action}`, {})).status).toBe(403);
   });
+  it.each(CHALLENGE_PERIODS)(
+    "abandons %s using trusted identity and returns an empty state",
+    async (period) => {
+      await enable();
+      const current = (await (
+        await start(period)
+      ).json()) as CompetitionStateResponse;
+      const command = {
+        instanceId: current.competition.instanceId,
+        attemptId: current.snapshot!.attemptId,
+        expectedRevision: current.snapshot!.revision,
+        commandId: "abandon",
+        userId: "user",
+      };
+      identity = { userId: "other", username: "other" };
+      expect((await request(`${period}/abandon`, command)).status).toBe(409);
+      identity = { userId: "user", username: "player" };
+      const afterSpoof = (await (
+        await request(`${period}/state`)
+      ).json()) as CompetitionStateResponse;
+      expect(afterSpoof.snapshot).toEqual(current.snapshot);
+      const abandoned = await request(`${period}/abandon`, command);
+      expect(abandoned.status).toBe(200);
+      expect(await abandoned.json()).toMatchObject({
+        snapshot: null,
+        personalBest: null,
+        personalRank: null,
+      });
+      expect((await request(`${period}/abandon`, command)).status).toBe(200);
+      const fresh = (await (
+        await start(period)
+      ).json()) as CompetitionStateResponse;
+      expect(fresh.snapshot?.attemptId).not.toBe(current.snapshot?.attemptId);
+      expect((await request(`${period}/abandon`, command)).status).toBe(409);
+      const afterStale = (await (
+        await request(`${period}/state`)
+      ).json()) as CompetitionStateResponse;
+      expect(afterStale.snapshot).toEqual(fresh.snapshot);
+    },
+  );
   it("keeps the board private until Start and uses trusted ownership", async () => {
     await enable();
     const initial = (await (

@@ -14,6 +14,7 @@ import { PageShell } from "./ui/PageShell";
 import { Dialog } from "./ui/Dialog";
 import "./challenge-screen.css";
 import { formatChallengeTime } from "./challenge-time";
+import { challengeObjective } from "./challenge-display";
 import { ChallengeTimer } from "./ChallengeTimer";
 import { Switch } from "./ui/Switch";
 
@@ -332,7 +333,7 @@ export function ChallengeScreen({ onLeave }: { onLeave: () => void }) {
                   : snapshot
                     ? snapshot.complete
                       ? "Puzzle complete"
-                      : "Complete the squares"
+                      : challengeObjective(snapshot.puzzle)
                     : "No puzzle yet"}
               </h2>
               {snapshot && !editing && <ChallengeTimer snapshot={snapshot} />}
@@ -344,12 +345,8 @@ export function ChallengeScreen({ onLeave }: { onLeave: () => void }) {
               </p>
             ) : snapshot ? (
               <ul className="challenge-stats">
-                <li>
-                  Squares: {snapshot.completedSquares.length} /{" "}
-                  {snapshot.puzzle.targetSquares}
-                </li>
+                <li>Squares completed: {snapshot.completedSquares.length}</li>
                 <li>Pieces placed: {snapshot.placements.length}</li>
-                <li>Minimum: {snapshot.puzzle.minimumMoves}</li>
                 {snapshot.bestMoves !== null && (
                   <li className="challenge-stats__best">
                     Best completed attempt: {snapshot.bestMoves} moves

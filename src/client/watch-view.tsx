@@ -49,10 +49,12 @@ function WatchControls({
 function WatchPage({
   title,
   theme,
+  onBack,
   children,
 }: {
   title: string;
   theme: ReplayTheme;
+  onBack: () => void;
   children: ReactNode;
 }) {
   return (
@@ -64,6 +66,7 @@ function WatchPage({
         </>
       }
       titleId="watch-title"
+      back={{ label: "Back to game menu", onClick: onBack }}
       className="watch-page"
       data-theme={theme}
       tabIndex={0}
@@ -144,7 +147,7 @@ export function WatchLobby({
   onRefresh,
   onWatch,
   onDemo,
-  onPlay,
+  onBack,
   theme = "dark",
 }: {
   games: H2HLiveGameSummary[];
@@ -153,7 +156,7 @@ export function WatchLobby({
   onRefresh: () => void;
   onWatch: (gameId: string) => void;
   onDemo: () => void;
-  onPlay: () => void;
+  onBack: () => void;
   theme?: ReplayTheme;
 }) {
   // A loading/error response must not advertise the previous list as live.
@@ -167,11 +170,10 @@ export function WatchLobby({
     ...(!showGames && !loading
       ? [{ label: "Watch demo", onClick: onDemo }]
       : []),
-    { label: "Play", onClick: onPlay, primary: true },
   ];
 
   return (
-    <WatchPage title="Watch live" theme={theme}>
+    <WatchPage title="Watch live" theme={theme} onBack={onBack}>
       <p className="watch-page__muted">
         Watch other Redditors place dots and complete squares. You are a
         spectator: watching does not join the match or change its board.
@@ -183,7 +185,7 @@ export function WatchLobby({
           <h2>Could not load live games</h2>
           <p>{error}</p>
           <p className="watch-page__muted">
-            Try again, watch the demo, or start playing.
+            Try again, watch the demo, or return to the game menu.
           </p>
         </div>
       ) : showGames ? (
@@ -201,8 +203,8 @@ export function WatchLobby({
         <div className="panel watch-page__panel" role="status">
           <h2>No live games right now</h2>
           <p className="watch-page__muted">
-            Watch the recorded teaching demo to see how squares score, or play a
-            game yourself.
+            Watch the recorded teaching demo to see how squares score, or return
+            to the game menu.
           </p>
         </div>
       )}
@@ -216,7 +218,8 @@ type WatchActionsProps = {
   onReplay?: (() => void) | undefined;
   onDemo?: (() => void) | undefined;
   onAnother: () => void;
-  onPlay: () => void;
+  /** Result dialogs need their own exit; standalone pages use the header. */
+  onBack?: () => void;
 };
 
 export function WatchActions({
@@ -224,7 +227,7 @@ export function WatchActions({
   onReplay,
   onDemo,
   onAnother,
-  onPlay,
+  onBack,
 }: WatchActionsProps) {
   const recordingAction = onReplay
     ? { label: "Replay", onClick: onReplay }
@@ -237,7 +240,9 @@ export function WatchActions({
       actions={[
         ...(recordingAction ? [recordingAction] : []),
         { label: "Another live game", onClick: onAnother },
-        { label: "Play", onClick: onPlay, primary: true },
+        ...(onBack
+          ? [{ label: "Back to game menu", onClick: onBack, primary: true }]
+          : []),
       ]}
     />
   );
@@ -246,19 +251,20 @@ export function WatchActions({
 export function WatchUnavailable({
   onAnother,
   onDemo,
-  onPlay,
+  onBack,
   theme = "dark",
-}: Omit<WatchActionsProps, "onReplay" | "initialFocus"> & {
+}: Pick<WatchActionsProps, "onAnother" | "onDemo"> & {
+  onBack: () => void;
   theme?: ReplayTheme;
 }) {
   return (
-    <WatchPage title="Game unavailable" theme={theme}>
+    <WatchPage title="Game unavailable" theme={theme} onBack={onBack}>
       <p>This game is no longer available to watch.</p>
       <p className="watch-page__muted">
         There is no confirmed final board to replay. Choose another live game,
-        watch the teaching demo, or play a game yourself.
+        watch the teaching demo, or return to the game menu.
       </p>
-      <WatchActions onAnother={onAnother} onDemo={onDemo} onPlay={onPlay} />
+      <WatchActions onAnother={onAnother} onDemo={onDemo} />
     </WatchPage>
   );
 }
@@ -268,18 +274,22 @@ export function WatchReplay({
   theme,
   headline,
   onAnother,
-  onPlay,
+  onBack,
 }: {
   board: SerializableBoard | null;
   theme: ReplayTheme;
   headline?: string | undefined;
   onAnother: () => void;
-  onPlay: () => void;
+  onBack: () => void;
 }) {
   const replayBoard = useMemo(() => board ?? buildWatchDemo(), [board]);
   const isDemo = board === null;
   return (
-    <WatchPage title={isDemo ? "Watch demo" : "Match replay"} theme={theme}>
+    <WatchPage
+      title={isDemo ? "Watch demo" : "Match replay"}
+      theme={theme}
+      onBack={onBack}
+    >
       {isDemo ? (
         <p className="watch-page__muted">
           Recorded teaching demo — not a live match. Follow the dots to see
@@ -294,7 +304,7 @@ export function WatchReplay({
           </p>
         </>
       )}
-      <WatchActions onAnother={onAnother} onPlay={onPlay} />
+      <WatchActions onAnother={onAnother} />
       <ReplayBoardCard
         board={replayBoard}
         theme={theme}
