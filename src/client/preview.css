@@ -86,17 +86,16 @@ html.euclid-inline,
   justify-content: flex-start;
 }
 
-/* The lesson fills the space between scores and progress from the top, so
-   its step line holds still while each lesson's text changes length. */
+/* Keep the lesson list at the bottom while captions use the remaining space. */
 .preview__panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   flex: 1 1 auto;
   min-height: 0;
   max-height: 100%;
   overflow: hidden;
-  padding-top: 12px;
+  padding-top: 8px;
   border-top: 1px solid var(--line);
 }
 
@@ -153,10 +152,11 @@ html.euclid-inline,
 
 .preview-lessons {
   display: grid;
+  flex: none;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px 12px;
   margin: auto 0 0;
-  padding: 10px 0 0;
+  padding: 6px 0 0;
   border-top: 1px solid var(--line);
   list-style: none;
 }
