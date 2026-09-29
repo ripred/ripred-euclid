@@ -3,14 +3,20 @@ import { ensurePostHighlighted } from "./post-highlights";
 
 const mocks = vi.hoisted(() => ({
   metadata: { requestId: "test-request" },
+  subredditId: "t5_euclid" as string | undefined,
   use: vi.fn(),
   client: {
-    GetIsPostHighlighted: vi.fn(),
+    GetHighlightedPosts: vi.fn(),
     AddPostToHighlights: vi.fn(),
   },
 }));
 vi.mock("@devvit/web/server", () => ({
-  context: { metadata: mocks.metadata },
+  context: {
+    metadata: mocks.metadata,
+    get subredditId() {
+      return mocks.subredditId;
+    },
+  },
 }));
 vi.mock("@devvit/shared-types/server/get-devvit-config.js", () => ({
   getDevvitConfig: () => ({ use: mocks.use }),
@@ -18,39 +24,49 @@ vi.mock("@devvit/shared-types/server/get-devvit-config.js", () => ({
 
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.subredditId = "t5_euclid";
   mocks.use.mockReturnValue(mocks.client);
   mocks.client.AddPostToHighlights.mockResolvedValue({});
 });
 
 describe("community highlights", () => {
+  it("requires the trusted subreddit before reading or changing highlights", async () => {
+    mocks.subredditId = undefined;
+    await expect(ensurePostHighlighted("t3_hub")).rejects.toThrow(
+      "Subreddit context",
+    );
+    expect(mocks.use).not.toHaveBeenCalled();
+    expect(mocks.client.AddPostToHighlights).not.toHaveBeenCalled();
+  });
+
   it("preserves an existing highlight without changing its position or expiry", async () => {
-    mocks.client.GetIsPostHighlighted.mockResolvedValue({
-      isHighlighted: true,
+    mocks.client.GetHighlightedPosts.mockResolvedValue({
+      highlightedPosts: [{ postId: "t3_game", expiresAt: 123, label: 1 }],
     });
     expect(await ensurePostHighlighted("t3_game")).toBe(true);
-    expect(mocks.client.GetIsPostHighlighted).toHaveBeenCalledExactlyOnceWith(
-      { postId: "t3_game" },
+    expect(mocks.client.GetHighlightedPosts).toHaveBeenCalledExactlyOnceWith(
+      { subredditId: "t5_euclid" },
       mocks.metadata,
     );
     expect(mocks.client.AddPostToHighlights).not.toHaveBeenCalled();
   });
 
   it("adds a missing highlight once and verifies it before returning", async () => {
-    mocks.client.GetIsPostHighlighted.mockResolvedValueOnce({
-      isHighlighted: false,
-    }).mockResolvedValue({ isHighlighted: true });
+    mocks.client.GetHighlightedPosts.mockResolvedValueOnce({
+      highlightedPosts: [{ postId: "t3_another_post" }],
+    }).mockResolvedValue({ highlightedPosts: [{ postId: "t3_hub" }] });
     expect(await ensurePostHighlighted("t3_hub")).toBe(true);
     expect(await ensurePostHighlighted("t3_hub")).toBe(true);
     expect(mocks.client.AddPostToHighlights).toHaveBeenCalledExactlyOnceWith(
       { postId: "t3_hub" },
       mocks.metadata,
     );
-    expect(mocks.client.GetIsPostHighlighted).toHaveBeenCalledTimes(3);
+    expect(mocks.client.GetHighlightedPosts).toHaveBeenCalledTimes(3);
   });
 
   it("reports a failed readback instead of claiming the post was highlighted", async () => {
-    mocks.client.GetIsPostHighlighted.mockResolvedValue({
-      isHighlighted: false,
+    mocks.client.GetHighlightedPosts.mockResolvedValue({
+      highlightedPosts: [],
     });
     await expect(ensurePostHighlighted("t3_hub")).rejects.toThrow(
       "did not highlight",
@@ -58,7 +74,7 @@ describe("community highlights", () => {
   });
 
   it("propagates an unavailable lookup without adding a duplicate highlight", async () => {
-    mocks.client.GetIsPostHighlighted.mockRejectedValue(
+    mocks.client.GetHighlightedPosts.mockRejectedValue(
       new Error("Unavailable"),
     );
     await expect(ensurePostHighlighted("t3_hub")).rejects.toThrow(
@@ -69,14 +85,14 @@ describe("community highlights", () => {
 
   const stages = ["lookup", "add", "readback"] as const;
   const failAt = (stage: (typeof stages)[number], error: Error) => {
-    mocks.client.GetIsPostHighlighted.mockResolvedValueOnce({
-      isHighlighted: false,
-    }).mockResolvedValue({ isHighlighted: true });
+    mocks.client.GetHighlightedPosts.mockResolvedValueOnce({
+      highlightedPosts: [],
+    }).mockResolvedValue({ highlightedPosts: [{ postId: "t3_hub" }] });
     if (stage === "lookup")
-      mocks.client.GetIsPostHighlighted.mockReset().mockRejectedValue(error);
+      mocks.client.GetHighlightedPosts.mockReset().mockRejectedValue(error);
     else if (stage === "add")
       mocks.client.AddPostToHighlights.mockRejectedValue(error);
-    else mocks.client.GetIsPostHighlighted.mockRejectedValueOnce(error);
+    else mocks.client.GetHighlightedPosts.mockRejectedValueOnce(error);
   };
 
   it.each(
@@ -88,7 +104,7 @@ describe("community highlights", () => {
     async ({ stage, code }) => {
       failAt(stage, Object.assign(new Error("Unknown method"), { code }));
       expect(await ensurePostHighlighted("t3_hub")).toBe(false);
-      expect(mocks.client.GetIsPostHighlighted).toHaveBeenCalledTimes(
+      expect(mocks.client.GetHighlightedPosts).toHaveBeenCalledTimes(
         stage === "readback" ? 2 : 1,
       );
       expect(mocks.client.AddPostToHighlights).toHaveBeenCalledTimes(
@@ -107,7 +123,7 @@ describe("community highlights", () => {
 
   it("does not infer unsupported RPCs from error messages", async () => {
     const error = new Error("unimplemented method");
-    mocks.client.GetIsPostHighlighted.mockRejectedValue(error);
+    mocks.client.GetHighlightedPosts.mockRejectedValue(error);
     await expect(ensurePostHighlighted("t3_hub")).rejects.toBe(error);
   });
 });

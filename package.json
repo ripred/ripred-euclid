@@ -30,14 +30,15 @@
     "type-check": "tsc --build"
   },
   "dependencies": {
-    "@devvit/web": "0.14.2",
+    "@devvit/analytics": "0.14.6",
+    "@devvit/web": "0.14.6",
     "@fontsource-variable/archivo": "5.3.0",
     "express": "5.1.0",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },
   "devDependencies": {
-    "@devvit/public-api": "0.14.2",
+    "@devvit/public-api": "0.14.6",
     "@eslint/js": "9.23.0",
     "@tailwindcss/vite": "4.1.6",
     "@types/express": "5.0.1",
@@ -45,7 +46,7 @@
     "@types/react-dom": "19.1.5",
     "@vitejs/plugin-react": "4.4.1",
     "concurrently": "9.1.2",
-    "devvit": "0.14.2",
+    "devvit": "0.14.6",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "5.2.0",
     "eslint-plugin-react-refresh": "0.4.20",
@@ -65,7 +66,8 @@
     "esbuild@0.25.9": true,
     "esbuild@0.25.10": true,
     "fsevents@2.3.3": true,
-    "protobufjs@7.6.5": true
+    "protobufjs@7.6.5": true,
+    "core-js": false
   },
   "overrides": {
     "protobufjs": "7.6.5",

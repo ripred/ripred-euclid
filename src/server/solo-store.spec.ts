@@ -100,6 +100,53 @@ function moveRequest(
   };
 }
 
+describe("read-only solo journey authority", () => {
+  it("reads only the owned canonical game without charging exhausted gameplay budgets", async () => {
+    const { redis, store } = createFixture();
+    const started = await startPractice(store);
+    redis.seed(
+      soloWorkBudgetKey("owner"),
+      JSON.stringify({
+        resetAt: Date.UTC(2026, 8, 1, 12, 1),
+        count: SOLO_WORK_LIMITS.count,
+      }),
+    );
+    const before = redis.commits.length;
+    redis.clearAccessLog();
+    expect(
+      await store.getJourneyState("owner", started.snapshot.gameId),
+    ).toEqual(started.snapshot);
+    expect(redis.reads).toEqual([
+      SOLO_STORE_KEYS.game(started.snapshot.gameId),
+    ]);
+    expect(redis.watches).toEqual([]);
+    expect(redis.commits).toHaveLength(before);
+    await expect(
+      store.getJourneyState("intruder", started.snapshot.gameId),
+    ).rejects.toMatchObject({ code: "not_owner" });
+    await expect(
+      store.getJourneyState("owner", "missing-game"),
+    ).rejects.toMatchObject({ code: "game_not_found" });
+    expect(redis.commits).toHaveLength(before);
+  });
+
+  it("returns the canonical abandoned result without settling or changing retention", async () => {
+    const { redis, store } = createFixture();
+    const started = await startPractice(store);
+    const request = {
+      gameId: started.snapshot.gameId,
+      expectedRevision: started.snapshot.revision,
+      commandId: "abandon",
+    };
+    const ended = await store.abandon("owner", request);
+    const before = redis.commits.length;
+    const read = await store.getJourneyState("owner", started.snapshot.gameId);
+    expect(read).toEqual(ended.snapshot);
+    expect(read.status).toBe("abandoned");
+    expect(redis.commits).toHaveLength(before);
+  });
+});
+
 describe("request allocation protections", () => {
   it("atomically shares admission across endpoints and resets at the exact boundary", async () => {
     const { redis, store, setNow } = createFixture();

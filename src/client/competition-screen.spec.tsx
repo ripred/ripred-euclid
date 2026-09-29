@@ -3,6 +3,7 @@ import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompetitionScreen } from "./competition-screen";
+import { createJourneyController, type JourneyController } from "./journeys";
 import {
   placeChallengePoint,
   type ChallengeSnapshot,
@@ -42,6 +43,7 @@ let host: HTMLDivElement, root: Root;
 let loseMoveReply: boolean;
 let loseAbandonReply: boolean;
 let failAbandon: boolean;
+let failRetry: boolean;
 let failRecovery: boolean;
 let replaceOnMove: boolean;
 let heldAction: string | null;
@@ -83,6 +85,7 @@ beforeEach(() => {
   loseMoveReply = false;
   loseAbandonReply = false;
   failAbandon = false;
+  failRetry = false;
   failRecovery = false;
   replaceOnMove = false;
   heldAction = null;
@@ -126,6 +129,12 @@ beforeEach(() => {
         state.snapshot = {
           ...fresh(),
           puzzleId: state.competition.instanceId!,
+        };
+      if (action === "retry" && failRetry)
+        return {
+          ok: false,
+          status: 503,
+          json: async () => ({ message: "Retry unavailable." }),
         };
       if (action === "retry")
         state.snapshot = {
@@ -193,7 +202,12 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
-async function mount(period: ChallengePeriod = "daily", username = "player") {
+async function mount(
+  period: ChallengePeriod = "daily",
+  username = "player",
+  journeys?: JourneyController,
+  intentionalEntry = false,
+) {
   await act(async () =>
     root.render(
       <StrictMode>
@@ -201,6 +215,8 @@ async function mount(period: ChallengePeriod = "daily", username = "player") {
           period={period}
           username={username}
           onLeave={leave}
+          {...(journeys ? { journeys } : {})}
+          intentionalEntry={intentionalEntry}
         />
       </StrictMode>,
     ),
@@ -567,6 +583,7 @@ describe("abandoning a competition attempt", () => {
     expect(state.snapshot?.attemptId).toBe("attempt-1");
 
     failAbandon = false;
+    failRetry = false;
     await click(button("Abandon Challenge"));
     expect(leave).toHaveBeenCalledOnce();
     expect(mutations()).toHaveLength(2);
@@ -742,5 +759,193 @@ describe("competition results", () => {
     expect(host.textContent).toContain("u/winner");
     expect(host.textContent).toContain("4 squares · 2 moves · 0:01.2");
     expect(host.textContent).not.toMatch(/yesterday/i);
+  });
+});
+
+function recordJourneys() {
+  const journeys = createJourneyController({ storage: null });
+  journeys.ready("post", "player");
+  return {
+    journeys,
+    begin: vi.spyOn(journeys, "begin"),
+    observe: vi.spyOn(journeys, "observe"),
+    end: vi.spyOn(journeys, "end"),
+    pause: vi.spyOn(journeys, "pause"),
+  };
+}
+async function pollChallenge() {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(15_000);
+  });
+}
+
+describe("competition Journey wiring", () => {
+  it("never starts from passive initial state but starts on committed Start", async () => {
+    const tracker = recordJourneys();
+    await mount("daily", "player", tracker.journeys);
+    expect(tracker.begin).not.toHaveBeenCalled();
+    await click(button("Start challenge"));
+    expect(tracker.begin).toHaveBeenCalledOnce();
+    expect(tracker.begin).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "competition", attemptId: "attempt-1" }),
+      "new",
+      undefined,
+    );
+  });
+
+  it("only resumes an existing attempt from explicit challenge entry", async () => {
+    state.snapshot = { ...fresh(), placements: [8], revision: 2 };
+    const tracker = recordJourneys();
+    await mount("daily", "player", tracker.journeys);
+    expect(tracker.begin).not.toHaveBeenCalled();
+    await act(async () => root.unmount());
+    root = createRoot(host);
+    await mount("daily", "player", tracker.journeys, true);
+    expect(tracker.begin).toHaveBeenCalledOnce();
+    expect(tracker.begin).toHaveBeenCalledWith(
+      expect.objectContaining({ attemptId: "attempt-1" }),
+      "resume",
+      expect.objectContaining({ moves: 1 }),
+    );
+  });
+
+  it("Back pauses without an abandonment request or incomplete End", async () => {
+    const tracker = recordJourneys();
+    await mount("weekly", "player", tracker.journeys);
+    await click(button("Start challenge"));
+    await click(button("Back to Euclid"));
+    expect(tracker.pause).toHaveBeenCalledOnce();
+    expect(tracker.end).not.toHaveBeenCalled();
+    expect(requests.some((r) => r.url.endsWith("/abandon"))).toBe(false);
+  });
+
+  it("ends a successfully abandoned attempt with its exact command proof", async () => {
+    const tracker = recordJourneys();
+    await mount("daily", "player", tracker.journeys);
+    await click(button("Start challenge"));
+    await click(button("Abandon Challenge"));
+    const request = requests.find((r) => r.url.endsWith("/abandon"))!;
+    expect(tracker.end).toHaveBeenCalledWith(
+      "abandoned",
+      expect.objectContaining({
+        commandId: request.body!.commandId,
+        expectedRevision: request.body!.expectedRevision,
+      }),
+    );
+    expect(leave).toHaveBeenCalledOnce();
+  });
+
+  it("recovers a committed abandonment reply once without inventing completion", async () => {
+    const tracker = recordJourneys();
+    await mount("daily", "player", tracker.journeys);
+    await click(button("Start challenge"));
+    loseAbandonReply = true;
+    await click(button("Abandon Challenge"));
+    expect(tracker.end).toHaveBeenCalledOnce();
+    expect(tracker.end.mock.calls[0]![0]).toBe("abandoned");
+    expect(tracker.begin).toHaveBeenCalledOnce();
+  });
+
+  it("starts a retry only when a new canonical attempt replaces the old one", async () => {
+    const tracker = recordJourneys();
+    await mount("daily", "player", tracker.journeys);
+    await click(button("Start challenge"));
+    failRetry = true;
+    await click(button("Retry same puzzle"));
+    expect(tracker.begin).toHaveBeenCalledOnce();
+    expect(tracker.end).not.toHaveBeenCalled();
+    failRetry = false;
+    await click(button("Retry same puzzle"));
+    expect(tracker.end).toHaveBeenCalledOnce();
+    expect(tracker.end.mock.calls[0]![0]).toBe("retry");
+    expect(tracker.begin).toHaveBeenCalledTimes(2);
+    expect(tracker.journeys.activeActivity()).toMatchObject({
+      attemptId: "attempt-2",
+    });
+  });
+
+  it("preserves an active Journey while a challenge is temporarily disabled", async () => {
+    const tracker = recordJourneys();
+    await mount("daily", "player", tracker.journeys);
+    await click(button("Start challenge"));
+    const before = structuredClone(state);
+    state = {
+      ...state,
+      snapshot: null,
+      competition: {
+        ...state.competition,
+        enabled: false,
+        status: "disabled",
+        instanceId: null,
+      },
+    };
+    await pollChallenge();
+    expect(tracker.end).not.toHaveBeenCalled();
+    state = before;
+    await pollChallenge();
+    expect(tracker.end).not.toHaveBeenCalled();
+    expect(tracker.begin).toHaveBeenCalledOnce();
+  });
+
+  it("observes another tab's completed attempt at the deadline before unavailable handling", async () => {
+    const tracker = recordJourneys();
+    await mount("daily", "player", tracker.journeys);
+    await click(button("Start challenge"));
+    state.snapshot = {
+      ...fresh(),
+      complete: true,
+      completedSquares: ["square"],
+      finishedAt: state.competition.endsAt - 1,
+    };
+    state.serverNow = state.competition.endsAt + 1;
+    await pollChallenge();
+    expect(tracker.end).not.toHaveBeenCalledWith("unavailable");
+    expect(tracker.observe).toHaveBeenCalledWith(
+      expect.objectContaining({ terminal: true }),
+    );
+  });
+
+  it.each(["retry", "unavailable"] as const)(
+    "ends a hidden attempt as %s when a different attempt becomes visible",
+    async (reason) => {
+      const tracker = recordJourneys();
+      await mount("daily", "player", tracker.journeys);
+      await click(button("Start challenge"));
+      const before = structuredClone(state);
+      state = {
+        ...state,
+        snapshot: null,
+        competition: {
+          ...state.competition,
+          enabled: false,
+          status: "disabled",
+          instanceId: null,
+        },
+      };
+      await pollChallenge();
+      expect(tracker.end).not.toHaveBeenCalled();
+      state = {
+        ...before,
+        snapshot: { ...fresh(), attemptId: "replacement-attempt" },
+        competition: {
+          ...before.competition,
+          instanceId: reason === "retry" ? "daily-1" : "daily-2",
+        },
+      };
+      await pollChallenge();
+      expect(tracker.end).toHaveBeenCalledOnce();
+      expect(tracker.end).toHaveBeenCalledWith(reason);
+      expect(tracker.begin).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("ends the previous attempt if another tab retries without passively starting the replacement", async () => {
+    const tracker = recordJourneys();
+    await mount("daily", "player", tracker.journeys);
+    await click(button("Start challenge"));
+    state.snapshot = { ...fresh(), attemptId: "other-tab-attempt" };
+    await pollChallenge();
+    expect(tracker.end).toHaveBeenCalledWith("retry");
+    expect(tracker.begin).toHaveBeenCalledOnce();
   });
 });

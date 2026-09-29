@@ -1,3 +1,9 @@
+import { createJourneyController } from "./journeys";
+import {
+  soloJourneyObservation,
+  h2hJourneyObservation,
+  isCurrentH2HJourneyMove,
+} from "./journeys-gameplay";
 import {
   DEFAULT_SUBREDDIT_SETTINGS,
   validateSubredditSettings,
@@ -297,7 +303,9 @@ export const App = ({
     | null;
   initialAction?: ExpandedAction | null;
 } = {}) => {
+  const journeys = useMemo(() => createJourneyController(), []);
   const pendingInitialAction = useRef(initialAction);
+  const competitionJourneyEntry = useRef(false);
   const appliedThemeRef = useRef<ThemeMode | null>(null);
   const [watchTheme, setWatchTheme] = useState<ThemeMode>("light");
   const [initState, setInitState] = useState<InitResponse | null>(null);
@@ -315,6 +323,10 @@ export const App = ({
       );
   }, [initState]);
   const [initError, setInitError] = useState("");
+  useEffect(() => {
+    if (initState?.type === "init")
+      journeys.ready(initState.postId, initState.username);
+  }, [initState, journeys]);
   const [mode, setMode] = useState<Mode>(initialMode);
   const [board, setBoard] = useState<Board | null>(null);
   const [watchRecording, setWatchRecording] = useState<WatchRecording | null>(
@@ -451,21 +463,23 @@ export const App = ({
   );
   const adoptHomeH2HPresence = useCallback(
     (presence: H2HMappingResponse) => {
+      if (presence.state === "queued") journeys.restore({ kind: "h2h-queue" });
       setHomeH2H(presence);
       setHomePresenceReady(true);
       setHomePresenceLoading(false);
       setHomePresenceReconciliationPending(false);
       updateHomeDataError("presence", "");
     },
-    [updateHomeDataError],
+    [updateHomeDataError, journeys],
   );
   const [homeStatus, setHomeStatus] = useState("");
   const returnHome = useCallback(() => {
+    journeys.pause();
     setHomeActionError("");
     setHomeStatus("");
     beginHomeRefresh();
     setMode(null);
-  }, [beginHomeRefresh]);
+  }, [beginHomeRefresh, journeys]);
   const [homeBusyAction, setHomeBusyAction] = useState<HomeBusyAction | null>(
     null,
   );
@@ -588,8 +602,9 @@ export const App = ({
         ? document.activeElement
         : null;
     setChatOpen(true);
+    journeys.interaction("chat", "opened");
     return true;
-  }, [h2hChatAvailable, soloChatAvailable]);
+  }, [h2hChatAvailable, soloChatAvailable, journeys]);
 
   useEffect(() => {
     if (!chatOpen) return;
@@ -639,10 +654,11 @@ export const App = ({
       sounds.unlock();
       sounds.setEnabled(next);
       saveSoundPreference(next);
+      journeys.interaction("sound", next ? "on" : "off");
       setSoundOn(next);
       if (next) sounds.place(1, "mine");
     },
-    [sounds],
+    [sounds, journeys],
   );
   const toggleSound = useCallback(
     () => changeSound(!soundOn),
@@ -670,7 +686,12 @@ export const App = ({
     setShowTutorial(false);
     setTutorialCompletedThisSession(true);
     storeCompletion(FULL_TUTORIAL_KEY);
-  }, []);
+    journeys.tutorialCompleted();
+  }, [journeys]);
+
+  useEffect(() => {
+    if (showTutorial) journeys.interaction("tutorial", "shown");
+  }, [showTutorial, journeys]);
 
   // window/theme basics
   useEffect(() => {
@@ -774,6 +795,9 @@ export const App = ({
       soloRevisionRef.current = snapshot.revision;
       soloSnapshotRef.current = snapshot;
       setSoloSnapshot(snapshot);
+      const observation = soloJourneyObservation(snapshot);
+      journeys.restore(observation.activity);
+      journeys.observe(observation);
       setSoloMode(snapshot.mode);
       setBoard(Board.fromJSON(snapshot.board));
       const presentation = getSoloResultPresentation(snapshot);
@@ -782,7 +806,7 @@ export const App = ({
       setMode("ai");
       return true;
     },
-    [],
+    [journeys],
   );
 
   const startSoloGame = useCallback(async (): Promise<boolean> => {
@@ -845,6 +869,14 @@ export const App = ({
       }
 
       startedSnapshot = payload.snapshot;
+      if (payload.snapshot.status === "active") {
+        const observation = soloJourneyObservation(payload.snapshot);
+        journeys.begin(
+          observation.activity,
+          payload.resumed ? "resume" : "new",
+          observation,
+        );
+      }
       soloGameIdRef.current = payload.snapshot.gameId;
       soloRevisionRef.current = 0;
       clearScoreFeedback();
@@ -878,6 +910,7 @@ export const App = ({
     selectedDifficulty,
     soloMode,
     soloStartIntentKey,
+    journeys,
   ]);
 
   const submitSoloMove = useCallback(
@@ -921,6 +954,15 @@ export const App = ({
           return false;
         }
 
+        if (
+          response.ok &&
+          payload &&
+          "accepted" in payload &&
+          payload.accepted
+        ) {
+          const previous = soloJourneyObservation(snapshot);
+          journeys.begin(previous.activity, "resume", previous);
+        }
         const adoptedSnapshot =
           payload && "snapshot" in payload
             ? adoptSoloSnapshot(payload.snapshot)
@@ -964,7 +1006,7 @@ export const App = ({
         }
       }
     },
-    [adoptSoloSnapshot, enqueueScoreFeedback],
+    [adoptSoloSnapshot, enqueueScoreFeedback, journeys],
   );
 
   /* === H2H polling helpers === */
@@ -1033,6 +1075,11 @@ export const App = ({
       }
 
       gameRevisionRef.current = revision;
+      if (!spectatingRef.current) {
+        const observation = h2hJourneyObservation(state, isPlayer1Ref.current);
+        journeys.restore(observation.activity);
+        journeys.observe(observation);
+      }
       setBoard(Board.fromJSON(state.board));
 
       if (!state.ended) return true;
@@ -1089,7 +1136,13 @@ export const App = ({
       }
       return true;
     },
-    [clearScoreFeedback, closeChat, enqueueScoreFeedback, stopPolling],
+    [
+      clearScoreFeedback,
+      closeChat,
+      enqueueScoreFeedback,
+      stopPolling,
+      journeys,
+    ],
   );
 
   const flushDeferredH2HScoreFeedback = useCallback(
@@ -1229,6 +1282,10 @@ export const App = ({
       setFinalReason("");
       stopPolling();
       pollActiveRef.current = "none";
+      if (journeys.activeActivity()?.kind === "h2h-queue")
+        journeys.begin(
+          h2hJourneyObservation(mapping, isPlayer1Ref.current).activity,
+        );
       adoptH2HState(mapping, "baseline");
       if (
         shouldPollH2HState({
@@ -1242,7 +1299,14 @@ export const App = ({
       }
       return true;
     },
-    [adoptH2HState, adoptHomeH2HPresence, closeChat, pollGame, stopPolling],
+    [
+      adoptH2HState,
+      adoptHomeH2HPresence,
+      closeChat,
+      pollGame,
+      stopPolling,
+      journeys,
+    ],
   );
 
   const pollMapping = useCallback(() => {
@@ -1537,6 +1601,13 @@ export const App = ({
     mapping: H2HMappingResponse,
   ): boolean => {
     const decision = resolveQueueRecovery(operation, mapping.state);
+    if (operation === "join") {
+      if (mapping.state === "queued") journeys.begin({ kind: "h2h-queue" });
+      else if (mapping.state === "active" && !mapping.ended) {
+        const observation = h2hJourneyObservation(mapping, mapping.isPlayer1);
+        journeys.begin(observation.activity, "resume", observation);
+      }
+    }
     if (decision.clearActionError) setHomeActionError("");
     adoptHomeH2HPresence(mapping);
 
@@ -1550,6 +1621,8 @@ export const App = ({
       return decision.operationCompleted;
     }
     if (decision.operationCompleted) {
+      if (operation === "cancel" && mapping.state === "idle")
+        journeys.end("canceled");
       clearMultiplayerState();
       setHomeActionError("");
     }
@@ -1658,6 +1731,16 @@ export const App = ({
       if (!response.ok || !payload) {
         throw new Error(
           payload?.message ?? "Unable to join the multiplayer queue.",
+        );
+      }
+      if (payload.state === "queued") journeys.begin({ kind: "h2h-queue" });
+      else if ("board" in payload && !payload.ended) {
+        const observation = h2hJourneyObservation(payload, payload.isPlayer1);
+        if (payload.state !== "resumed") journeys.begin({ kind: "h2h-queue" });
+        journeys.begin(
+          observation.activity,
+          payload.state === "resumed" ? "resume" : "new",
+          observation,
         );
       }
       if (enterH2HGame(payload)) {
@@ -1826,6 +1909,10 @@ export const App = ({
 
       soloGameIdRef.current = payload.snapshot.gameId;
       soloRevisionRef.current = 0;
+      if (payload.snapshot.status === "active") {
+        const observation = soloJourneyObservation(payload.snapshot);
+        journeys.begin(observation.activity, "resume", observation);
+      }
       if (!adoptSoloSnapshot(payload.snapshot)) {
         throw new Error("Unable to open the refreshed Ranked game.");
       }
@@ -1862,6 +1949,9 @@ export const App = ({
       if (h2hSessionRef.current !== session) return false;
       adoptHomeH2HPresence(mapping);
       if (mapping.state === "active") {
+        const observation = h2hJourneyObservation(mapping, mapping.isPlayer1);
+        if (!mapping.ended)
+          journeys.begin(observation.activity, "resume", observation);
         return enterH2HGame(mapping);
       }
       if (mapping.state === "queued") {
@@ -1928,6 +2018,11 @@ export const App = ({
           expectedRevision,
           payload,
         );
+        if (!payload.ended && (response.ok || recovered))
+          journeys.begin(
+            h2hJourneyObservation(payload, isPlayer1Ref.current).activity,
+            "rematch",
+          );
         const adopted = adoptH2HState(payload, "baseline");
         if (adopted && (response.ok || recovered)) {
           pollGame();
@@ -1952,6 +2047,10 @@ export const App = ({
       await refreshStateOnce();
       const current = h2hFeedbackStateRef.current;
       if (current && isH2HRematchRecovery(gameId, expectedRevision, current)) {
+        journeys.begin(
+          h2hJourneyObservation(current, isPlayer1Ref.current).activity,
+          "rematch",
+        );
         pollGame();
         return true;
       }
@@ -1967,7 +2066,7 @@ export const App = ({
         setH2HMutation(null);
       }
     }
-  }, [adoptH2HState, pollGame, refreshStateOnce]);
+  }, [adoptH2HState, pollGame, refreshStateOnce, journeys]);
 
   const leaveMultiplayer = async (
     intent: H2HLeaveRequest["intent"] = "leave",
@@ -2004,6 +2103,9 @@ export const App = ({
         !isCurrentH2HRequest(request, h2hSessionRef.current, gameIdRef.current)
       ) {
         return false;
+      }
+      if (response.ok && payload && "board" in payload) {
+        journeys.observe(h2hJourneyObservation(payload, isPlayer1Ref.current));
       }
       if (!response.ok) {
         const hasCanonicalSnapshot = !!payload && "board" in payload;
@@ -2288,6 +2390,23 @@ export const App = ({
 
         const hasCanonicalSnapshot = !!payload && "board" in payload;
         if (hasCanonicalSnapshot) {
+          if (
+            response.ok &&
+            payload.accepted &&
+            isCurrentH2HJourneyMove(
+              roundEpoch,
+              h2hRoundEpochRef.current,
+              payload,
+              h2hFeedbackStateRef.current,
+            )
+          ) {
+            const previous = h2hFeedbackStateRef.current;
+            const observation = h2hJourneyObservation(
+              previous ?? payload,
+              isPlayer1Ref.current,
+            );
+            journeys.begin(observation.activity, "resume", observation);
+          }
           acceptedFeedback = payload.accepted
             ? scoreFeedbackFromH2HMove(payload)
             : null;
@@ -2343,7 +2462,7 @@ export const App = ({
         }
       }
     },
-    [adoptH2HState, flushDeferredH2HScoreFeedback, refreshStateOnce],
+    [adoptH2HState, flushDeferredH2HScoreFeedback, refreshStateOnce, journeys],
   );
 
   /* ===== Secret keys + chat hotkey ===== */
@@ -2374,7 +2493,8 @@ export const App = ({
       human.m_playStyle = Board.PS_BRUTAL;
       const move = analysisBoard.findBestMove();
       human.m_playStyle = savedStyle;
-      await submitSoloMove(move.x, move.y);
+      if (await submitSoloMove(move.x, move.y))
+        journeys.interaction("assistance", "auto_move");
     } else if (mode === "multiplayer") {
       const gid = gameIdRef.current;
       if (!gid) {
@@ -2397,7 +2517,8 @@ export const App = ({
       board.m_players[board.m_turn].m_playStyle = saved;
       if (m) {
         console.log("Cheat: Making brutal move at", m.x, m.y);
-        await submitH2HMove(m.x, m.y);
+        if (await submitH2HMove(m.x, m.y))
+          journeys.interaction("assistance", "auto_move");
       } else {
         console.log("Cheat: No valid move found");
       }
@@ -2413,6 +2534,7 @@ export const App = ({
     submitH2HMove,
     submitSoloMove,
     winner,
+    journeys,
   ]);
 
   const sendChat = async () => {
@@ -2475,6 +2597,7 @@ export const App = ({
               : "The message could not be sent.",
           );
         }
+        journeys.interaction("chat", "sent");
         adoptH2HState(payload);
       } catch (error) {
         if (
@@ -2788,6 +2911,7 @@ export const App = ({
           onChallenge={(period) => {
             if (navigationLocked) return;
             stopHomePresenceMonitoring();
+            competitionJourneyEntry.current = true;
             setMode(period);
           }}
           onPlayEuclid={() => void startSoloFromHome()}
@@ -2823,6 +2947,8 @@ export const App = ({
         period={mode}
         username={initState?.username ?? ""}
         onLeave={returnHome}
+        journeys={journeys}
+        intentionalEntry={competitionJourneyEntry.current}
       />
     );
   } else if (mode === "challenge") {
@@ -3672,7 +3798,10 @@ export const App = ({
         scoreFeedback={h2hScoreFeedback}
         futureScoreFeedback={h2hScoreFeedbackQueue.slice(1)}
         acceptPlacementKey={(event) => !event.repeat}
-        onRules={() => setShowRules(true)}
+        onRules={() => {
+          setShowRules(true);
+          journeys.interaction("rules", "opened");
+        }}
         toolbar={
           <>
             {!chatOpen && h2hChatAvailable && (
@@ -3687,7 +3816,10 @@ export const App = ({
             {!spectating && (
               <AssistToggle
                 on={assistOn}
-                onToggle={() => setAssistOn(!assistOn)}
+                onToggle={() => {
+                  setAssistOn(!assistOn);
+                  journeys.interaction("assistance", !assistOn ? "on" : "off");
+                }}
               />
             )}
             {soundControl}
@@ -3853,13 +3985,19 @@ export const App = ({
             soloKeyboardTurnStartedAtRef.current,
           )
         }
-        onRules={() => setShowRules(true)}
+        onRules={() => {
+          setShowRules(true);
+          journeys.interaction("rules", "opened");
+        }}
         toolbar={
           <>
             {assistance.allowAssistHighlights && !presentation.terminal && (
               <AssistToggle
                 on={assistOn}
-                onToggle={() => setAssistOn(!assistOn)}
+                onToggle={() => {
+                  setAssistOn(!assistOn);
+                  journeys.interaction("assistance", !assistOn ? "on" : "off");
+                }}
               />
             )}
             {soundControl}

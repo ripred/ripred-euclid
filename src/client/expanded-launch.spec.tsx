@@ -9,6 +9,11 @@ import {
 } from "../shared/subreddit-settings";
 import { byPeriod, CHALLENGE_SETTING } from "../shared/challenge-spotlights";
 import type { ExpandedAction } from "./expanded-entry";
+import * as journeysModule from "./journeys";
+import { createTelemetryClient } from "@devvit/analytics/client/reddit";
+import { Board, Player } from "../shared/game/engine";
+import { validatePracticeRules } from "../shared/game/rules";
+import type { SoloSessionSnapshot } from "../shared/types/api";
 
 let root: Root, host: HTMLDivElement;
 let resolvePresence: (state: string) => void;
@@ -20,12 +25,17 @@ let initReady: Promise<void>;
 let liveGamesReady: Promise<void>;
 let refreshedPresence: string | undefined;
 let subredditSettings: SubredditSettings;
+let initStatus: number;
+let soloStart: SoloSessionSnapshot | undefined;
 
 beforeEach(() => {
   (
     globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true;
   localStorage.clear();
+  sessionStorage.clear();
+  initStatus = 200;
+  soloStart = undefined;
   subredditSettings = { ...DEFAULT_SUBREDDIT_SETTINGS };
   requests = [];
   mutations = [];
@@ -64,14 +74,17 @@ beforeEach(() => {
       });
       if (url === "/api/init") {
         await initReady;
-        return reply({
-          type: "init",
-          username: "player",
-          appVersion: "test",
-          postId: "post",
-          isModerator: initModerator,
-          subredditSettings,
-        });
+        return reply(
+          {
+            type: "init",
+            username: "player",
+            appVersion: "test",
+            postId: "post",
+            isModerator: initModerator,
+            subredditSettings,
+          },
+          initStatus,
+        );
       }
       if (url === "/api/subreddit-settings") {
         if (options?.method === "PUT")
@@ -128,6 +141,14 @@ beforeEach(() => {
       }
       if (url === "/api/h2h/queue")
         return reply({ ok: true, state: "queued", gameId: null });
+      if (url === "/api/solo/start" && soloStart)
+        return reply({
+          ok: true,
+          snapshot: soloStart,
+          resumed: false,
+          replayed: false,
+          events: [],
+        });
       // A failed start must remain a single explicit intent, never an automatic retry loop.
       return reply({ message: "Unavailable" }, 503);
     }),
@@ -158,6 +179,161 @@ const launches = () =>
   requests.filter(
     (url) => url === "/api/h2h/queue" || url === "/api/solo/start",
   );
+
+describe("expanded Journeys wiring", () => {
+  function track() {
+    const disabled = {
+      receipt: {
+        status: "JOURNEY_RECEIPT_DENIED_DISABLED" as const,
+        message: "test",
+      },
+    };
+    const ready = vi.fn(async () => disabled);
+    const start = vi.fn(async () => ({ ...disabled, journeyId: "" }));
+    const controller = journeysModule.createJourneyController({
+      storage: null,
+      createClient: (options) => ({
+        ...createTelemetryClient(options),
+        appReady: ready,
+        startJourney: start,
+      }),
+    });
+    vi.spyOn(journeysModule, "createJourneyController").mockReturnValue(
+      controller,
+    );
+    const begin = vi.spyOn(controller, "begin");
+    return { controller, ready, start, begin };
+  }
+
+  it("emits Ready once under StrictMode and only after successful initialization", async () => {
+    const tracked = track();
+    let resolveInit!: () => void;
+    initReady = new Promise<void>((resolve) => {
+      resolveInit = resolve;
+    });
+    await mount(null);
+    await tracked.controller.settled();
+    expect(tracked.ready).not.toHaveBeenCalled();
+    await act(async () => resolveInit());
+    await tracked.controller.settled();
+    expect(tracked.ready).toHaveBeenCalledTimes(1);
+    expect(tracked.start).not.toHaveBeenCalled();
+  });
+
+  it("does not emit readiness or starts when initialization fails", async () => {
+    const tracked = track();
+    initStatus = 503;
+    await mount("solo");
+    await tracked.controller.settled();
+    expect(tracked.ready).not.toHaveBeenCalled();
+    expect(tracked.start).not.toHaveBeenCalled();
+  });
+
+  it.each([null, "spectate", "challenge", "daily", "weekly"] as const)(
+    "does not start a Journey from the %s view",
+    async (mode) => {
+      const tracked = track();
+      initModerator = true;
+      await mount(null, mode);
+      await act(async () => {
+        resolvePresence("idle");
+        resolveSolo();
+      });
+      await tracked.controller.settled();
+      expect(tracked.begin).not.toHaveBeenCalled();
+      expect(tracked.start).not.toHaveBeenCalled();
+    },
+  );
+
+  it("starts exactly once after confirmed matchmaking even when analytics is disabled", async () => {
+    const tracked = track();
+    await mount("reddit");
+    expect(tracked.begin).not.toHaveBeenCalled();
+    await act(async () => {
+      resolvePresence("idle");
+      resolveSolo();
+    });
+    await tracked.controller.settled();
+    expect(tracked.begin).toHaveBeenCalledExactlyOnceWith({
+      kind: "h2h-queue",
+    });
+    expect(tracked.start).toHaveBeenCalledTimes(1);
+    expect(host.textContent).toContain("Searching");
+  });
+
+  it("does not start a Journey for a rejected solo command", async () => {
+    const tracked = track();
+    await mount("solo");
+    await act(async () => {
+      resolvePresence("idle");
+      resolveSolo();
+    });
+    await tracked.controller.settled();
+    expect(launches()).toEqual(["/api/solo/start"]);
+    expect(tracked.begin).not.toHaveBeenCalled();
+    expect(tracked.start).not.toHaveBeenCalled();
+  });
+
+  it("starts from the accepted canonical solo game and keeps play usable without telemetry", async () => {
+    const tracked = track();
+    // jsdom does not load the game's stylesheet; supply numeric layout defaults.
+    const computedStyle = globalThis.getComputedStyle;
+    vi.spyOn(globalThis, "getComputedStyle").mockImplementation((element) => {
+      const style = computedStyle(element);
+      for (const property of [
+        "paddingLeft",
+        "paddingRight",
+        "paddingTop",
+        "paddingBottom",
+        "marginLeft",
+        "marginRight",
+      ] as const)
+        if (!style[property]) style[property] = "0px";
+      return style;
+    });
+    const board = new Board(
+      new Player(0, false, "player"),
+      new Player(0, true),
+    );
+    soloStart = {
+      mode: "practice",
+      ranked: false,
+      rulesVersion: 1,
+      rules: validatePracticeRules({ difficulty: "beginner" }),
+      gameId: "canonical-practice",
+      revision: 0,
+      board: {
+        ...board.toJSON(),
+        m_players: board.m_players,
+        m_turn: board.m_turn,
+        revision: 0,
+        rulesVersion: 1,
+      },
+      status: "active",
+      outcome: { state: 0, status: "running", winner: null },
+      endedReason: null,
+      canShare: false,
+      humanMoveCount: 0,
+      aiMoveCount: 0,
+      rankedAbandonCountsAsLoss: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await mount("solo");
+    await act(async () => {
+      resolvePresence("idle");
+      resolveSolo();
+    });
+    await tracked.controller.settled();
+    expect(tracked.begin).toHaveBeenCalledWith(
+      { kind: "solo", gameId: "canonical-practice" },
+      "new",
+      expect.objectContaining({ terminal: false, moves: 0 }),
+    );
+    expect(tracked.start).toHaveBeenCalledTimes(1);
+    expect(host.querySelector(".board")).not.toBeNull();
+  });
+});
 
 describe("expanded game launch intents", () => {
   it.each(["solo", "reddit"] as const)(

@@ -95,6 +95,8 @@ Euclid uses React and TypeScript on Reddit's Devvit Web platform, with an Expres
 
 The browser sends move intentions. The server checks the turn and position, calculates scores, and settles results. Puzzle solutions and generation seeds stay on the server. For the persistence rules, avatar caching, source map, and release checklist, see the [engineering notes](docs/engineering.md).
 
+Native Devvit Journeys tracks intentional gameplay sessions across solo, multiplayer, and daily/weekly challenges. Telemetry uses server-verified results and fixed labels, never custom usernames or chat text, and failures do not block play. The [Journey map](docs/journeys.md) documents every event and the Reddit approval and live-verification requirements.
+
 Run the checks before committing gameplay changes:
 
 ```bash
@@ -110,7 +112,7 @@ git diff --check
 
 `npm run check` applies formatting and lint fixes, so use the individual commands above when you only want to inspect a worktree. Tests live beside the source in `*.spec.ts` and `*.spec.tsx` files.
 
-The package version is **0.2.11** and Devvit is pinned to **0.14.2**. `npm run dev` starts the Reddit playtest workflow for `r/ripred_euclid_dev`; `npm run dev:local` is the standalone workflow above. Building, pushing to GitHub, uploading to Devvit, and installing on a subreddit are separate steps. The [deployment commands](docs/engineering.md#devvit-operation) cover the Reddit side.
+The package version is **0.2.11** and Devvit is pinned to **0.14.6**. `npm run dev` starts the Reddit playtest workflow for `r/ripred_euclid_dev`; `npm run dev:local` is the standalone workflow above. Building, pushing to GitHub, uploading to Devvit, and installing on a subreddit are separate steps. The [deployment commands](docs/engineering.md#devvit-operation) cover the Reddit side.
 
 ### Keeping the pictures current
 

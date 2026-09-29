@@ -109,6 +109,198 @@ function fixture(period: ChallengePeriod = "daily") {
   };
 }
 
+describe.each(CHALLENGE_PERIODS)("read-only %s journey authority", (period) => {
+  it("reads exact canonical progress without migrating rankings or writing budgets", async () => {
+    const f = fixture(period);
+    const started = await f.start();
+    const moved = await f.move(started, alice, 63);
+    const legacy = { ...f.instance };
+    delete legacy.rankingVersion;
+    f.redis.seed(competitionInstanceKey(f.instance.id), JSON.stringify(legacy));
+    const before = f.redis.commits.length;
+    const watches = f.redis.watches.length;
+    const result = await f.store.getJourneyAttempt(period, alice.userId, {
+      instanceId: f.instance.id,
+      attemptId: moved.snapshot!.attemptId,
+    });
+    expect(result).toEqual({
+      instance: {
+        id: f.instance.id,
+        period,
+        opensAt: f.instance.opensAt,
+        endsAt: f.instance.endsAt,
+      },
+      snapshot: moved.snapshot,
+      status: "active",
+    });
+    expect(JSON.stringify(result)).not.toContain("NEVER-PUBLIC");
+    expect(f.redis.commits).toHaveLength(before);
+    expect(f.redis.watches).toHaveLength(watches);
+    expect(
+      f.redis.json<CompetitionInstance>(competitionInstanceKey(f.instance.id))
+        ?.rankingVersion,
+    ).toBeUndefined();
+  });
+
+  it("keeps completed archive authority after retry, replacement and closure", async () => {
+    const f = fixture(period);
+    const done = await f.move(await f.start());
+    await f.store.mutate(period, alice, "retry", f.cmd(done));
+    f.instance.superseded = true;
+    f.instance.settled = true;
+    f.redis.seed(
+      competitionInstanceKey(f.instance.id),
+      JSON.stringify(f.instance),
+    );
+    f.state.periods[period].currentId = "replacement";
+    f.redis.seed(COMPETITION_STATE_KEY, JSON.stringify(f.state));
+    f.setTime(f.instance.endsAt + 1);
+    const before = f.redis.commits.length;
+    const result = await f.store.getJourneyAttempt(period, alice.userId, {
+      instanceId: f.instance.id,
+      attemptId: done.snapshot!.attemptId,
+    });
+    expect(result?.status).toBe("completed");
+    expect(result?.snapshot).toMatchObject({
+      complete: true,
+      placements: [9],
+      completedSquares: done.snapshot!.completedSquares,
+    });
+    expect(f.redis.commits).toHaveLength(before);
+  });
+
+  it("marks an archived unfinished retry as replaced instead of borrowing the newer attempt", async () => {
+    const f = fixture(period);
+    const started = await f.start();
+    const moved = await f.move(started, alice, 63);
+    const retry = await f.store.mutate(period, alice, "retry", f.cmd(moved));
+    const result = await f.store.getJourneyAttempt(period, alice.userId, {
+      instanceId: f.instance.id,
+      attemptId: moved.snapshot!.attemptId,
+    });
+    expect(result).toMatchObject({
+      status: "replaced",
+      snapshot: {
+        attemptId: moved.snapshot!.attemptId,
+        placements: [63],
+        complete: false,
+      },
+    });
+    expect(result?.snapshot?.attemptId).not.toBe(retry.snapshot!.attemptId);
+  });
+
+  it.each(["expired", "replaced"] as const)(
+    "reports a canonical unfinished %s attempt",
+    async (status) => {
+      const f = fixture(period);
+      const started = await f.start();
+      if (status === "expired") f.setTime(f.instance.endsAt);
+      else {
+        f.instance.superseded = true;
+        f.redis.seed(
+          competitionInstanceKey(f.instance.id),
+          JSON.stringify(f.instance),
+        );
+      }
+      const before = f.redis.commits.length;
+      expect(
+        await f.store.getJourneyAttempt(period, alice.userId, {
+          instanceId: f.instance.id,
+          attemptId: started.snapshot!.attemptId,
+        }),
+      ).toMatchObject({ status, snapshot: { complete: false } });
+      expect(f.redis.commits).toHaveLength(before);
+    },
+  );
+
+  it("proves deleted abandonment only with the owner's exact command and revision", async () => {
+    const f = fixture(period);
+    const current = await f.move(await f.start(), alice, 63);
+    const c = f.cmd(current, "abandon-proof");
+    await f.store.mutate(period, alice, "abandon", c);
+    const ref = {
+      instanceId: f.instance.id,
+      attemptId: current.snapshot!.attemptId,
+    };
+    const proof = {
+      ...ref,
+      abandonCommandId: c.commandId,
+      abandonExpectedRevision: c.expectedRevision,
+    };
+    const before = f.redis.commits.length;
+    expect(
+      await f.store.getJourneyAttempt(period, alice.userId, ref),
+    ).toBeNull();
+    expect(
+      await f.store.getJourneyAttempt(period, bob.userId, proof),
+    ).toBeNull();
+    expect(
+      await f.store.getJourneyAttempt(period, alice.userId, {
+        ...proof,
+        abandonCommandId: "different",
+      }),
+    ).toBeNull();
+    expect(
+      await f.store.getJourneyAttempt(period, alice.userId, {
+        ...proof,
+        abandonExpectedRevision: c.expectedRevision + 1,
+      }),
+    ).toBeNull();
+    expect(
+      await f.store.getJourneyAttempt(period, alice.userId, {
+        ...proof,
+        attemptId: "different",
+      }),
+    ).toBeNull();
+    expect(
+      await f.store.getJourneyAttempt(
+        period === "daily" ? "weekly" : "daily",
+        alice.userId,
+        proof,
+      ),
+    ).toBeNull();
+    expect(
+      await f.store.getJourneyAttempt(period, alice.userId, proof),
+    ).toMatchObject({ status: "abandoned", snapshot: null });
+    expect(f.redis.commits).toHaveLength(before);
+    await f.start();
+    expect(
+      await f.store.getJourneyAttempt(period, alice.userId, proof),
+    ).toMatchObject({ status: "abandoned", snapshot: null });
+  });
+
+  it("does not trust missing, other-owner or mismatched snapshot identities", async () => {
+    const f = fixture(period);
+    const started = await f.start();
+    const ref = {
+      instanceId: f.instance.id,
+      attemptId: started.snapshot!.attemptId,
+    };
+    expect(await f.store.getJourneyAttempt(period, bob.userId, ref)).toBeNull();
+    expect(
+      await f.store.getJourneyAttempt(period, alice.userId, {
+        ...ref,
+        attemptId: "missing",
+      }),
+    ).toBeNull();
+    f.redis.seed(
+      competitionAttemptKey(f.instance.id, alice.userId),
+      JSON.stringify({ ...started.snapshot, puzzleId: "another-instance" }),
+    );
+    expect(
+      await f.store.getJourneyAttempt(period, alice.userId, ref),
+    ).toBeNull();
+    f.redis.seed(competitionAttemptKey(f.instance.id, alice.userId), "corrupt");
+    expect(
+      await f.store.getJourneyAttempt(period, alice.userId, ref),
+    ).toBeNull();
+    f.redis.externalDelete(competitionInstanceKey(f.instance.id));
+    expect(
+      await f.store.getJourneyAttempt(period, alice.userId, ref),
+    ).toBeNull();
+  });
+});
+
 describe("public competition gameplay", () => {
   describe.each(CHALLENGE_PERIODS)("%s abandonment", (period) => {
     it("deletes only the owner's unfinished attempt and leaves no result or standings entry", async () => {

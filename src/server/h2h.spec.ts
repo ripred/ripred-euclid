@@ -214,6 +214,55 @@ describe("H2H Tide replay", () => {
 });
 
 describe("H2H replay normalization", () => {
+  it("keeps a stable round identity across moves, chat and departure", () => {
+    const initial = initialBoard();
+    expect(initial.roundStartRevision).toBe(0);
+    const moved = applyIndex(initial, 0, 101);
+    const chatted = appendH2HChat(
+      moved.board,
+      "p1",
+      "game",
+      "hello",
+      102,
+    ).state;
+    const ended = endH2HByDeparture(chatted.board, "p2", "game", 103);
+    for (const state of [moved, chatted, ended]) {
+      expect(state.roundStartRevision).toBe(0);
+      expect(state.board.roundStartRevision).toBe(0);
+    }
+    expect(ended.revision).toBe(3);
+  });
+
+  it("preserves missing legacy round identity until a new rematch begins", () => {
+    const legacy = initialBoard();
+    delete legacy.roundStartRevision;
+    const moved = applyIndex(legacy, 0, 101);
+    const chatted = appendH2HChat(
+      moved.board,
+      "p1",
+      "game",
+      "hello",
+      102,
+    ).state;
+    expect(chatted).not.toHaveProperty("roundStartRevision");
+    expect(chatted.board).not.toHaveProperty("roundStartRevision");
+    const ended = terminalBoard(legacy);
+    const rematch = createH2HRematch(ended, "p1", "game", ended.lastSaved + 1);
+    expect(rematch.roundStartRevision).toBe(ended.revision + 1);
+    expect(rematch.board.roundStartRevision).toBe(rematch.roundStartRevision);
+    expect(
+      applyIndex(rematch.board, 0, ended.lastSaved + 2).roundStartRevision,
+    ).toBe(rematch.roundStartRevision);
+  });
+
+  it.each([null, -1, 0.5, 1, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects invalid persisted round identity %s",
+    (roundStartRevision) => {
+      const board = asRecord(playMoves([0]));
+      board.roundStartRevision = roundStartRevision;
+      expectDomainError(() => normalizeH2HBoard(board), "invalid_board");
+    },
+  );
   it.each([
     "W",
     "H",

@@ -130,6 +130,10 @@ export type H2HViewerState = {
   canRematch: boolean;
 };
 
+export type H2HJourneyPresence =
+  | { state: "idle" | "queued" }
+  | { state: "active"; snapshot: H2HCanonicalStateSnapshot };
+
 export type H2HMoveCommit = {
   response: H2HMoveAcceptedResponse;
   settlementEvent: H2HSettlementEvent | null;
@@ -772,6 +776,78 @@ export class H2HStore {
     requireIdentifier(gameId, "gameId");
     const raw = await this.redis.get(H2H_STORE_KEYS.game(gameId));
     return stateFromRaw(gameId, raw ?? undefined);
+  }
+
+  /** Owner-bound observation of one round, without timeout or mapping writes. */
+  async getJourneyState(
+    userId: string,
+    gameId: string,
+    roundStartRevision: number | null,
+    terminalRevision?: number,
+  ): Promise<H2HCanonicalStateSnapshot | null> {
+    requireIdentifier(userId, "userId");
+    if (roundStartRevision !== null) requireRevision(roundStartRevision);
+    const state =
+      terminalRevision === undefined
+        ? await this.getState(gameId)
+        : await this.getTerminalState(gameId, terminalRevision);
+    if (!state) return null;
+    if (!state.board.m_players.some((player) => player.userId === userId))
+      throw new H2HDomainError(
+        "not_participant",
+        "The caller is not a participant.",
+      );
+    return (state.roundStartRevision ?? null) === roundStartRevision
+      ? state
+      : null;
+  }
+
+  /** Read a stable queue/mapping pair; cancellation may race atomic pairing. */
+  async getJourneyPresence(userId: string): Promise<H2HJourneyPresence> {
+    requireIdentifier(userId, "userId");
+    const mappingKey = H2H_STORE_KEYS.userGame(userId);
+    for (let attempt = 0; attempt < this.maxDynamicAttempts; attempt++) {
+      const [gameId, queueRaw] = await Promise.all([
+        this.redis.get(mappingKey),
+        this.redis.get(H2H_STORE_KEYS.queue),
+      ]);
+      const gameKey = gameId ? H2H_STORE_KEYS.game(gameId) : null;
+      const gameRaw = gameKey ? await this.redis.get(gameKey) : undefined;
+      const [mappingAfter, queueAfter, gameAfter] = await Promise.all([
+        this.redis.get(mappingKey),
+        this.redis.get(H2H_STORE_KEYS.queue),
+        gameKey ? this.redis.get(gameKey) : undefined,
+      ]);
+      if (
+        mappingAfter !== gameId ||
+        queueAfter !== queueRaw ||
+        gameAfter !== gameRaw
+      )
+        continue;
+      const state = gameId ? stateFromRaw(gameId, gameRaw ?? undefined) : null;
+      if (state) {
+        if (!state.board.m_players.some((player) => player.userId === userId))
+          throw new H2HDomainError(
+            "not_participant",
+            "The mapping is not owned by the caller.",
+          );
+        return { state: "active", snapshot: state };
+      }
+      if (gameId)
+        throw new H2HStoreError(
+          "game_not_found",
+          "The mapped game is unavailable; queue cancellation cannot be confirmed.",
+        );
+      return {
+        state: readStringList(queueRaw ?? undefined).includes(userId)
+          ? "queued"
+          : "idle",
+      };
+    }
+    throw new H2HStoreError(
+      "dynamic_conflict",
+      "The matchmaking presence changed too frequently to read safely.",
+    );
   }
 
   /**

@@ -86,6 +86,24 @@ interface GameplayReceipt {
 interface GameplayInput extends CompetitionCommand {
   point?: number;
 }
+type GameplayAction = "start" | "move" | "retry" | "abandon";
+export interface CompetitionJourneyAttempt {
+  instance: Pick<CompetitionInstance, "id" | "period" | "opensAt" | "endsAt">;
+  snapshot: ChallengeSnapshot | null;
+  status: "active" | "completed" | "abandoned" | "expired" | "replaced";
+}
+const gameplayFingerprint = (action: GameplayAction, c: GameplayInput) =>
+  createHash("sha256")
+    .update(
+      JSON.stringify([
+        action,
+        c.instanceId,
+        c.attemptId,
+        c.expectedRevision,
+        c.point,
+      ]),
+    )
+    .digest("hex");
 const readAttempt = (raw: string | null | undefined) =>
   readChallengeSnapshot(parseJson(raw));
 const readRankedResult = (raw: string | null | undefined) => {
@@ -173,6 +191,100 @@ export class CompetitionGameplay {
   ) {
     this.now = options.now ?? Date.now;
     this.newId = options.newId ?? randomUUID;
+  }
+
+  /** Exact owner/attempt observation, including archives, with no gameplay writes. */
+  async getJourneyAttempt(
+    period: ChallengePeriod,
+    userId: string,
+    ref: {
+      instanceId: string;
+      attemptId: string;
+      abandonCommandId?: string;
+      abandonExpectedRevision?: number;
+    },
+  ): Promise<CompetitionJourneyAttempt | null> {
+    if (
+      !isCanonicalIdentifier(userId) ||
+      ![ref.instanceId, ref.attemptId].every(
+        (id) => isCanonicalIdentifier(id) && id.length <= MAX_COMMAND_ID_LENGTH,
+      )
+    )
+      throw new ChallengeError(
+        "invalid",
+        "Invalid challenge activity identifiers.",
+      );
+    const abandonment =
+      ref.abandonCommandId === undefined
+        ? null
+        : command({
+            instanceId: ref.instanceId,
+            attemptId: ref.attemptId,
+            commandId: ref.abandonCommandId,
+            expectedRevision: ref.abandonExpectedRevision,
+          });
+    const [instanceRaw, currentRaw, archivedRaw, lifecycleRaw, receiptRaw] =
+      await Promise.all([
+        this.redis.get(competitionInstanceKey(ref.instanceId)),
+        this.redis.get(competitionAttemptKey(ref.instanceId, userId)),
+        this.redis.get(
+          competitionAttemptHistoryKey(ref.instanceId, userId, ref.attemptId),
+        ),
+        this.redis.get(COMPETITION_STATE_KEY),
+        abandonment
+          ? this.redis.get(
+              competitionReceiptKey(
+                ref.instanceId,
+                userId,
+                abandonment.commandId,
+              ),
+            )
+          : undefined,
+      ]);
+    const instance = readCompetitionInstance(instanceRaw);
+    if (
+      !instance ||
+      instance.id !== ref.instanceId ||
+      instance.period !== period
+    )
+      return null;
+    const current = readAttempt(currentRaw);
+    const candidate =
+      current?.attemptId === ref.attemptId ? current : readAttempt(archivedRaw);
+    const snapshot =
+      candidate?.attemptId === ref.attemptId &&
+      candidate.puzzleId === ref.instanceId
+        ? candidate
+        : null;
+    const receipt: unknown = parseJson(receiptRaw);
+    const abandoned =
+      abandonment &&
+      isRecord(receipt) &&
+      receipt.snapshot === null &&
+      receipt.fingerprint === gameplayFingerprint("abandon", abandonment);
+    if (!snapshot && !abandoned) return null;
+    const status: CompetitionJourneyAttempt["status"] = snapshot?.complete
+      ? "completed"
+      : abandoned
+        ? "abandoned"
+        : instance.superseded ||
+            readCompetitionState(lifecycleRaw).periods[period].currentId !==
+              instance.id ||
+            current?.attemptId !== ref.attemptId
+          ? "replaced"
+          : instance.settled || this.now() >= instance.endsAt
+            ? "expired"
+            : "active";
+    return {
+      instance: {
+        id: instance.id,
+        period: instance.period,
+        opensAt: instance.opensAt,
+        endsAt: instance.endsAt,
+      },
+      snapshot,
+      status,
+    };
   }
 
   async availability(): Promise<CompetitionAvailabilityResponse> {
@@ -298,23 +410,13 @@ export class CompetitionGameplay {
   async mutate(
     period: ChallengePeriod,
     identity: CompetitionIdentity,
-    action: "start" | "move" | "retry" | "abandon",
+    action: GameplayAction,
     input: unknown,
   ): Promise<CompetitionStateResponse> {
     if (!identity.userId || !identity.username)
       throw new ChallengeError("forbidden", "Sign in to play challenges.");
     const c = command(input);
-    const fingerprint = createHash("sha256")
-      .update(
-        JSON.stringify([
-          action,
-          c.instanceId,
-          c.attemptId,
-          c.expectedRevision,
-          c.point,
-        ]),
-      )
-      .digest("hex");
+    const fingerprint = gameplayFingerprint(action, c);
     const instanceKey = competitionInstanceKey(c.instanceId),
       attemptKey = competitionAttemptKey(c.instanceId, identity.userId),
       bestKey = competitionBestKey(c.instanceId, identity.userId),

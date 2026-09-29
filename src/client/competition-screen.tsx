@@ -1,3 +1,6 @@
+import { journeyActivityKey } from "../shared/journeys";
+import type { JourneyController } from "./journeys";
+import { competitionJourneyObservation } from "./journeys-gameplay";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChallengePeriod } from "../shared/challenge-spotlights";
 import type {
@@ -35,10 +38,14 @@ export function CompetitionScreen({
   period,
   username,
   onLeave,
+  journeys,
+  intentionalEntry = false,
 }: {
   period: ChallengePeriod;
   username: string;
   onLeave: () => void;
+  journeys?: JourneyController;
+  intentionalEntry?: boolean;
 }) {
   const [state, setState] = useState<CompetitionStateResponse | null>(null);
   const [busy, setBusy] = useState(true);
@@ -53,9 +60,11 @@ export function CompetitionScreen({
   const [standingsBusy, setStandingsBusy] = useState(false);
   const [offset, setOffset] = useState(0);
   const stateRef = useRef(state);
+  const lastJourneyState = useRef<CompetitionStateResponse | null>(null);
   const pending = useRef(false);
   const mounted = useRef(false);
   const requestVersion = useRef(0);
+  const journeyEntryPending = useRef(intentionalEntry);
   const now = useCompetitionClock(state?.serverNow);
   const competition = state?.competition;
   const snapshot = state?.snapshot;
@@ -68,24 +77,68 @@ export function CompetitionScreen({
     setConfirmRetry(false);
   }, [open, signedIn, snapshot?.attemptId]);
 
-  const adopt = useCallback((next: CompetitionStateResponse) => {
-    const old = stateRef.current;
-    if (
-      old?.competition.instanceId &&
-      old.competition.instanceId !== next.competition.instanceId
-    ) {
-      setNotice(
-        old.competition.endsAt <= next.serverNow
-          ? "The previous challenge has ended. The current challenge is shown below."
-          : "Moderators replaced this challenge. Previous entries no longer count; start the new puzzle to participate.",
-      );
-      setConfirmRetry(false);
-      setOffset(0);
-    }
-    stateRef.current = next;
-    setState(next);
-    setUncertain(false);
-  }, []);
+  const adopt = useCallback(
+    (next: CompetitionStateResponse) => {
+      const old = stateRef.current;
+      // Disabled challenges hide their attempt. Keep the last visible identity
+      // so a later replacement still closes the journey that actually ended.
+      const tracked = lastJourneyState.current;
+      const previous = tracked ? competitionJourneyObservation(tracked) : null;
+      const observation = competitionJourneyObservation(next);
+      const active = journeys?.activeActivity();
+      const observingPrevious =
+        !!previous &&
+        !!active &&
+        journeyActivityKey(previous.activity) === journeyActivityKey(active);
+      const sameAttempt =
+        !!previous &&
+        !!observation &&
+        journeyActivityKey(previous.activity) ===
+          journeyActivityKey(observation.activity);
+      if (observingPrevious && sameAttempt && observation.terminal)
+        journeys?.observe(observation);
+      else if (
+        observingPrevious &&
+        tracked?.snapshot &&
+        !tracked.snapshot.complete
+      ) {
+        const replaced =
+          !!next.competition.instanceId &&
+          tracked.competition.instanceId !== next.competition.instanceId;
+        const expired = tracked.competition.endsAt <= next.serverNow;
+        const retried =
+          !!observation &&
+          !sameAttempt &&
+          tracked.competition.instanceId === next.competition.instanceId;
+        if (retried) journeys?.end("retry");
+        else if (replaced || expired) journeys?.end("unavailable");
+      }
+      if (observation) {
+        lastJourneyState.current = next;
+        if (journeyEntryPending.current && !observation.terminal)
+          journeys?.begin(observation.activity, "resume", observation);
+        else journeys?.restore(observation.activity);
+        journeys?.observe(observation);
+      }
+      journeyEntryPending.current = false;
+      if (
+        old?.competition.instanceId &&
+        old.competition.instanceId !== next.competition.instanceId
+      ) {
+        setNotice(
+          old.competition.endsAt <= next.serverNow
+            ? "The previous challenge has ended. The current challenge is shown below."
+            : "Moderators replaced this challenge. Previous entries no longer count; start the new puzzle to participate.",
+        );
+        setConfirmRetry(false);
+        setOffset(0);
+      }
+      stateRef.current = next;
+      setState(next);
+      setUncertain(false);
+    },
+    [journeys],
+  );
 
   const refresh = useCallback(
     async (foreground = false) => {
@@ -184,12 +237,52 @@ export function CompetitionScreen({
     setBusy(true);
     setError("");
     setConfirmRetry(false);
+    const command = competitionCommand(current, action);
+    const trackAccepted = (next: CompetitionStateResponse) => {
+      const previous = competitionJourneyObservation(current);
+      const observation = competitionJourneyObservation(next);
+      if (
+        action === "abandon" &&
+        !next.snapshot &&
+        next.authenticated === true &&
+        next.competition.instanceId === current.competition.instanceId
+      )
+        journeys?.end("abandoned", command);
+      const retried =
+        action === "retry" &&
+        previous &&
+        observation &&
+        previous.activity.kind === "competition" &&
+        observation.activity.kind === "competition" &&
+        previous.activity.attemptId !== observation.activity.attemptId;
+      if (retried) journeys?.end("retry", command);
+      if (observation && (action === "start" || retried)) {
+        const entry = retried
+          ? "retry"
+          : observation.moves > 0
+            ? "resume"
+            : "new";
+        journeys?.begin(
+          observation.activity,
+          entry,
+          entry === "resume" ? observation : undefined,
+        );
+      }
+      if (
+        action === "move" &&
+        previous &&
+        observation &&
+        next.snapshot!.revision > current.snapshot!.revision
+      )
+        journeys?.begin(previous.activity, "resume", previous);
+    };
     try {
       const next = await requestCompetitionState(period, action, {
-        ...competitionCommand(current, action),
+        ...command,
         ...(point === undefined ? {} : { point }),
       });
       if (mounted.current) {
+        trackAccepted(next);
         adopt(next);
         setNotice("");
         if (action === "abandon" && !next.snapshot) onLeave();
@@ -202,6 +295,7 @@ export function CompetitionScreen({
       try {
         const next = await requestCompetitionState(period);
         if (mounted.current) {
+          trackAccepted(next);
           adopt(next);
           if (
             action === "abandon" &&
@@ -231,7 +325,10 @@ export function CompetitionScreen({
       className="competition-screen"
       back={{
         label: "Back to Euclid",
-        onClick: onLeave,
+        onClick: () => {
+          journeys?.pause();
+          onLeave();
+        },
         disabled: pending.current,
       }}
     >
@@ -245,7 +342,10 @@ export function CompetitionScreen({
           type="button"
           className="btn btn--sm"
           disabled={!state || busy}
-          onClick={() => setShowDetails(true)}
+          onClick={() => {
+            setShowDetails(true);
+            journeys?.interaction("standings", "opened");
+          }}
         >
           Details &amp; standings
         </button>

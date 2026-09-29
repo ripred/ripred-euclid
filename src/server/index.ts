@@ -3,6 +3,10 @@ import { userAvatarRouter } from "./user-avatar-routes";
 import { EMPTY_CHALLENGE_SPOTLIGHTS } from "../shared/challenge-spotlights";
 import { challengeRouter } from "./challenge-routes";
 import { CompetitionService } from "./competition-service";
+import { CompetitionGameplay } from "./competition-gameplay";
+import type { CompetitionRedisClient } from "./competition-redis";
+import { createJourneyCanonicalReader } from "./journeys-canonical";
+import { journeysRouter } from "./journeys-routes";
 import { competitionRouter } from "./competition-routes";
 import { publicChallengeSpotlights } from "./challenge-results";
 import {
@@ -66,9 +70,6 @@ import { readStringList } from "./stored-json";
 import { errorMessage } from "../shared/error-message";
 
 const app = express();
-app.use(express.json({ limit: "15mb" }));
-app.use(express.urlencoded({ extended: true, limit: "15mb" }));
-app.use(express.text({ limit: "15mb" }));
 
 const router = express.Router();
 const h2hStore = new H2HStore(redis);
@@ -76,6 +77,26 @@ const h2hSettlements = new H2HSettlementService(redis);
 const soloStore = new SoloStore(redis);
 const competitions = new CompetitionService(redis);
 const shareComments = new ShareComments(redis, reddit);
+
+app.use(
+  "/api/telemetry",
+  journeysRouter({
+    redis,
+    identity: () => ({
+      userId: context.userId,
+      loid: context.loid,
+      postId: context.postId,
+    }),
+    readCanonical: createJourneyCanonicalReader({
+      solo: soloStore,
+      h2h: h2hStore,
+      competition: new CompetitionGameplay(redis as CompetitionRedisClient),
+    }),
+  }),
+);
+app.use(express.json({ limit: "15mb" }));
+app.use(express.urlencoded({ extended: true, limit: "15mb" }));
+app.use(express.text({ limit: "15mb" }));
 
 async function currentModeratorId(): Promise<string | null> {
   const userId = context.userId;

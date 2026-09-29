@@ -4,5 +4,6 @@ export default defineConfig({
   test: {
     // Type checking emits JavaScript into dist/types; only run source tests.
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    setupFiles: ["./tools/vitest-telemetry.mjs"],
   },
 });

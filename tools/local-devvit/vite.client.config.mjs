@@ -38,6 +38,9 @@ export default mergeConfig(
     plugins: [tabIdentity],
     resolve: {
       alias: {
+        "@devvit/analytics/client/reddit": fileURLToPath(
+          new URL("./analytics-client-shim.mjs", import.meta.url),
+        ),
         "@devvit/web/client": fileURLToPath(
           new URL("./client-shim.mjs", import.meta.url),
         ),

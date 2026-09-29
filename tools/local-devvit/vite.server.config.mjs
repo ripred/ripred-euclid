@@ -8,6 +8,9 @@ export default mergeConfig(
   defineConfig({
     resolve: {
       alias: {
+        "@devvit/analytics/server/reddit": fileURLToPath(
+          new URL("./analytics-server-shim.mjs", import.meta.url),
+        ),
         "@devvit/web/server": fileURLToPath(
           new URL("./server-shim.mjs", import.meta.url),
         ),

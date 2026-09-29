@@ -36,6 +36,7 @@ export const H2H_CHAT_MAX_ITEMS = 100;
 
 export type H2HBoardSnapshot = CanonicalBoardSnapshot & {
   schemaVersion: number;
+  roundStartRevision?: number;
   createdAt: number;
   lastSaved: number;
   playerNames: Record<string, string>;
@@ -568,6 +569,17 @@ export function normalizeH2HBoard(source: unknown): H2HBoardSnapshot {
   if (revision < history.length) {
     return invalidBoard("revision cannot precede the replayed move count.");
   }
+  const roundStartRevision =
+    source.roundStartRevision === undefined
+      ? undefined
+      : asCount(source.roundStartRevision);
+  if (
+    roundStartRevision === null ||
+    (roundStartRevision !== undefined &&
+      roundStartRevision > revision - history.length)
+  ) {
+    return invalidBoard("roundStartRevision must precede this round's moves.");
+  }
   if (
     !Array.isArray(source.m_targets) ||
     source.m_targets.length !== 2 ||
@@ -633,6 +645,7 @@ export function normalizeH2HBoard(source: unknown): H2HBoardSnapshot {
     m_targets: [null, null],
     chat,
     revision,
+    ...(roundStartRevision === undefined ? {} : { roundStartRevision }),
     rulesVersion: H2H_RULES.rulesVersion,
     schemaVersion: H2H_SCHEMA_VERSION,
     createdAt,
@@ -683,6 +696,7 @@ export function createInitialH2HBoard(
         }
       : { seq: 0, items: [] },
     revision: 0,
+    roundStartRevision: 0,
     rulesVersion: H2H_RULES.rulesVersion,
     schemaVersion: H2H_SCHEMA_VERSION,
     createdAt: now,
@@ -731,6 +745,9 @@ export function createH2HCanonicalState(
     gameId,
     board,
     revision: board.revision,
+    ...(board.roundStartRevision === undefined
+      ? {}
+      : { roundStartRevision: board.roundStartRevision }),
     rulesVersion: board.rulesVersion,
     ended: board.ended === true,
     endedReason,
@@ -997,6 +1014,7 @@ export function createH2HRematch(
   return createH2HCanonicalState(gameId, {
     ...initial,
     revision: nextRevision(state.revision),
+    roundStartRevision: nextRevision(state.revision),
     createdAt: timestamps.createdAt,
     lastSaved: timestamps.lastSaved,
   });

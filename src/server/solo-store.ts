@@ -1115,6 +1115,16 @@ export class SoloStore {
     requireIdentifier(userId, "userId");
     requireIdentifier(gameId, "gameId");
     await this.admitWork(userId);
+    return this.getJourneyState(userId, gameId);
+  }
+
+  /** Canonical owner-bound read without gameplay budgets or persistence writes. */
+  async getJourneyState(
+    userId: string,
+    gameId: string,
+  ): Promise<SoloSessionSnapshot> {
+    requireIdentifier(userId, "userId");
+    requireIdentifier(gameId, "gameId");
     const raw = await this.redis.get(SOLO_STORE_KEYS.game(gameId));
     if (!raw)
       throw new SoloStoreError("game_not_found", "Solo game not found.");

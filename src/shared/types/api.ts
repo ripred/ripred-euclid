@@ -121,6 +121,8 @@ export type H2HCanonicalState = {
   gameId: string;
   board: CanonicalBoardSnapshot;
   revision: number;
+  /** Stable identity within a reused game ID; absent on legacy rounds. */
+  roundStartRevision?: number;
   rulesVersion: number;
   ended: boolean;
   endedReason: H2HEndReason | null;

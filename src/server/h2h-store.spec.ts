@@ -255,6 +255,150 @@ async function completeSeededGame(
   return commit.response;
 }
 
+describe("read-only H2H journey authority", () => {
+  it("reads an owned live round without expiring it or changing mappings", async () => {
+    const { redis, store, setNow } = createFixture();
+    const gameId = await pair(store);
+    setNow(1_000_000);
+    const before = redis.commits.length;
+    await expect(store.getJourneyState("p1", gameId, 0)).resolves.toMatchObject(
+      { ended: false, roundStartRevision: 0 },
+    );
+    await expect(
+      store.getJourneyState("intruder", gameId, 0),
+    ).rejects.toMatchObject({ code: "not_participant" });
+    expect(await store.getJourneyState("p1", gameId, null)).toBeNull();
+    expect(await store.getJourneyState("p1", gameId, 1)).toBeNull();
+    expect(await store.getJourneyState("p1", "missing", 0)).toBeNull();
+    expect(redis.commits).toHaveLength(before);
+  });
+
+  it("keeps immutable terminal authority separate from the next same-ID round", async () => {
+    const { redis, store } = createFixture();
+    const gameId = await pair(store);
+    const ended = await completeSeededGame(redis, store, gameId);
+    const rematch = await store.rematch("p1", {
+      gameId,
+      expectedRevision: ended.revision,
+    });
+    const before = redis.commits.length;
+    expect(await store.getJourneyState("p1", gameId, 0)).toBeNull();
+    expect(
+      await store.getJourneyState("p1", gameId, 0, ended.revision),
+    ).toMatchObject({
+      board: ended.board,
+      ended: true,
+      revision: ended.revision,
+      roundStartRevision: 0,
+    });
+    expect(await store.getJourneyState("p2", gameId, rematch.revision)).toEqual(
+      rematch,
+    );
+    expect(
+      await store.getJourneyState(
+        "p1",
+        gameId,
+        rematch.revision,
+        ended.revision,
+      ),
+    ).toBeNull();
+    expect(
+      await store.getJourneyState("p1", gameId, 0, ended.revision + 1),
+    ).toBeNull();
+    await expect(
+      store.getJourneyState("intruder", gameId, 0, ended.revision),
+    ).rejects.toMatchObject({ code: "not_participant" });
+    expect(redis.commits).toHaveLength(before);
+  });
+
+  it("accepts only an explicitly legacy reference for a missing round marker", async () => {
+    const { redis, store } = createFixture();
+    const board = createInitialH2HBoard("p1", "p2", { now: 100 });
+    delete board.roundStartRevision;
+    redis.seed(H2H_STORE_KEYS.game("legacy"), JSON.stringify(board));
+    expect((await store.getJourneyState("p1", "legacy", null))?.board).toEqual(
+      board,
+    );
+    expect(await store.getJourneyState("p1", "legacy", 0)).toBeNull();
+    expect(redis.commits).toEqual([]);
+  });
+
+  it("observes accepted queue cancellation without writing or creating a game", async () => {
+    const { redis, store } = createFixture();
+    await store.queueOrResume("p1");
+    const queuedWrites = redis.commits.length;
+    expect(await store.getJourneyPresence("p1")).toEqual({ state: "queued" });
+    expect(redis.commits).toHaveLength(queuedWrites);
+    await store.cancelQueue("p1");
+    const canceledWrites = redis.commits.length;
+    expect(await store.getJourneyPresence("p1")).toEqual({ state: "idle" });
+    expect(redis.commits).toHaveLength(canceledWrites);
+  });
+
+  it("retries a queue read raced by pairing and reports the canonical game", async () => {
+    const { redis, store } = createFixture();
+    await store.queueOrResume("p1");
+    redis.afterGet = async (key) => {
+      if (key !== H2H_STORE_KEYS.queue) return;
+      redis.afterGet = undefined;
+      await store.queueOrResume("p2");
+    };
+    await expect(store.getJourneyPresence("p1")).resolves.toMatchObject({
+      state: "active",
+      snapshot: { gameId: "game-2", roundStartRevision: 0 },
+    });
+    expect(await store.cancelQueue("p1")).toEqual({ removed: false });
+    const before = redis.commits.length;
+    await expect(store.getJourneyPresence("p1")).resolves.toMatchObject({
+      state: "active",
+    });
+    expect(redis.commits).toHaveLength(before);
+  });
+
+  it("rejects foreign mappings and bounds constantly changing presence reads", async () => {
+    const { redis, store } = createFixture({ maxDynamicAttempts: 2 });
+    const gameId = await pair(store);
+    redis.seed(H2H_STORE_KEYS.userGame("intruder"), gameId);
+    await expect(store.getJourneyPresence("intruder")).rejects.toMatchObject({
+      code: "not_participant",
+    });
+    redis.seed(H2H_STORE_KEYS.userGame("missing-player"), "missing-game");
+    await expect(
+      store.getJourneyPresence("missing-player"),
+    ).rejects.toMatchObject({ code: "game_not_found" });
+    let changes = 0;
+    redis.afterGet = (key) => {
+      if (key === H2H_STORE_KEYS.queue)
+        redis.seed(key, JSON.stringify([`other-${++changes}`]));
+    };
+    const before = redis.commits.length;
+    await expect(store.getJourneyPresence("observer")).rejects.toMatchObject({
+      code: "dynamic_conflict",
+    });
+    expect(changes).toBe(4);
+    expect(redis.commits).toHaveLength(before);
+  });
+
+  it("retries a same-ID rematch during presence lookup instead of returning the prior round", async () => {
+    const { redis, store } = createFixture();
+    const gameId = await pair(store);
+    const ended = await completeSeededGame(redis, store, gameId);
+    redis.afterGet = async (key) => {
+      if (key !== H2H_STORE_KEYS.game(gameId)) return;
+      redis.afterGet = undefined;
+      await store.rematch("p1", { gameId, expectedRevision: ended.revision });
+    };
+    await expect(store.getJourneyPresence("p1")).resolves.toMatchObject({
+      state: "active",
+      snapshot: {
+        gameId,
+        roundStartRevision: ended.revision + 1,
+        ended: false,
+      },
+    });
+  });
+});
+
 describe("H2H Tide configuration", () => {
   function configure(redis: MemoryRedis, tideMode: boolean): void {
     redis.externalSet(
