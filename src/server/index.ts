@@ -48,6 +48,7 @@ import {
 import type { UiResponse } from "@devvit/web/shared";
 import { createPost } from "./core/post";
 import { resultHub, setupCommunityPosts } from "./community-posts";
+import { deleteLegacyGamePosts } from "./legacy-post-cleanup";
 import { ShareComments, ShareCommentPendingError } from "./share-comments";
 import {
   describeSharedResult,
@@ -125,6 +126,7 @@ router.post("/internal/competitions/maintenance", async (_req, res) => {
 
 router.post("/internal/community/setup", async (_req, res) => {
   try {
+    await deleteLegacyGamePosts();
     res.json({ status: "ok", posts: await setupCommunityPosts() });
   } catch (error) {
     console.error("Community post setup failed", error);
