@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { H2HLeaveRequest, H2HMoveRequest } from "../shared/types/api";
+import { DEFAULT_SUBREDDIT_SETTINGS } from "../shared/subreddit-settings";
+import { SUBREDDIT_SETTINGS_KEY } from "./subreddit-settings";
 import {
   H2H_RULES,
   H2HDomainError,
@@ -252,6 +254,101 @@ async function completeSeededGame(
   expect(commit.response.ended).toBe(true);
   return commit.response;
 }
+
+describe("H2H Tide configuration", () => {
+  function configure(redis: MemoryRedis, tideMode: boolean): void {
+    redis.externalSet(
+      SUBREDDIT_SETTINGS_KEY,
+      JSON.stringify({ ...DEFAULT_SUBREDDIT_SETTINGS, tideMode }),
+    );
+  }
+
+  it("captures the setting when a queued pair is created and pins resumed games", async () => {
+    const { redis, store } = createFixture();
+    await store.queueOrResume("p1");
+    configure(redis, true);
+    const paired = await store.queueOrResume("p2");
+    expect(paired).toMatchObject({
+      status: "paired",
+      state: { board: { variant: "tide" } },
+    });
+    configure(redis, false);
+    expect(await store.queueOrResume("p1")).toMatchObject({
+      status: "resumed",
+      state: { board: { variant: "tide" } },
+    });
+    const standardId = await pair(store, "p3", "p4");
+    expect((await store.getState(standardId))?.board.variant).toBeUndefined();
+    expect(await store.listLiveGames()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ variant: "tide" }),
+        expect.objectContaining({ gameId: standardId }),
+      ]),
+    );
+  });
+
+  it("retries pairing when moderators change the mode during creation", async () => {
+    const { redis, store } = createFixture();
+    configure(redis, true);
+    await store.queueOrResume("p1");
+    redis.beforeExec = () => {
+      redis.beforeExec = undefined;
+      configure(redis, false);
+    };
+    const result = await store.queueOrResume("p2");
+    expect(result.status).toBe("paired");
+    if (result.status !== "paired") throw new Error("Pairing failed.");
+    expect(result.state.board.variant).toBeUndefined();
+  });
+
+  it("uses current settings for a rematch without changing the completed archive", async () => {
+    const { redis, store } = createFixture();
+    const gameId = await pair(store);
+    const completed = await completeSeededGame(redis, store, gameId);
+    configure(redis, true);
+    const rematch = await store.rematch("p1", {
+      gameId,
+      expectedRevision: completed.revision,
+    });
+    expect(rematch.board.variant).toBe("tide");
+    expect(rematch.board.m_history).toEqual([]);
+    const archived = redis.json<H2HBoardSnapshot>(
+      H2H_STORE_KEYS.result(gameId, completed.revision),
+    );
+    expect(archived?.variant).toBeUndefined();
+    expect(archived?.ended).toBe(true);
+  });
+
+  it("retries a rematch if its selected mode changes before commit", async () => {
+    const { redis, store } = createFixture();
+    const gameId = await pair(store);
+    const completed = await completeSeededGame(redis, store, gameId);
+    configure(redis, true);
+    redis.beforeExec = () => {
+      redis.beforeExec = undefined;
+      configure(redis, false);
+    };
+    const rematch = await store.rematch("p1", {
+      gameId,
+      expectedRevision: completed.revision,
+    });
+    expect(rematch.board.variant).toBeUndefined();
+  });
+
+  it("pins the Tide variant into durable forfeit events", async () => {
+    const { redis, store } = createFixture();
+    configure(redis, true);
+    const gameId = await pair(store);
+    const commit = await store.leave("p1", leaveRequest(gameId));
+    expect(commit.settlementEvent).toMatchObject({
+      variant: "tide",
+      endedReason: "player_left",
+    });
+    expect(
+      parseH2HSettlementEvents(redis.value(H2H_STORE_KEYS.pendingSettlements)),
+    ).toEqual([commit.settlementEvent]);
+  });
+});
 
 describe("H2H queue and mappings", () => {
   it("reads queue membership across queue lifecycle transitions", async () => {
@@ -673,9 +770,9 @@ describe("H2H canonical mutations", () => {
     });
   });
 
-  it("does not manufacture settlement events while reading legacy ended games", async () => {
+  it("does not manufacture settlement events while reading ended games", async () => {
     const { redis, store } = createFixture();
-    const gameId = "legacy-ended";
+    const gameId = "ended-game";
     const initial = createInitialH2HBoard("p1", "p2", { now: 100 });
     const ended = endH2HByDeparture(initial, "p1", gameId, 101);
     redis.seed(H2H_STORE_KEYS.game(gameId), JSON.stringify(ended.board));
@@ -687,9 +784,9 @@ describe("H2H canonical mutations", () => {
     expect(redis.value(H2H_STORE_KEYS.pendingSettlements)).toBeUndefined();
   });
 
-  it("archives a legacy completed round before a rematch replaces it", async () => {
+  it("requires an archived terminal round for sharing and rematching", async () => {
     const { redis, store } = createFixture();
-    const gameId = "legacy-rematch";
+    const gameId = "missing-result";
     const fixture = terminalMoveFixture(gameId);
     const completed = applyH2HMove(
       fixture.board,
@@ -700,72 +797,16 @@ describe("H2H canonical mutations", () => {
     redis.seed(H2H_STORE_KEYS.game(gameId), JSON.stringify(completed));
     redis.seed(H2H_STORE_KEYS.userGame("p1"), gameId);
     redis.seed(H2H_STORE_KEYS.userGame("p2"), gameId);
-
     await expect(
       store.getTerminalState(gameId, completed.revision),
-    ).resolves.toMatchObject({
-      gameId,
-      revision: completed.revision,
-      ended: true,
-    });
+    ).resolves.toBeNull();
+    await expect(
+      store.rematch("p1", { gameId, expectedRevision: completed.revision }),
+    ).rejects.toMatchObject({ code: "result_conflict" });
+    expect(redis.json(H2H_STORE_KEYS.game(gameId))).toEqual(completed);
     expect(
       redis.value(H2H_STORE_KEYS.result(gameId, completed.revision)),
     ).toBeUndefined();
-
-    await store.rematch("p1", {
-      gameId,
-      expectedRevision: completed.revision,
-    });
-
-    await expect(store.getState(gameId)).resolves.toMatchObject({
-      revision: completed.revision + 1,
-      ended: false,
-    });
-    await expect(
-      store.getTerminalState(gameId, completed.revision),
-    ).resolves.toMatchObject({
-      gameId,
-      revision: completed.revision,
-      ended: true,
-      board: completed,
-    });
-  });
-
-  it("finds an archive created while a legacy terminal read races a rematch", async () => {
-    const { redis, store } = createFixture();
-    const gameId = "legacy-share-race";
-    const fixture = terminalMoveFixture(gameId);
-    const completed = applyH2HMove(
-      fixture.board,
-      fixture.userId,
-      fixture.request,
-      500,
-    ).board;
-    const resultKey = H2H_STORE_KEYS.result(gameId, completed.revision);
-    redis.seed(H2H_STORE_KEYS.game(gameId), JSON.stringify(completed));
-    redis.seed(H2H_STORE_KEYS.userGame("p1"), gameId);
-    redis.seed(H2H_STORE_KEYS.userGame("p2"), gameId);
-    redis.afterGet = async (key, value) => {
-      if (key !== resultKey || value !== undefined) return;
-      redis.afterGet = undefined;
-      await store.rematch("p1", {
-        gameId,
-        expectedRevision: completed.revision,
-      });
-    };
-
-    const archived = await store.getTerminalState(gameId, completed.revision);
-
-    expect(archived).toMatchObject({
-      gameId,
-      revision: completed.revision,
-      ended: true,
-      board: completed,
-    });
-    await expect(store.getState(gameId)).resolves.toMatchObject({
-      revision: completed.revision + 1,
-      ended: false,
-    });
   });
 
   it("accepts an equivalent terminal archive with different JSON encoding", async () => {
@@ -1323,13 +1364,10 @@ describe("H2H live listing and stale cleanup", () => {
     },
   );
 
-  it("chat cannot renew a turn, including legacy boards without a turn clock", async () => {
-    const { store, redis, setNow } = createFixture({ maxIdleMs: 100 });
+  it("chat cannot renew a turn", async () => {
+    const { store, setNow } = createFixture({ maxIdleMs: 100 });
     const gameId = await pair(store);
-    const moved = await store.applyMove("p1", move(gameId, 0, 0, 0));
-    const legacy = { ...moved.response.board };
-    delete legacy.turnStartedAt;
-    redis.externalSet(H2H_STORE_KEYS.game(gameId), JSON.stringify(legacy));
+    await store.applyMove("p1", move(gameId, 0, 0, 0));
     setNow(1_090);
     await store.appendChat("p2", gameId, "hello");
     expect((await store.getState(gameId))?.board).toMatchObject({

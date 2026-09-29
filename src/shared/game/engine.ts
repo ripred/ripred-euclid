@@ -1,4 +1,10 @@
-import { emptyCells, pointIndex, squareFromEdge } from "./geometry";
+import {
+  cornerKey,
+  emptyCells,
+  pointIndex,
+  squareCatalog,
+  squareFromEdge,
+} from "./geometry";
 import { scoreGridFootprint } from "../scoring";
 import type {
   SerializableBoard,
@@ -10,9 +16,12 @@ import {
   GAME_STATES,
   PLAY_STYLES,
   STANDARD_WIN_SCORE,
+  TIDE_MOVE_LIMIT,
+  TIDE_STONE_LIFETIME,
   playerColorForIndex,
   playerIndexForColor,
   type GameOutcome,
+  type GameVariant,
   type PlayerColor,
   type PlayerIndex,
 } from "./rules";
@@ -21,6 +30,7 @@ export type RandomSource = () => number;
 export type BoardChat = NonNullable<SerializableBoard["chat"]>;
 
 export interface BoardOptions {
+  variant?: GameVariant;
   W?: number;
   H?: number;
   winScore?: number;
@@ -147,6 +157,8 @@ export class Board {
   W: number;
   H: number;
   winScore: number;
+  readonly variant: GameVariant;
+  tide: SerializableBoard["tide"];
 
   m_board: number[] = [];
   m_players: [Player, Player];
@@ -177,6 +189,7 @@ export class Board {
     this.m_players = [p1, p2];
     this.m_last = new Point(-1, -1, -1);
     this.rng = opts.rng ?? Math.random;
+    this.variant = opts.variant ?? "standard";
     if (!opts.skipInit) this.initGame();
   }
 
@@ -189,6 +202,13 @@ export class Board {
     this.m_players[0].initGame();
     this.m_players[1].initGame();
     this.m_targets = [null, null];
+    this.tide =
+      this.variant === "tide"
+        ? {
+            expires: new Array<number>(this.W * this.H).fill(0),
+            anchored: new Array<boolean>(this.W * this.H).fill(false),
+          }
+        : undefined;
   }
 
   pointAt(x: number, y: number): Point {
@@ -317,7 +337,18 @@ export class Board {
           (v2 === 0 ? 1 : 0) +
           (v3 === 0 ? 1 : 0) +
           (v4 === 0 ? 1 : 0);
-        if (remain === 0) {
+        if (
+          remain === 0 &&
+          this.cornersSurviveUntil(
+            [
+              pointIndex(col, row, this.W),
+              pointIndex(x1, y1, this.W),
+              pointIndex(x2, y2, this.W),
+            ],
+            this.m_history.length +
+              (color === playerColorForIndex(savedTurn) ? 1 : 2),
+          )
+        ) {
           total += this.scoreSquare(
             this.pointAt(x, y),
             this.pointAt(col, row),
@@ -334,36 +365,83 @@ export class Board {
     return total;
   }
 
-  private static squareKeyByIndices(...indices: number[]): string {
-    return indices
-      .slice()
-      .sort((left, right) => left - right)
-      .join(",");
-  }
+  private chooseAttackTarget(color: PlayerColor): string | null {
+    const candidates = squareCatalog(this.W, this.H)
+      .filter((square) =>
+        square.corners.every((index) => {
+          const cell = this.cellAt(index);
+          return cell === 0 || cell === color;
+        }),
+      )
+      .map((square) => ({
+        square,
+        points: scoreGridFootprint(
+          square.corners.map((index) =>
+            this.pointAt(index % this.W, Math.floor(index / this.W)),
+          ),
+        ),
+        remain: square.corners.filter((index) => this.cellAt(index) === 0)
+          .length,
+      }))
+      .filter(
+        (candidate) =>
+          candidate.remain > 0 &&
+          this.canFinishTarget(candidate.square.corners),
+      );
+    if (candidates.length === 0) return null;
 
-  private collectSquaresForColor(color: PlayerColor): Square[] {
-    const savedTurn = this.m_turn;
-    this.m_turn = playerIndexForColor(color);
-    const all: Square[] = [];
-    for (let y = 0; y < this.H; y++) {
-      for (let x = 0; x < this.W; x++) {
-        const current: Square[] = [];
-        this.analyze(this.pointAt(x, y), current);
-        for (const square of current) {
-          if (!all.some((item) => sameSquare(item, square))) {
-            all.push(square);
-          }
-        }
-      }
-    }
-    this.m_turn = savedTurn;
-    return all;
+    const maximumPoints = Math.max(...candidates.map(({ points }) => points));
+    const highestValue = candidates.filter(
+      ({ points }) => points === maximumPoints,
+    );
+    const minimumRemaining = Math.min(
+      ...highestValue.map(({ remain }) => remain),
+    );
+    const preferred = highestValue.filter(
+      ({ remain }) => remain === minimumRemaining,
+    );
+    // Geometry only breaks ties: retain value and progress, then vary the angle
+    // using the same square catalog as challenges and the game's seeded RNG.
+    const oblique = preferred.filter(({ square }) => square.oblique);
+    const choices = oblique.length > 0 ? oblique : preferred;
+    const chosen = choices[Math.floor(this.rng() * choices.length)];
+    return chosen ? cornerKey(chosen.square.corners) : null;
   }
 
   private shouldMistake(probability: number): boolean {
     if (probability <= 0) return false;
     if (probability >= 1) return true;
     return this.rng() < probability;
+  }
+
+  canFinishTarget(
+    corners: readonly number[],
+    owner = playerColorForIndex(this.m_turn),
+  ): boolean {
+    if (!this.tide) return true;
+    const missing = corners.filter((index) => this.cellAt(index) === 0).length;
+    const completionPly =
+      this.m_history.length +
+      missing * 2 -
+      1 +
+      (owner === playerColorForIndex(this.m_turn) ? 0 : 1);
+    return this.cornersSurviveUntil(corners, completionPly);
+  }
+
+  private cornersSurviveUntil(
+    corners: readonly number[],
+    completionPly: number,
+  ): boolean {
+    return (
+      !this.tide ||
+      (completionPly <= TIDE_MOVE_LIMIT &&
+        corners.every(
+          (index) =>
+            this.cellAt(index) === 0 ||
+            this.tide!.anchored[index] ||
+            this.tide!.expires[index]! >= completionPly,
+        ))
+    );
   }
 
   private randomEmptyPoint(): Point {
@@ -486,61 +564,15 @@ export class Board {
         if (this.m_board[index] === ownColor) ours++;
       }
       if (ours === 4) return null;
+      if (!this.canFinishTarget(parts)) return null;
       return getEmptyBestCorner(parts);
     };
 
     let playPoint: Point | null = keyToPlayableCorner(targetKey);
 
     if (!playPoint) {
-      const candidates = this.collectSquaresForColor(ownColor).filter(
-        (square) => {
-          const indices = [
-            square.p1.index,
-            square.p2.index,
-            square.p3.index,
-            square.p4.index,
-          ];
-          return !indices.some(
-            (index) => this.m_board[index] === opponentColor,
-          );
-        },
-      );
-      if (candidates.length > 0) {
-        let maximumPoints = 0;
-        for (const square of candidates) {
-          if (square.points > maximumPoints) maximumPoints = square.points;
-        }
-        const highestValue = candidates.filter(
-          (square) => square.points === maximumPoints,
-        );
-        const minimumRemaining = Math.min(
-          ...highestValue.map((square) => square.remain),
-        );
-        const preferred = highestValue
-          .filter((square) => square.remain === minimumRemaining)
-          .sort((left, right) => {
-            const leftKey = Board.squareKeyByIndices(
-              left.p1.index,
-              left.p2.index,
-              left.p3.index,
-              left.p4.index,
-            );
-            const rightKey = Board.squareKeyByIndices(
-              right.p1.index,
-              right.p2.index,
-              right.p3.index,
-              right.p4.index,
-            );
-            return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
-          });
-        const chosen = preferred[0];
-        if (!chosen) return this.randomEmptyPoint();
-        targetKey = Board.squareKeyByIndices(
-          chosen.p1.index,
-          chosen.p2.index,
-          chosen.p3.index,
-          chosen.p4.index,
-        );
+      targetKey = this.chooseAttackTarget(ownColor);
+      if (targetKey) {
         this.m_targets[playerIndex] = targetKey;
         playPoint = keyToPlayableCorner(targetKey);
       }
@@ -582,15 +614,41 @@ export class Board {
   }
 
   placePiece(point: Point): number {
+    if (this.variant === "tide" && this.getOutcome().status !== "running")
+      return 0;
     const cell = this.m_board[point.index];
     if (!point.valid(this.W, this.H) || cell === undefined || cell > 0) {
       return 0;
     }
     this.m_board[point.index] = playerColorForIndex(this.m_turn);
+    if (this.tide)
+      this.tide.expires[point.index] =
+        this.m_history.length + TIDE_STONE_LIFETIME;
     this.m_history.push(point);
     this.m_last = this.pointAt(point.x, point.y);
     const points = this.analyze(point, null);
     this.m_players[this.m_turn].m_score += points;
+    if (this.tide) {
+      for (const square of this.m_players[this.m_turn].m_squares) {
+        for (const corner of [square.p1, square.p2, square.p3, square.p4]) {
+          this.tide.anchored[corner.index] = true;
+        }
+      }
+      // A winning placement freezes the board; otherwise expiration happens
+      // after scoring, so a square can save its corners on their final turn.
+      if (!this.checkGameOver()) {
+        for (let index = 0; index < this.m_board.length; index++) {
+          if (
+            this.m_board[index] &&
+            !this.tide.anchored[index] &&
+            this.tide.expires[index]! <= this.m_history.length
+          ) {
+            this.m_board[index] = 0;
+            this.tide.expires[index] = 0;
+          }
+        }
+      }
+    }
     return points;
   }
 
@@ -613,7 +671,10 @@ export class Board {
     if (winner === 2) {
       return { state: GAME_STATES.PLAYER_2_WIN, status: "player2_win", winner };
     }
-    if (this.m_board.some((cell) => cell === 0)) {
+    if (
+      !(this.variant === "tide" && this.m_history.length >= TIDE_MOVE_LIMIT) &&
+      this.m_board.some((cell) => cell === 0)
+    ) {
       return { state: GAME_STATES.RUNNING, status: "running", winner: null };
     }
     const firstScore = this.m_players[0].m_score;
@@ -637,6 +698,15 @@ export class Board {
 
   toJSON(): SerializableBoard {
     return {
+      ...(this.tide
+        ? {
+            variant: this.variant,
+            tide: {
+              expires: [...this.tide.expires],
+              anchored: [...this.tide.anchored],
+            },
+          }
+        : {}),
       W: this.W,
       H: this.H,
       winScore: this.winScore,
@@ -680,11 +750,25 @@ export class Board {
         winScore: source.winScore,
         skipInit: true,
         rng,
+        variant: source.variant ?? "standard",
       },
     );
     board.m_board = [...source.m_board];
     board.m_turn = source.m_turn === 1 ? 1 : 0;
     board.m_history = source.m_history.map(Point.fromJSON);
+    if (board.variant === "tide") {
+      if (
+        !source.tide ||
+        source.tide.expires.length !== board.W * board.H ||
+        source.tide.anchored.length !== board.W * board.H
+      ) {
+        throw new Error("Tide board is missing its piece lifetimes.");
+      }
+      board.tide = {
+        expires: [...source.tide.expires],
+        anchored: [...source.tide.anchored],
+      };
+    }
     board.m_displayed_game_over = source.m_displayed_game_over;
     board.m_onlyShowLastSquares = source.m_onlyShowLastSquares;
     board.m_createRandomizedRangeOrder = source.m_createRandomizedRangeOrder;

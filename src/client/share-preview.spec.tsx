@@ -28,7 +28,7 @@ function resultFixture(
     sharedAt: "2026-09-05T22:00:00.000Z",
     mode: "ai",
     title: "Redditor vs Euclid",
-    subtitle: "Practice · 8×8 · Grid Footprint · First to 150 · Beginner",
+    subtitle: "Practice · Grid Footprint · First to 150 · Beginner",
     headline: "ripred3 defeated Euclid!",
     details: "165–0",
     footer: "Play Euclid on Reddit",

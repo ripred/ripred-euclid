@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import type { ShareBucket } from "../shared/types/api";
+import type { GameVariant } from "../shared/game/rules";
 import { rankedPresetLabel } from "./format";
 import type { LoadedRankings } from "./rankings-loader";
 import { PieceGlyph } from "./ui/BoardDiagram";
@@ -33,6 +34,8 @@ export function RankingsScreen({
   onRetry,
   onShare,
   onBack,
+  variant = "standard",
+  onVariantChange,
 }: {
   rankings: LoadedRankings;
   loading: boolean;
@@ -43,6 +46,8 @@ export function RankingsScreen({
   onRetry: () => void;
   onShare: (bucket: ShareBucket) => void;
   onBack: () => void;
+  variant?: GameVariant;
+  onVariantChange?: (variant: GameVariant) => void;
 }) {
   const [bucket, setBucket] = useState<ShareBucket>("hvh");
   const sharePending = shareBusy?.startsWith("rankings:") ?? false;
@@ -60,6 +65,51 @@ export function RankingsScreen({
       className="rankings"
     >
       {notice ? <p className="notice">{notice}</p> : null}
+
+      {onVariantChange && (
+        <div
+          className="seg rankings__tabs"
+          role="radiogroup"
+          aria-label="Game mode leaderboard"
+        >
+          {(["standard", "tide"] as const).map((choice) => (
+            <button
+              key={choice}
+              type="button"
+              role="radio"
+              aria-checked={variant === choice}
+              tabIndex={variant === choice ? 0 : -1}
+              disabled={sharePending}
+              onClick={() => onVariantChange(choice)}
+              onKeyDown={(event) => {
+                if (
+                  !["ArrowLeft", "ArrowRight", "Home", "End"].includes(
+                    event.key,
+                  )
+                )
+                  return;
+                event.preventDefault();
+                const next =
+                  event.key === "Home"
+                    ? "standard"
+                    : event.key === "End"
+                      ? "tide"
+                      : choice === "standard"
+                        ? "tide"
+                        : "standard";
+                onVariantChange(next);
+                const buttons =
+                  event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                    "button",
+                  );
+                buttons?.[next === "standard" ? 0 : 1]?.focus();
+              }}
+            >
+              {choice === "tide" ? "Tide" : "Standard"}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div
         className="seg rankings__tabs"
@@ -89,6 +139,7 @@ export function RankingsScreen({
       >
         <div className="rankings__head">
           <p className="muted">
+            {variant === "tide" && bucket === "hvh" ? "Tide · " : ""}
             {bucketSubtitle(bucket, rankings)}
             {loaded && ` · ${rankings[bucket].length} players`}
           </p>

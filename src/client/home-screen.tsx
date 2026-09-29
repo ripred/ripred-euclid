@@ -19,6 +19,7 @@ import { BoardMacro, BrandMark, TokenCluster, Wordmark } from "./ui/Brand";
 import { Icon, type IconName } from "./ui/Icon";
 import { PieceGlyph } from "./ui/BoardDiagram";
 import "./home-screen.css";
+import { TideRules } from "./tide-rules";
 
 export type HomeBusyAction =
   | "solo"
@@ -48,6 +49,7 @@ export interface HomeScreenProps {
   error?: string;
   /** The selected solo path; Ranked uses fixed server rules. */
   soloMode?: SoloMode;
+  tideMode?: boolean;
   onSoloModeChange?: ((mode: SoloMode) => void) | undefined;
   competitions?: Record<ChallengePeriod, CompetitionAvailability> | undefined;
   competitionNow?: number | undefined;
@@ -317,6 +319,7 @@ export function HomeStatusScreen({
         <header>
           <Wordmark id="euclid-status-brand" size="md" />
         </header>
+
         <section
           className={`panel home-status__card${error ? " home-status__card--error" : ""}`}
         >
@@ -436,6 +439,17 @@ export function HomeScreen(props: HomeScreenProps) {
             A minute to learn. A lifetime to master.
           </p>
         </header>
+
+        {props.tideMode && (
+          <section className="panel" aria-label="Tide mode">
+            <h2>Tide is on</h2>
+            <p className="field__hint">
+              All new Practice, Ranked, and Redditor games use Tide. Saved games
+              keep their rules.
+            </p>
+            <TideRules />
+          </section>
+        )}
 
         {(anythingLoading || status || error) && (
           <div className="home-notices">
@@ -704,7 +718,10 @@ export function HomeScreen(props: HomeScreenProps) {
               <HowToPlaySummary />
             </p>
           </div>
-          <HowToPlay layout="strip" />
+          <HowToPlay
+            layout="strip"
+            gameVariant={props.tideMode ? "tide" : "standard"}
+          />
         </section>
       </div>
     </main>

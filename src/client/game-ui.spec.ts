@@ -231,8 +231,10 @@ describe("shouldAdoptH2HState", () => {
     expect(shouldAdoptH2HState("game-a", 3, "game-a", 4)).toBe(true);
   });
 
-  it("accepts a legacy response without revision only for the active game", () => {
-    expect(shouldAdoptH2HState("game-a", 3, undefined, undefined)).toBe(true);
+  it("rejects a response missing its game or revision", () => {
+    expect(shouldAdoptH2HState("game-a", 3, undefined, undefined)).toBe(false);
+    expect(shouldAdoptH2HState("game-a", 3, "game-a", undefined)).toBe(false);
+    expect(shouldAdoptH2HState("game-a", 3, undefined, 4)).toBe(false);
   });
 });
 

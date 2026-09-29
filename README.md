@@ -60,6 +60,8 @@ Standings use **fewest moves, then shortest time, then first achieved**. Only yo
 
 ### Moderator controls
 
+**Tide mode** in **Options → Subreddit** applies to all new Practice, Ranked, and Redditor matches. It defaults to off. Games already underway keep their starting mode, and rematches use the current setting. In Tide, an unanchored piece lasts six personal turns; completing a square permanently anchors its corners. The board shows the remaining lifetime and fading pieces. The first player to 150 points wins, or after 60 total moves the higher score wins; equal scores draw. Standard and Tide have separate ratings and leaderboards, and Tide results and shared replays are labeled. Challenge puzzles keep their own rules.
+
 Only subreddit moderators see **Options → Subreddit**. Its daily and weekly switches default to off; saved changes apply to everyone in that subreddit. Disabling a challenge removes its choices and winner slides and blocks play. It preserves the current puzzle and accepted results, which still settle at their deadline. Re-enabling an unexpired puzzle resumes it, including the elapsed time of an unfinished attempt.
 
 Open **Challenge playground** from that tab to test puzzles privately, even when both competitions are off. The controls support 1–4 target squares and 1–4 minimum moves, geometry, shared corners, multiple solutions, and blocked points. **Load daily settings** and **Load weekly settings** load the saved configuration, including a pending change. **Generate** tests those options privately; **Apply to Daily** or **Apply to Weekly** saves them for the shared competition. A test seed is never saved to a competition.
@@ -83,7 +85,7 @@ Open [the moderator preview](http://127.0.0.1:7474/preview.html?as=local_moderat
 
 For a multiplayer test, open `index.html?as=alice` and `index.html?as=bob` in separate tabs. Each tab keeps its own local identity. A third tab can watch through `watch.html`.
 
-The local [full leaderboard](http://127.0.0.1:7474/leaderboard.html) includes **500 fictional players per mode** to exercise a populated list. The splash shows the top three. Challenge winner samples are off by default; use `EUCLID_SAMPLE_CHALLENGES=1 npm run dev:local` with a separate state file to preview them. Samples are inserted only if no winner record exists, remain subject to the challenge switches, and are labeled as samples. Sample results can't be shared, and fixture data isn't included in uploaded builds.
+The local [full leaderboard](http://127.0.0.1:7474/leaderboard.html) includes **500 fictional players per mode** to exercise a populated list. The splash shows the top three. Set `EUCLID_SAMPLE_RANKINGS=0` to use actual local game results and test the separate Standard/Tide ladders. Challenge winner samples are off by default; use `EUCLID_SAMPLE_CHALLENGES=1 npm run dev:local` with a separate state file to preview them. Samples are inserted only if no winner record exists, remain subject to the challenge switches, and are labeled as samples. Sample results can't be shared, and fixture data isn't included in uploaded builds.
 
 ## Working on the game
 

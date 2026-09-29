@@ -215,12 +215,70 @@ function elo(
 }
 
 describe("H2H durable settlement", () => {
-  it("atomically migrates legacy Elo and records rating, metrics, and receipt", async () => {
+  it("keeps Tide ratings and its player index separate from Standard", async () => {
+    const redis = new MemoryRedis();
+    const terminal = event({ variant: "tide" });
+    const standard = elo(1600, 4, 4, 0, 0);
+    redis.seed(H2H_SETTLEMENT_KEYS.elo("p1"), JSON.stringify(standard));
+    redis.seed(
+      H2H_SETTLEMENT_KEYS.players,
+      JSON.stringify(["standard-player"]),
+    );
+    seedOutbox(redis, [terminal]);
+    const service = new H2HSettlementService(redis, {
+      now: () => ENDED_AT + 1,
+    });
+    expect((await service.settle(terminal)).status).toBe("settled");
+    expect(redis.json(H2H_SETTLEMENT_KEYS.elo("p1", "tide"))).toEqual(
+      elo(1216, 1, 1, 0, 0),
+    );
+    expect(redis.json(H2H_SETTLEMENT_KEYS.elo("p2", "tide"))).toEqual(
+      elo(1184, 1, 0, 1, 0),
+    );
+    expect(redis.json(H2H_SETTLEMENT_KEYS.elo("p1"))).toEqual(standard);
+    expect(redis.json(H2H_SETTLEMENT_KEYS.players)).toEqual([
+      "standard-player",
+    ]);
+    expect(redis.json(H2H_SETTLEMENT_KEYS.playersForVariant("tide"))).toEqual([
+      "p1",
+      "p2",
+    ]);
+    expect((await service.settle(terminal)).status).toBe("already_settled");
+    expect(redis.json(H2H_SETTLEMENT_KEYS.elo("p1", "tide"))).toEqual(
+      elo(1216, 1, 1, 0, 0),
+    );
+  });
+
+  it("normalizes Standard fingerprints and rejects variant substitution", async () => {
+    const standard = event();
+    expect(h2hSettlementFingerprint(standard)).toBe(JSON.stringify(standard));
+    expect(h2hSettlementFingerprint({ ...standard, variant: "standard" })).toBe(
+      h2hSettlementFingerprint(standard),
+    );
+    expect(() =>
+      normalizeH2HSettlementEvent({ ...standard, variant: "unknown" }),
+    ).toThrow(H2HSettlementDataError);
+    const tide = event({ variant: "tide" });
+    const redis = new MemoryRedis();
+    seedOutbox(redis, [tide]);
+    const service = new H2HSettlementService(redis, {
+      now: () => ENDED_AT + 1,
+    });
+    await expect(service.settle(standard)).rejects.toThrow(
+      "conflicting fingerprint",
+    );
+    expect((await service.settle(tide)).status).toBe("settled");
+    await expect(service.settle(standard)).rejects.toThrow(
+      "conflicting fingerprint",
+    );
+  });
+
+  it("atomically records rating, metrics, and receipt", async () => {
     const redis = new MemoryRedis();
     const terminal = event();
     seedOutbox(redis, [terminal]);
     redis.seed(
-      H2H_SETTLEMENT_KEYS.legacyElo("p1"),
+      H2H_SETTLEMENT_KEYS.elo("p1"),
       JSON.stringify(elo(1_300, 2, 1, 1, 0)),
     );
     redis.seed(H2H_SETTLEMENT_KEYS.players, JSON.stringify(["existing"]));
@@ -237,7 +295,6 @@ describe("H2H durable settlement", () => {
     expect(
       parseH2HSettlementEvents(redis.value(H2H_STORE_KEYS.pendingSettlements)),
     ).toEqual([]);
-    expect(redis.value(H2H_SETTLEMENT_KEYS.legacyElo("p1"))).toBeUndefined();
     expect(
       redis.json<H2HEloRecord>(H2H_SETTLEMENT_KEYS.elo("p1")),
     ).toMatchObject({ games: 3, wins: 2, losses: 1, draws: 0 });

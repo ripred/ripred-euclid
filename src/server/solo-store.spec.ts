@@ -18,6 +18,8 @@ import type {
 } from "../shared/types/api";
 import type { PracticeRulesInput } from "../shared/game/rules";
 import { Board } from "../shared/game/engine";
+import { DEFAULT_SUBREDDIT_SETTINGS } from "../shared/subreddit-settings";
+import { SUBREDDIT_SETTINGS_KEY } from "./subreddit-settings";
 import {
   SOLO_RANKED_START_RATING,
   SOLO_STORE_KEYS,
@@ -534,6 +536,204 @@ async function findPracticeHumanWin(
   throw new Error("Could not produce a deterministic Practice human win.");
 }
 
+describe("SoloStore Tide settings and ratings", () => {
+  function setTide(redis: MemoryRedis, tideMode: boolean): void {
+    redis.seed(
+      SUBREDDIT_SETTINGS_KEY,
+      JSON.stringify({ ...DEFAULT_SUBREDDIT_SETTINGS, tideMode }),
+    );
+  }
+
+  it.each(["practice", "ranked"] as const)(
+    "pins a %s start receipt across a moderator toggle",
+    async (mode) => {
+      const { redis, store } = createFixture();
+      setTide(redis, true);
+      const request = {
+        mode,
+        commandId: "pinned-tide-start",
+        ...(mode === "practice" ? { rules: PRACTICE_RULES } : {}),
+      };
+      const first = await store.start("owner", request);
+      expect(first.snapshot.rules.variant).toBe("tide");
+      setTide(redis, false);
+      expect(await store.start("owner", request)).toEqual({
+        ...first,
+        replayed: true,
+      });
+      const moved = await store.move(
+        "owner",
+        moveRequest(first.snapshot, "pinned-move"),
+      );
+      expect(moved.snapshot.rules.variant).toBe("tide");
+      expect(moved.snapshot.board.variant).toBe("tide");
+      if (mode === "ranked") {
+        expect(await startRanked(store, "resume-tide")).toMatchObject({
+          resumed: true,
+          snapshot: {
+            gameId: first.snapshot.gameId,
+            rules: { variant: "tide" },
+          },
+        });
+      } else {
+        expect(
+          (await startPractice(store, "new-standard")).snapshot.rules,
+        ).not.toHaveProperty("variant");
+      }
+    },
+  );
+
+  it("keeps existing Standard games and receipts pinned when Tide is enabled", async () => {
+    const { redis, store } = createFixture();
+    const first = await startRanked(store);
+    setTide(redis, true);
+    expect(await startRanked(store)).toEqual({ ...first, replayed: true });
+    const resumed = await startRanked(store, "resume-standard");
+    expect(resumed.resumed).toBe(true);
+    expect(resumed.snapshot.rules).not.toHaveProperty("variant");
+    await store.abandon("owner", {
+      gameId: first.snapshot.gameId,
+      expectedRevision: first.snapshot.revision,
+      commandId: "finish-standard",
+    });
+    expect((await startRanked(store, "new-tide")).snapshot.rules.variant).toBe(
+      "tide",
+    );
+  });
+
+  it("captures a concurrent setting change in the same transaction as new-game creation", async () => {
+    const { redis, store } = createFixture();
+    setTide(redis, false);
+    let toggled = false;
+    redis.beforeExec = (writes) => {
+      if (
+        !toggled &&
+        writes.some((write) => write.key.startsWith(SOLO_STORE_KEYS.game("")))
+      ) {
+        toggled = true;
+        setTide(redis, true);
+      }
+    };
+    const start = await startPractice(store);
+    expect(toggled).toBe(true);
+    expect(start.snapshot.rules.variant).toBe("tide");
+    expect(
+      redis.watches.some((keys) => keys.includes(SUBREDDIT_SETTINGS_KEY)),
+    ).toBe(true);
+    expect(
+      redis.keys().filter((key) => key.startsWith(SOLO_STORE_KEYS.game(""))),
+    ).toHaveLength(1);
+  });
+
+  it.each([undefined, "not-json", '{"tideMode":true}'])(
+    "defaults missing or invalid moderator settings to Standard: %s",
+    async (raw) => {
+      const { redis, store } = createFixture();
+      if (raw !== undefined) redis.seed(SUBREDDIT_SETTINGS_KEY, raw);
+      expect((await startPractice(store)).snapshot.rules).not.toHaveProperty(
+        "variant",
+      );
+    },
+  );
+
+  it("isolates Tide Elo and ranking rows and settles a retry only once", async () => {
+    const { redis, store } = createFixture();
+    redis.seed(SOLO_STORE_KEYS.profileName("owner"), "Owner");
+    for (const variant of ["standard", "tide"] as const) {
+      setTide(redis, variant === "tide");
+      const start = await startRanked(store, `${variant}-start`);
+      const moved = await store.move(
+        "owner",
+        moveRequest(start.snapshot, `${variant}-move`),
+      );
+      const request = {
+        gameId: moved.snapshot.gameId,
+        expectedRevision: moved.snapshot.revision,
+        commandId: `${variant}-abandon`,
+      };
+      const abandoned = await store.abandon("owner", request);
+      expect(await store.abandon("owner", request)).toEqual({
+        ...abandoned,
+        replayed: true,
+      });
+      expect(await store.getRankedRating("owner", variant)).toMatchObject({
+        games: 1,
+        losses: 1,
+        rating: 1197,
+      });
+      expect(await store.getRankedRows(variant)).toMatchObject([
+        { name: "Owner", games: 1, losses: 1, rating: 1197 },
+      ]);
+      expect(await store.countRankedPlayers(variant)).toBe(1);
+      const result = await store.getTerminalResult(
+        "owner",
+        moved.snapshot.gameId,
+      );
+      expect(result.rules.variant ?? "standard").toBe(variant);
+      if (variant === "standard") {
+        expect(await store.getRankedRows("tide")).toEqual([]);
+        expect(await store.getRankedRating("owner", "tide")).toMatchObject({
+          games: 0,
+          rating: 1200,
+        });
+      }
+    }
+    expect(await store.getRankedRating("owner")).toMatchObject({
+      games: 1,
+      losses: 1,
+    });
+    expect(SOLO_STORE_KEYS.rankedRating("owner")).toBe(
+      "euclid:solo:v1:ranked:r1:elo:owner",
+    );
+    expect(SOLO_STORE_KEYS.rankedPlayersFor()).toBe(
+      SOLO_STORE_KEYS.rankedPlayers,
+    );
+    expect(redis.json(SOLO_STORE_KEYS.rankedPlayersFor("tide"))).toEqual([
+      "owner",
+    ]);
+  });
+
+  it("retains Tide result/share labels after the moderator switches back to Standard", async () => {
+    const { redis, store } = createFixture();
+    setTide(redis, true);
+    const start = await startPractice(store, "tide-win", {
+      ...PRACTICE_RULES,
+      humanPlayer: 1,
+      firstPlayer: 1,
+    });
+    let snapshot = start.snapshot;
+    while (snapshot.status === "active") {
+      const point = Board.fromJSON(snapshot.board, () => 0).findBestMove();
+      const response = await store.move(
+        "owner",
+        moveRequest(snapshot, `tide-win-${snapshot.revision}`, point),
+      );
+      expect(response.accepted).toBe(true);
+      snapshot = response.snapshot;
+    }
+    expect(snapshot.outcome.winner).toBe(2);
+    setTide(redis, false);
+    const terminal = await store.getTerminalResult("owner", snapshot.gameId);
+    expect(terminal.rules.variant).toBe("tide");
+    const prepared = await store.prepareShare("owner", {
+      gameId: snapshot.gameId,
+      commandId: "share-tide",
+      subredditName: "euclid_test",
+      humanName: "Owner",
+    });
+    expect(prepared.receipt.payload).toMatchObject({
+      variant: "tide",
+      subtitle: expect.stringContaining("Tide"),
+      footer: expect.stringContaining("60 moves"),
+      solo: { rules: { variant: "tide" } },
+      board: { variant: "tide" },
+    });
+    expect(prepared.receipt.payload.board.tide).toEqual(snapshot.board.tide);
+    expect(await store.getRankedRows("tide")).toEqual([]);
+    expect(await store.getRankedRows()).toEqual([]);
+  });
+});
+
 describe("SoloStore start and ownership", () => {
   it("creates one active Ranked game under concurrent starts and resumes it", async () => {
     const { redis, store } = createFixture();
@@ -623,10 +823,8 @@ describe("SoloStore start and ownership", () => {
     );
   });
 
-  it("keeps Practice entirely outside every Ranked and legacy HVA key", async () => {
+  it("keeps Practice entirely outside Ranked ratings", async () => {
     const { redis, store } = createFixture();
-    redis.seed("euclid:elo:hva:owner", JSON.stringify({ rating: 9_999 }));
-    redis.seed("euclid:players:hva", JSON.stringify(["legacy-player"]));
     redis.clearAccessLog();
 
     const started = await startPractice(store);
@@ -643,8 +841,6 @@ describe("SoloStore start and ownership", () => {
 
     const accessed = [...redis.reads, ...redis.watches.flat()];
     expect(accessed.some((key) => key.includes(":ranked:"))).toBe(false);
-    expect(accessed.some((key) => key.includes("elo:hva"))).toBe(false);
-    expect(accessed.some((key) => key.includes("players:hva"))).toBe(false);
     await expect(store.getRankedRows()).resolves.toEqual([]);
   });
 });
@@ -1028,15 +1224,8 @@ describe("SoloStore Ranked settlement and abandonment", () => {
     });
   });
 
-  it("returns only versioned r1 Ranked rows and ignores every legacy HVA namespace", async () => {
+  it("returns the settled Ranked rating with the player's public profile", async () => {
     const { redis, store } = createFixture();
-    redis.seed("euclid:players:hva", JSON.stringify(["legacy"]));
-    redis.seed("euclid:elo:hva:legacy", JSON.stringify({ rating: 9_999 }));
-    redis.seed("euclid:solo:v1:ranked:r2:players", JSON.stringify(["future"]));
-    redis.seed(
-      "euclid:solo:v1:ranked:r2:elo:future",
-      JSON.stringify({ schemaVersion: 2, rating: 8_888 }),
-    );
     expect(await store.getRankedRows()).toEqual([]);
 
     const started = await startRanked(store);

@@ -13,6 +13,8 @@ import type { ShareChatItem, ShareSquare } from "../shared/types/api";
 import type { Board } from "../shared/game/engine";
 import type { PlayerColor, PlayerIndex } from "../shared/game/rules";
 import { rulesSummary } from "./format";
+import { tidePieceDescription } from "./tide";
+import { TIDE_MOVE_LIMIT } from "../shared/game/rules";
 import { calculateBoardLayout } from "./game-ui";
 import {
   formatScoreFeedback,
@@ -340,9 +342,16 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const hints = useMemo(
     () =>
       assistOn && hoverIdx != null && myColor != null
-        ? squareHints(board.m_board, board.W, board.H, hoverIdx, myColor)
+        ? squareHints(
+            board.m_board,
+            board.W,
+            board.H,
+            hoverIdx,
+            myColor,
+            (corners) => board.canFinishTarget(corners, myColor),
+          )
         : [],
-    [assistOn, hoverIdx, myColor, board.W, board.H, board.m_board],
+    [assistOn, hoverIdx, myColor, board],
   );
   const assistShowing = assistOn && hoverIdx !== null && hints.length > 0;
 
@@ -502,7 +511,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     const owner = ownerAt(board.m_board, index);
     const label = pointLabel(index % board.W, Math.floor(index / board.W));
     const state = owner ? ownerName(owner) : "open";
-    return `${label}, ${state}${index === lastIndex ? ", last move" : ""}`;
+    return `${label}, ${state}${owner ? tidePieceDescription(board.tide, index, board.m_history.length) : ""}${index === lastIndex ? ", last move" : ""}`;
   };
 
   return (
@@ -535,7 +544,12 @@ export const GameScreen: React.FC<GameScreenProps> = ({
           </button>
           <div className="game__title">
             <span className="game__mode">{modeLabel}</span>
-            <span className="game__rules">{rulesSummary(board)}</span>
+            <span className="game__rules">
+              {rulesSummary(board)}
+              {board.variant === "tide"
+                ? ` · move ${board.m_history.length}/${TIDE_MOVE_LIMIT}`
+                : ""}
+            </span>
           </div>
           <div className="game__tools">
             <button
@@ -621,6 +635,8 @@ export const GameScreen: React.FC<GameScreenProps> = ({
               width={board.W}
               height={board.H}
               cells={board.m_board}
+              tide={board.tide}
+              ply={board.m_history.length}
               squares={squares}
               footprints={footprints}
               markers={markers}

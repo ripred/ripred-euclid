@@ -528,7 +528,7 @@
   pointer-events: none;
 }
 
-@media (max-width: 480px) {
+@media (max-width: 600px) {
   /* Phones: the board takes nearly the full width. */
   .game {
     padding-right: 4px;
@@ -539,12 +539,16 @@
     margin-left: 2px;
   }
   .game__bar {
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     padding: 0 var(--sp-1);
   }
   .game__title {
-    justify-items: start;
-    text-align: left;
+    grid-row: 2;
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0 var(--sp-2);
   }
   .game__mode {
     max-width: 100%;
@@ -557,12 +561,14 @@
     width: min(100% - 8px, var(--column, 640px));
   }
   .game__rules {
-    display: none;
+    white-space: normal;
   }
   .game__exit {
     padding: 0 var(--sp-2);
   }
   .game__tools {
+    grid-row: 1;
+    grid-column: 2;
     gap: 4px;
   }
   .game__tools .icon-btn {

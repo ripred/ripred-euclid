@@ -12,11 +12,16 @@ import {
 import { MemoryRedis } from "./testing/memory-redis";
 
 describe("stored subreddit settings", () => {
-  it("migrates the two-switch record without losing either moderator choice", async () => {
+  it("uses defaults for newly added settings without changing saved challenge visibility", async () => {
     const redis = new MemoryRedis();
     redis.seed(
       SUBREDDIT_SETTINGS_KEY,
-      JSON.stringify({ dailyChallenges: true, weeklyChallenges: false }),
+      JSON.stringify({
+        dailyChallenges: true,
+        weeklyChallenges: false,
+        challengeApplyTiming: "next-start",
+        showLiveChallengeStandings: true,
+      }),
     );
     expect(await readSubredditSettings(redis)).toEqual({
       ...DEFAULT_SUBREDDIT_SETTINGS,
@@ -98,6 +103,7 @@ describe("subreddit settings endpoint", () => {
   it("persists a moderator's choices for another viewer and replaces both switches", async () => {
     const settings = {
       ...DEFAULT_SUBREDDIT_SETTINGS,
+      tideMode: true,
       dailyChallenges: true,
       weeklyChallenges: false,
     };
@@ -126,13 +132,18 @@ describe("subreddit settings endpoint", () => {
   it("checks permission on every save and denies a viewer claiming to be a moderator", async () => {
     const settings = {
       ...DEFAULT_SUBREDDIT_SETTINGS,
+      tideMode: true,
       dailyChallenges: true,
       weeklyChallenges: false,
     };
     expect((await save({ settings })).status).toBe(200);
     moderator = null;
     const response = await save({
-      settings: { dailyChallenges: false, weeklyChallenges: true },
+      settings: {
+        dailyChallenges: false,
+        weeklyChallenges: true,
+        tideMode: false,
+      },
       isModerator: true,
       userId: "moderator",
     });

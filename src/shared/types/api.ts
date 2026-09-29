@@ -1,5 +1,6 @@
 import type {
   GameOutcome,
+  GameVariant,
   PlayerColor,
   PlayerIndex,
   PracticeRules,
@@ -63,6 +64,8 @@ export type SoloSessionMetadata =
   | PracticeSoloSessionMetadata;
 
 export type SerializableBoard = {
+  variant?: GameVariant;
+  tide?: { expires: number[]; anchored: boolean[] };
   W: number;
   H: number;
   winScore: number;
@@ -127,6 +130,7 @@ export type H2HCanonicalState = {
 
 /** Player and score positions always follow the canonical board's player order. */
 export type H2HLiveGameSummary = {
+  variant?: GameVariant;
   gameId: string;
   playerIds: [string, string];
   names: Record<string, string>;
@@ -281,7 +285,11 @@ export type SoloResultRequest = {
 
 export type SoloSessionStatus = "active" | "completed" | "abandoned";
 
-export type SoloEndReason = "score_target" | "board_full" | "abandoned";
+export type SoloEndReason =
+  | "score_target"
+  | "board_full"
+  | "move_limit"
+  | "abandoned";
 
 export type RankedRatingChange = {
   before: number;
@@ -297,6 +305,7 @@ export type RatingRecord = {
 };
 
 export type UserStatsResponse = {
+  variant?: GameVariant;
   hvh: RatingRecord;
   hva: RatingRecord;
 };
@@ -461,6 +470,7 @@ export type RankingsShareRow = {
 };
 
 export type RankingsSharePayload = {
+  variant?: GameVariant;
   kind: "rankings";
   shareId: string;
   subredditName: string;
@@ -473,6 +483,7 @@ export type RankingsSharePayload = {
 };
 
 export type ResultSharePayload = {
+  variant?: GameVariant;
   kind: "result";
   shareId: string;
   subredditName: string;
@@ -493,6 +504,7 @@ export type ResultSharePayload = {
 };
 
 export type RankingsResponse = {
+  variant?: GameVariant;
   preview?: boolean;
   hvh?: RankingsShareRow[];
   hva?: RankingsShareRow[];

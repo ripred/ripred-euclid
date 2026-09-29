@@ -3,6 +3,17 @@ import { isRecord } from "../guards";
 
 export type PlayerIndex = 0 | 1;
 export type PlayerColor = 1 | 2;
+export type GameVariant = "standard" | "tide";
+export const TIDE_PERSONAL_TURNS = 6;
+export const TIDE_STONE_LIFETIME = TIDE_PERSONAL_TURNS * 2;
+export const TIDE_MOVE_LIMIT = 60;
+
+export function isGameVariant(value: unknown): value is GameVariant {
+  return value === "standard" || value === "tide";
+}
+
+export const gameVariantLabel = (variant: GameVariant): string =>
+  variant === "tide" ? "Tide" : "Standard";
 
 export const GAME_STATES = {
   RUNNING: 0,
@@ -113,6 +124,7 @@ export type SoloRulesVersion = typeof SOLO_RULES_VERSION;
 export type SoloMode = "ranked" | "practice";
 
 export interface SoloRules {
+  readonly variant?: GameVariant;
   readonly rulesVersion: SoloRulesVersion;
   readonly mode: SoloMode;
   readonly W: typeof STANDARD_BOARD.W;

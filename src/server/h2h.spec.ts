@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { SharePoint } from "../shared/types/api";
+import type { GameVariant } from "../shared/game/rules";
 import {
   H2H_CHAT_MAX_ITEMS,
   H2H_CHAT_MAX_LENGTH,
@@ -28,8 +29,11 @@ function point(index: number): SharePoint {
   };
 }
 
-function initialBoard(now = INITIAL_TIME): H2HBoardSnapshot {
-  return createInitialH2HBoard("p1", "p2", { now });
+function initialBoard(
+  now = INITIAL_TIME,
+  variant: GameVariant = "standard",
+): H2HBoardSnapshot {
+  return createInitialH2HBoard("p1", "p2", { now, variant });
 }
 
 function expectDomainError(
@@ -68,8 +72,9 @@ function applyIndex(
 function playMoves(
   indexes: readonly number[],
   startTime = INITIAL_TIME,
+  variant: GameVariant = "standard",
 ): H2HBoardSnapshot {
-  let board = initialBoard(startTime);
+  let board = initialBoard(startTime, variant);
   indexes.forEach((index, offset) => {
     const result = applyIndex(board, index, startTime + offset + 1);
     if (result.ended && offset !== indexes.length - 1) {
@@ -86,7 +91,7 @@ function squareBoard(): H2HBoardSnapshot {
 
 function terminalBoard(
   source: H2HBoardSnapshot = initialBoard(),
-  startTime = source.lastSaved ?? INITIAL_TIME,
+  startTime = source.lastSaved,
 ): H2HBoardSnapshot {
   let board = source;
   const firstPlayerIndexes = [
@@ -116,32 +121,128 @@ function asRecord(board: H2HBoardSnapshot): Record<string, unknown> {
   return structuredClone(board) as unknown as Record<string, unknown>;
 }
 
-describe("H2H replay normalization", () => {
-  it("migrates missing legacy version fields from a complete legal history", () => {
-    const legacy = asRecord(playMoves([0, 63]));
-    delete legacy.W;
-    delete legacy.H;
-    delete legacy.winScore;
-    delete legacy.rulesVersion;
-    delete legacy.schemaVersion;
-    delete legacy.revision;
-    legacy.endedReason = "";
-    legacy.endedBy = "";
+describe("H2H Tide replay", () => {
+  const rowMoves = (count: number) =>
+    Array.from(
+      { length: count },
+      (_, index) => (Math.floor(index / 2) % 6) + (index % 2 === 0 ? 0 : 56),
+    );
 
-    const normalized = normalizeH2HBoard(legacy);
+  it("replays expired positions and permits the next player to reuse them", () => {
+    const board = playMoves(rowMoves(12), INITIAL_TIME, "tide");
+    expect(board.m_board[0]).toBe(0);
+    expect(board.m_history[0]).toEqual(point(0));
+    const next = applyIndex(board, 0, 113);
+    expect(next.board.m_board[0]).toBe(1);
+    expect(next.board.m_history[12]).toEqual(point(0));
+    expect(normalizeH2HBoard(JSON.parse(JSON.stringify(next.board)))).toEqual(
+      next.board,
+    );
+    expectDomainError(() => applyIndex(next.board, 1, 114), "cell_occupied");
+  });
 
-    expect(normalized).toMatchObject({
-      W: 8,
-      H: 8,
-      winScore: 150,
-      rulesVersion: 1,
-      schemaVersion: H2H_SCHEMA_VERSION,
-      revision: 2,
-      ended: false,
+  it("keeps square corners anchored after their original expiration", () => {
+    const board = playMoves(
+      [0, 56, 1, 57, 8, 58, 9, 59, 2, 60, 3, 61, 4, 62, 5, 63],
+      INITIAL_TIME,
+      "tide",
+    );
+    for (const index of [0, 1, 8, 9]) {
+      expect(board.m_board[index]).toBe(1);
+      expect(board.tide?.anchored[index]).toBe(true);
+    }
+    expect(board.m_players[0].m_score).toBe(4);
+    expect(normalizeH2HBoard(board)).toEqual(board);
+  });
+
+  it("ends a tied 60-move round and rejects continuation", () => {
+    const board = playMoves(rowMoves(60), INITIAL_TIME, "tide");
+    expect(createH2HCanonicalState("game", board)).toMatchObject({
+      ended: true,
+      endedReason: "tie",
+      victorSide: null,
     });
-    expect(normalized.m_history).toEqual([point(0), point(63)]);
-    expect(normalized.m_board[0]).toBe(1);
-    expect(normalized.m_board[63]).toBe(2);
+    expectDomainError(() => applyIndex(board, 0, 161), "game_ended");
+    const forged = structuredClone(board);
+    forged.m_history.push(point(0));
+    expectDomainError(() => normalizeH2HBoard(forged), "invalid_board");
+  });
+
+  it("awards the higher score at the Tide move limit without reaching 150", () => {
+    const indexes = [0, 56, 1, 57, 8, 58, 9];
+    let firstOffset = 0;
+    let secondOffset = 3;
+    while (indexes.length < 60) {
+      indexes.push(
+        indexes.length % 2 === 0
+          ? 2 + (firstOffset++ % 6)
+          : 56 + (secondOffset++ % 6),
+      );
+    }
+    const board = playMoves(indexes, INITIAL_TIME, "tide");
+    expect(board.m_players.map((player) => player.m_score)).toEqual([4, 0]);
+    expect(createH2HCanonicalState("game", board)).toMatchObject({
+      ended: true,
+      endedReason: "game_over",
+      victorSide: 1,
+    });
+  });
+
+  it.each(["expires", "anchored", "missing", "standard", "unknown"])(
+    "rejects forged %s Tide metadata",
+    (field) => {
+      const source = asRecord(playMoves(rowMoves(13), INITIAL_TIME, "tide"));
+      const tide = source.tide as { expires: number[]; anchored: boolean[] };
+      if (field === "expires") tide.expires[0] = 999;
+      else if (field === "anchored") tide.anchored[0] = true;
+      else if (field === "missing") delete source.tide;
+      else source.variant = field;
+      expectDomainError(() => normalizeH2HBoard(source), "invalid_board");
+    },
+  );
+
+  it("creates rematches using the explicitly selected new variant", () => {
+    const completed = playMoves(rowMoves(60), INITIAL_TIME, "tide");
+    const standard = createH2HRematch(completed, "p1", "game", 200, "standard");
+    expect(standard.board.variant).toBeUndefined();
+    expect(standard.board.tide).toBeUndefined();
+    const tide = createH2HRematch(terminalBoard(), "p1", "game", 200, "tide");
+    expect(tide.board.variant).toBe("tide");
+    expect(tide.board.m_history).toHaveLength(0);
+    expect(tide.board.tide?.anchored.every((value) => !value)).toBe(true);
+  });
+});
+
+describe("H2H replay normalization", () => {
+  it.each([
+    "W",
+    "H",
+    "winScore",
+    "rulesVersion",
+    "schemaVersion",
+    "revision",
+    "m_board",
+    "m_players",
+    "m_turn",
+    "m_history",
+    "m_last",
+    "m_lastPoints",
+    "m_targets",
+    "m_displayed_game_over",
+    "m_onlyShowLastSquares",
+    "m_stopAt150",
+    "m_createRandomizedRangeOrder",
+    "createdAt",
+    "lastSaved",
+    "turnStartedAt",
+    "playerNames",
+    "playerAvatars",
+    "chat",
+    "ended",
+  ])("rejects a missing current-schema %s field", (field) => {
+    const board = asRecord(playMoves([0, 63]));
+    delete board[field];
+    expectDomainError(() => normalizeH2HBoard(board), "invalid_board");
   });
 
   it.each([
@@ -302,21 +403,16 @@ describe("H2H replay normalization", () => {
 });
 
 describe("H2H end-state validation", () => {
-  it("explicitly migrates legacy opponent_left to canonical player_left", () => {
+  it("rejects an unsupported end reason", () => {
     const board = initialBoard();
     board.ended = true;
-    board.endedReason = "opponent_left";
+    board.endedReason = "unsupported";
     board.endedBy = "p1";
 
-    const state = createH2HCanonicalState("game", board);
-
-    expect(state).toMatchObject({
-      ended: true,
-      endedReason: "player_left",
-      endedBy: "p1",
-      victorSide: 2,
-    });
-    expect(state.board.endedReason).toBe("player_left");
+    expectDomainError(
+      () => createH2HCanonicalState("game", board),
+      "invalid_board",
+    );
   });
 
   it.each([
@@ -670,7 +766,7 @@ describe("H2H departure, chat, and rematch transitions", () => {
     const chatted = appendH2HChat(named, "p1", "game", "again?", 101).state;
     const ended = terminalBoard(chatted.board);
     const before = structuredClone(ended);
-    const rematchTime = (ended.lastSaved ?? INITIAL_TIME) + 1;
+    const rematchTime = ended.lastSaved + 1;
 
     const rematch = createH2HRematch(ended, "p2", "game", rematchTime);
 
@@ -737,14 +833,13 @@ describe("H2H departure, chat, and rematch transitions", () => {
     );
   });
 
-  it("rematches a completed legacy board without an explicit end reason", () => {
-    const legacy = asRecord(terminalBoard());
-    delete legacy.endedReason;
-
-    const rematch = createH2HRematch(legacy, "p1", "game", 200);
-
-    expect(rematch.ended).toBe(false);
-    expect(rematch.endedReason).toBeNull();
+  it("rejects a completed board without its end reason", () => {
+    const board = asRecord(terminalBoard());
+    delete board.endedReason;
+    expectDomainError(
+      () => createH2HRematch(board, "p1", "game", 200),
+      "invalid_board",
+    );
   });
 
   it("creates initial metadata without aliasing caller-owned inputs", () => {

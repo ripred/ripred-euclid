@@ -1,15 +1,12 @@
 import { playerColorForIndex, type PlayerColor } from "../shared/game/rules";
-import {
-  emptyCells,
-  orderSquareCorners,
-  pointIndex,
-} from "../shared/game/geometry";
+import { Board, Player } from "../shared/game/engine";
+import { orderSquareCorners, pointIndex } from "../shared/game/geometry";
 import {
   cloneSquare,
   squareIndexKey,
   squarePoints,
 } from "../shared/share-squares";
-import { completedSquares, type CompletedSquare } from "./completed-squares";
+import type { CompletedSquare } from "./completed-squares";
 import type { BoardMarker, BoardSquareShape } from "./ui/board-geometry";
 import type {
   SerializableBoard,
@@ -26,6 +23,7 @@ type ReplayMove = SharePoint & {
 type ReplaySquare = CompletedSquare<ReplayOwner>;
 
 export type ReplayFrame = {
+  tide?: SerializableBoard["tide"];
   board: number[];
   scores: [number, number];
   moveNumber: number;
@@ -35,16 +33,6 @@ export type ReplayFrame = {
 };
 
 export type ReplayFrames = [ReplayFrame, ...ReplayFrame[]];
-
-function ownerForReplayMove(
-  board: SerializableBoard,
-  moveIndex: number,
-): ReplayOwner {
-  const firstPlayer = board.solo?.rules.firstPlayer === 1 ? 1 : 0;
-  const playerIndex =
-    moveIndex % 2 === 0 ? firstPlayer : firstPlayer === 0 ? 1 : 0;
-  return playerColorForIndex(playerIndex);
-}
 
 function squareFromStored(
   square: ShareSquare,
@@ -70,6 +58,14 @@ function buildFinalFrame(board: SerializableBoard): ReplayFrame {
   ];
 
   return {
+    ...(board.variant === "tide" && board.tide
+      ? {
+          tide: {
+            expires: [...board.tide.expires],
+            anchored: [...board.tide.anchored],
+          },
+        }
+      : {}),
     board: [...board.m_board],
     scores: [
       board.m_players[0]?.m_score ?? 0,
@@ -81,75 +77,55 @@ function buildFinalFrame(board: SerializableBoard): ReplayFrame {
   };
 }
 
-// Validate reconstructed history against the stored result. Missing or
-// inconsistent history remains viewable as an opening frame plus final state.
+/** Replay confirmed moves through the same rules used for live games. */
 export function buildReplayFrames(board: SerializableBoard): ReplayFrames {
-  const emptyFrame: ReplayFrame = {
-    board: emptyCells(board.W, board.H),
-    scores: [0, 0],
-    moveNumber: 0,
-    newSquares: [],
-    allSquares: [],
-  };
-
-  if (!Array.isArray(board.m_history) || board.m_history.length === 0) {
-    return [emptyFrame, buildFinalFrame(board)];
+  const engine = new Board(new Player(), new Player(), {
+    W: board.W,
+    H: board.H,
+    winScore: board.winScore,
+    variant: board.variant ?? "standard",
+    rng: () => 0,
+  });
+  engine.m_turn = board.solo?.rules.firstPlayer === 1 ? 1 : 0;
+  const frames: ReplayFrames = [buildFinalFrame(engine.toJSON())];
+  const fallback = (): ReplayFrames => [frames[0], buildFinalFrame(board)];
+  // Incomplete or inconsistent recordings remain viewable as a final state.
+  if (!Array.isArray(board.m_history) || board.m_history.length === 0)
+    return fallback();
+  for (const [index, point] of board.m_history.entries()) {
+    const moveIndex = pointIndex(point.x, point.y, board.W);
+    if (
+      !Number.isInteger(point.x) ||
+      !Number.isInteger(point.y) ||
+      point.x < 0 ||
+      point.x >= board.W ||
+      point.y < 0 ||
+      point.y >= board.H ||
+      engine.m_board[moveIndex] !== 0
+    )
+      return fallback();
+    const owner = playerColorForIndex(engine.m_turn);
+    const previousSquares = engine.m_players[engine.m_turn].m_squares.length;
+    engine.placePiece(engine.pointAt(point.x, point.y));
+    if (engine.m_history.length !== index + 1) return fallback();
+    const serialized = engine.toJSON();
+    const frame = buildFinalFrame(serialized);
+    frame.move = { ...point, index: moveIndex, owner };
+    frame.newSquares = engine.m_players[engine.m_turn].m_squares
+      .slice(previousSquares)
+      .map((square) => squareFromStored(square, owner));
+    frames.push(frame);
+    engine.advanceTurn();
   }
-
-  const boardState = emptyCells(board.W, board.H);
-  const scores: [number, number] = [0, 0];
-  const allSquares = new Map<string, ReplaySquare>();
-  const frames: ReplayFrames = [emptyFrame];
-
-  for (const [index, historyPoint] of board.m_history.entries()) {
-    const owner: ReplayOwner = ownerForReplayMove(board, index);
-    const moveIndex = pointIndex(historyPoint.x, historyPoint.y, board.W);
-    const move: ReplayMove = {
-      x: historyPoint.x,
-      y: historyPoint.y,
-      index: moveIndex,
-      owner,
-    };
-
-    if (move.x < 0 || move.x >= board.W || move.y < 0 || move.y >= board.H) {
-      return [emptyFrame, buildFinalFrame(board)];
-    }
-    if (boardState[moveIndex] !== 0) {
-      return [emptyFrame, buildFinalFrame(board)];
-    }
-
-    boardState[moveIndex] = owner;
-    const newSquares = completedSquares(boardState, board.W, board.H, move);
-    for (const square of newSquares) allSquares.set(square.key, square);
-    const points = newSquares.reduce((sum, square) => sum + square.points, 0);
-    if (owner === 1) scores[0] += points;
-    else scores[1] += points;
-
-    frames.push({
-      board: [...boardState],
-      scores: [scores[0], scores[1]],
-      moveNumber: index + 1,
-      move,
-      newSquares,
-      allSquares: [...allSquares.values()],
-    });
-  }
-
-  const finalScores: [number, number] = [
-    board.m_players[0]?.m_score ?? 0,
-    board.m_players[1]?.m_score ?? 0,
-  ];
-  const matchesFinalBoard =
-    boardState.length === board.m_board.length &&
-    boardState.every((value, index) => value === board.m_board[index]);
+  const last = frames[frames.length - 1]!;
   if (
-    !matchesFinalBoard ||
-    scores[0] !== finalScores[0] ||
-    scores[1] !== finalScores[1]
-  ) {
-    return [emptyFrame, buildFinalFrame(board)];
-  }
-
+    last.board.length !== board.m_board.length ||
+    last.board.some((owner, index) => owner !== board.m_board[index]) ||
+    last.scores.some(
+      (score, index) => score !== board.m_players[index]?.m_score,
+    )
+  )
+    return fallback();
   return frames;
 }
 

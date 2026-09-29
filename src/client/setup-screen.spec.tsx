@@ -139,6 +139,24 @@ afterEach(async () => {
 
 describe("moderator settings save recovery", () => {
   beforeEach(async () => click(button("Subreddit")));
+  it("recovers a lost Tide save before another settings write", async () => {
+    loseReply = true;
+    await click(control("Tide mode"));
+    expect((control("Tide mode") as HTMLInputElement).checked).toBe(true);
+    expect(stored.tideMode).toBe(true);
+    expect(reads).toBe(2);
+    await click(control("Daily challenges"));
+    expect(writes[1]).toMatchObject({ tideMode: true, dailyChallenges: true });
+    await click(button("Your options"));
+    expect(host.textContent).toContain("Tide is on for all new games");
+  });
+  it("keeps Tide off when the moderator save is rejected", async () => {
+    rejectSave = true;
+    await click(control("Tide mode"));
+    expect((control("Tide mode") as HTMLInputElement).checked).toBe(false);
+    expect(stored.tideMode).toBe(false);
+    expect(host.textContent).toContain("Moderator access was revoked");
+  });
   it("recovers a committed save after its response is lost before another full settings save", async () => {
     loseReply = true;
     await click(control("Daily challenges"));
@@ -197,9 +215,7 @@ describe("unified Options", () => {
       select.dispatchEvent(new Event("change", { bubbles: true }));
     });
     expect(stored.challengeApplyTiming).toBe("immediately");
-    await act(async () =>
-      host.querySelectorAll<HTMLInputElement>(".setup input")[2]!.click(),
-    );
+    await click(control("Show live challenge standings"));
     expect(stored.showLiveChallengeStandings).toBe(false);
     expect(stored.dailyChallenges).toBe(false);
     expect(stored.weeklyChallenges).toBe(false);
@@ -290,6 +306,7 @@ describe("personal Options", () => {
     expect(document.activeElement?.id).toBe("setup-title");
     expect(host.querySelector('[role="tablist"]')).toBeNull();
     expect(host.textContent).not.toContain("Challenge playground");
+    expect(host.textContent).not.toContain("Tide mode");
     expect(reads).toBe(0);
     expect(host.textContent).toContain("test-version");
   });

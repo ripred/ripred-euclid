@@ -120,6 +120,7 @@ export function squareHints(
   height: number,
   index: number,
   owner: Owner,
+  canComplete?: (corners: readonly number[]) => boolean,
 ): BoardHint[] {
   if (cells[index] !== owner) return [];
   const opponent = owner === 1 ? 2 : 1;
@@ -132,6 +133,7 @@ export function squareHints(
     const values = indices.map((corner) => cells[corner]);
     if (values.some((value) => value === undefined || value === opponent))
       continue;
+    if (canComplete && !canComplete([index, ...indices])) continue;
     const open = indices.filter((_, corner) => values[corner] === 0);
     if (open.length === 1) open.forEach((point) => near.add(point));
     else if (open.length === 2) open.forEach((point) => far.add(point));

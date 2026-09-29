@@ -1,20 +1,26 @@
 import { describe, expect, it } from "vitest";
 
 import type { SerializableBoard } from "../types/api";
-import { Board, Player, Point, Square } from "./engine";
+import { Board, Player, Point, Square, type RandomSource } from "./engine";
+import { seededRandom } from "./random";
 import { GAME_STATES } from "./rules";
 
 const stationaryRng = () => 0;
 
 function createBoard(
   style: number = Board.PS_BRUTAL,
-  options: { W?: number; H?: number; winScore?: number } = {},
+  options: {
+    W?: number;
+    H?: number;
+    winScore?: number;
+    rng?: RandomSource;
+  } = {},
 ): Board {
   return new Board(new Player(style), new Player(style, true), {
     W: options.W ?? 4,
     H: options.H ?? options.W ?? 4,
     winScore: options.winScore ?? 150,
-    rng: stationaryRng,
+    rng: options.rng ?? stationaryRng,
   });
 }
 
@@ -155,7 +161,7 @@ describe("Brutal move priorities", () => {
     expect(board.findBestMove().index).toBe(5);
   });
 
-  it("takes a larger immediate gain while weaker defensive play stays legacy", () => {
+  it("takes a larger immediate gain while Defensive prioritizes blocking", () => {
     const brutal = createBoard(Board.PS_BRUTAL, {
       W: 6,
       H: 6,
@@ -196,10 +202,130 @@ describe("Brutal move priorities", () => {
     expect(board.findBestMove().index).toBe(7);
   });
 
-  it("falls back to the established long-term square target", () => {
+  it("falls back to an oblique long-term square target", () => {
     const board = createBoard(Board.PS_BRUTAL);
 
-    expect(board.findBestMove().index).toBe(0);
+    const move = board.findBestMove();
+    expect(OBLIQUE_TARGETS).toContain(board.m_targets[0]);
+    expect(targetCorners(board)).toContain(move.index);
+  });
+});
+
+// Both oblique squares share the outer aligned square's 16-point footprint.
+const OBLIQUE_TARGETS = ["1,7,8,14", "2,4,11,13"];
+
+function targetCorners(board: Board): number[] {
+  return board.m_targets[0]!.split(",").map(Number);
+}
+
+describe("shared offensive square targeting", () => {
+  it.each([
+    Board.PS_OFFENSIVE,
+    Board.PS_DEFENSIVE,
+    Board.PS_CASUAL,
+    Board.PS_TENDERFOOT,
+    Board.PS_COFFEE,
+    Board.PS_BEGINNER,
+    Board.PS_GOLDFISH,
+    Board.PS_DOOFUS,
+  ])("prefers an oblique target among equal options for style %s", (style) => {
+    const board = createBoard(style);
+
+    board.findBestMove();
+
+    expect(OBLIQUE_TARGETS).toContain(board.m_targets[0]);
+  });
+
+  it("keeps point value ahead of how close a smaller square is to completion", () => {
+    const board = createBoard(Board.PS_OFFENSIVE);
+    // One more dot at 9 completes a 9-point tilted square; a 16-point target
+    // still takes three moves and must remain the offensive plan.
+    placeTestPieces(board, [1, 4, 6], []);
+
+    board.findBestMove();
+
+    expect(OBLIQUE_TARGETS).toContain(board.m_targets[0]);
+    expect(
+      targetCorners(board).filter((index) => board.m_board[index] === 0),
+    ).toHaveLength(3);
+  });
+
+  it("keeps fewer missing corners ahead of the oblique preference", () => {
+    const board = createBoard(Board.PS_OFFENSIVE);
+    placeTestPieces(board, [0], []);
+
+    board.findBestMove();
+
     expect(board.m_targets[0]).toBe("0,3,12,15");
+  });
+
+  it("uses an aligned target when the tied oblique choices are blocked", () => {
+    const board = createBoard(Board.PS_OFFENSIVE);
+    placeTestPieces(board, [], [1, 2]);
+
+    board.findBestMove();
+
+    expect(board.m_targets[0]).toBe("0,3,12,15");
+  });
+
+  it("uses the injected RNG to vary equally strong oblique targets", () => {
+    const first = createBoard(Board.PS_OFFENSIVE, { rng: () => 0 });
+    const last = createBoard(Board.PS_OFFENSIVE, { rng: () => 0.999999 });
+
+    first.findBestMove();
+    last.findBestMove();
+
+    expect(new Set([first.m_targets[0], last.m_targets[0]])).toEqual(
+      new Set(OBLIQUE_TARGETS),
+    );
+  });
+
+  it("repeats each seed while allowing different seeds to choose different targets", () => {
+    const targets = new Set<string | null>();
+    for (let seed = 0; seed < 24; seed++) {
+      const first = createBoard(Board.PS_OFFENSIVE, {
+        rng: seededRandom(`target-${seed}`),
+      });
+      const replay = createBoard(Board.PS_OFFENSIVE, {
+        rng: seededRandom(`target-${seed}`),
+      });
+
+      expect(first.findBestMove()).toEqual(replay.findBestMove());
+      expect(first.m_targets).toEqual(replay.m_targets);
+      targets.add(first.m_targets[0]);
+    }
+    expect(targets).toEqual(new Set(OBLIQUE_TARGETS));
+  });
+
+  it("keeps an existing target until an opponent blocks it", () => {
+    const board = createBoard(Board.PS_OFFENSIVE);
+    board.findBestMove();
+    const original = board.m_targets[0];
+    const corners = targetCorners(board);
+    // A newly available, nearly finished target does not replace the plan.
+    placeTestPieces(board, [0, 3, 12], []);
+
+    expect(corners).toContain(board.findBestMove().index);
+    expect(board.m_targets[0]).toBe(original);
+
+    board.m_board[corners[0]!] = 2;
+    const replacement = board.findBestMove();
+    expect(board.m_targets[0]).toBe("0,3,12,15");
+    expect(targetCorners(board)).not.toContain(corners[0]);
+    expect(replacement.index).toBe(15);
+  });
+
+  it("replaces a target after its square is complete", () => {
+    const board = createBoard(Board.PS_OFFENSIVE);
+    board.findBestMove();
+    const original = board.m_targets[0];
+    placeTestPieces(board, targetCorners(board), []);
+
+    const move = board.findBestMove();
+
+    expect(OBLIQUE_TARGETS).toContain(board.m_targets[0]);
+    expect(board.m_targets[0]).not.toBe(original);
+    expect(targetCorners(board)).toContain(move.index);
+    expect(board.m_board[move.index]).toBe(0);
   });
 });

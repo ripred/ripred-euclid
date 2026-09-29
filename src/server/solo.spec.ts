@@ -4,8 +4,8 @@ import {
   RANKED_SOLO_RULES,
   PLAY_STYLES,
   SOLO_RULES_VERSION,
-  STANDARD_MAX_SCORE,
   STANDARD_WIN_SCORE,
+  TIDE_MOVE_LIMIT,
   validatePracticeRules,
 } from "../shared/game/rules";
 import type { SoloSessionRecord } from "./solo";
@@ -81,6 +81,25 @@ function makeHumanMove(
 }
 
 describe("solo request and rules validation", () => {
+  it.each(["standard", "tide"])(
+    "rejects client-selected %s variants in either start mode",
+    (variant) => {
+      expect(() =>
+        validateSoloStartRequest({
+          mode: "ranked",
+          commandId: "variant",
+          variant,
+        }),
+      ).toThrow("unknown field");
+      expect(() =>
+        validateSoloStartRequest({
+          mode: "practice",
+          commandId: "variant",
+          rules: { difficulty: "doofus", variant },
+        }),
+      ).toThrow("unknown field");
+    },
+  );
   it.each(["beginner", "brutal"])(
     "rejects %s as a stored ranked difficulty",
     (difficulty) => {
@@ -160,28 +179,6 @@ describe("solo request and rules validation", () => {
     expect(() => validateSoloStartRequest(request)).toThrow();
   });
 
-  it.each([1, 20, STANDARD_MAX_SCORE])(
-    "preserves a saved Practice target of %s through resume and subsequent moves",
-    (winScore) => {
-      const saved = createSoloSession({
-        gameId: "legacy-practice",
-        ownerId: "human-1",
-        privateSeed: "private-practice-seed",
-        rules: { ...validatePracticeRules({ difficulty: "doofus" }), winScore },
-        now: START,
-      }).record;
-      const resumed = normalizeSoloSessionRecord(saved);
-      const moved = makeHumanMove(resumed, 1).record;
-
-      expect(resumed).toEqual(saved);
-      expect(normalizeSoloSessionRecord(moved)).toEqual(moved);
-      expect(publicSoloSnapshot(moved)).toMatchObject({
-        rules: { winScore },
-        board: { winScore, solo: { rules: { winScore } } },
-      });
-    },
-  );
-
   it.each([
     undefined,
     null,
@@ -190,7 +187,9 @@ describe("solo request and rules validation", () => {
     1.5,
     Infinity,
     NaN,
-    STANDARD_MAX_SCORE + 1,
+    1,
+    20,
+    STANDARD_WIN_SCORE + 1,
     "20",
   ])("rejects an invalid saved Practice target %#", (winScore) => {
     const saved = practice().record;
@@ -199,9 +198,101 @@ describe("solo request and rules validation", () => {
         ...saved,
         rules: { ...saved.rules, winScore },
       }),
-    ).toThrow(
-      `winScore must be an integer from 1 through ${STANDARD_MAX_SCORE}`,
+    ).toThrow("Stored Practice rules are not canonical");
+  });
+});
+
+describe("canonical Tide solo sessions", () => {
+  function tideSession(): SoloSessionRecord {
+    return createSoloSession({
+      gameId: "tide-solo",
+      ownerId: "human-1",
+      privateSeed: "private-tide-seed",
+      rules: {
+        ...validatePracticeRules({ difficulty: "doofus" }),
+        variant: "tide",
+      },
+      now: START,
+    }).record;
+  }
+
+  it("replays expired cells, pins Tide metadata, and stops at the move limit", () => {
+    let record = tideSession();
+    expect(record).toMatchObject({
+      rules: { variant: "tide", winScore: STANDARD_WIN_SCORE },
+      board: { variant: "tide", solo: { rules: { variant: "tide" } } },
+    });
+    let sequence = 0;
+    while (record.status === "active") {
+      record = makeHumanMove(record, ++sequence).record;
+      expect(normalizeSoloSessionRecord(record)).toEqual(record);
+      if (sequence > TIDE_MOVE_LIMIT)
+        throw new Error("Tide did not terminate.");
+    }
+    const indices = record.board.m_history.map((point) => point.index);
+    expect(new Set(indices).size).toBeLessThan(indices.length);
+    expect(record.endedReason).toBe("move_limit");
+    expect(indices).toHaveLength(TIDE_MOVE_LIMIT);
+    expect(soloTerminalResult(record)).toMatchObject({
+      endedReason: "move_limit",
+      rules: { variant: "tide" },
+      board: { variant: "tide" },
+    });
+    const afterEnd = applySoloMove(
+      record,
+      {
+        gameId: record.gameId,
+        commandId: "after-limit",
+        expectedRevision: record.revision,
+        x: 7,
+        y: 7,
+      },
+      START + sequence + 1,
     );
+    expect(afterEnd.response).toMatchObject({
+      accepted: false,
+      reason: "game_ended",
+    });
+  });
+
+  it("rejects placements before expiration and forged expiration, anchors, or variant", () => {
+    const record = makeHumanMove(tideSession(), 1).record;
+    const forged = structuredClone(record);
+    forged.board.m_history.push({ ...record.board.m_history[0]! });
+    expect(() => normalizeSoloSessionRecord(forged)).toThrow("occupied cell");
+
+    for (const field of ["expires", "anchored"] as const) {
+      const altered = structuredClone(record);
+      if (field === "expires") altered.board.tide!.expires[0]! += 2;
+      else altered.board.tide!.anchored[0] = !altered.board.tide!.anchored[0];
+      expect(() => normalizeSoloSessionRecord(altered)).toThrow(
+        "canonical move-history replay",
+      );
+    }
+    expect(() =>
+      normalizeSoloSessionRecord({
+        ...record,
+        rules: { ...record.rules, variant: "standard" },
+      }),
+    ).toThrow();
+    expect(() =>
+      normalizeSoloSessionRecord({
+        ...record,
+        rules: { ...record.rules, variant: "unknown" },
+      }),
+    ).toThrow("variant is not supported");
+  });
+
+  it("redacts private state and independently clones public Tide arrays", () => {
+    const record = makeHumanMove(tideSession(), 1).record;
+    const snapshot = publicSoloSnapshot(record);
+    expect(snapshot.board).not.toHaveProperty("m_targets");
+    expect(snapshot).not.toHaveProperty("privateSeed");
+    expect(snapshot.board.tide).toEqual(record.board.tide);
+    snapshot.board.tide!.expires[0] = 999;
+    snapshot.board.tide!.anchored[0] = true;
+    expect(snapshot.board.tide).not.toEqual(record.board.tide);
+    expect(normalizeSoloSessionRecord(record)).toEqual(record);
   });
 });
 

@@ -48,6 +48,7 @@ import {
   type AiDifficulty,
   type PlayerColor,
   type SoloMode,
+  type GameVariant,
 } from "../shared/game/rules";
 import {
   getH2HExitAction,
@@ -302,6 +303,9 @@ export const App = ({
   const [subredditSettings, setSubredditSettings] = useState<SubredditSettings>(
     DEFAULT_SUBREDDIT_SETTINGS,
   );
+  const gameVariant: GameVariant = subredditSettings.tideMode
+    ? "tide"
+    : "standard";
   useEffect(() => {
     if (initState?.type === "init")
       setSubredditSettings(
@@ -377,7 +381,7 @@ export const App = ({
 
   const soloStartIntentKey = useMemo(
     () =>
-      createSoloStartIntentKey(
+      `${gameVariant}:${createSoloStartIntentKey(
         soloMode === "ranked"
           ? { mode: "ranked" }
           : {
@@ -386,8 +390,8 @@ export const App = ({
                 difficulty: selectedDifficulty,
               },
             },
-      ),
-    [selectedDifficulty, soloMode],
+      )}`,
+    [gameVariant, selectedDifficulty, soloMode],
   );
 
   const [status, setStatus] = useState<string>("");
@@ -1304,7 +1308,17 @@ export const App = ({
     };
 
     const loadStats = async (): Promise<UserStatsResponse> => {
-      const response = await fetch("/api/user/stats");
+      const settingsResponse = await fetch("/api/subreddit-settings");
+      const settingsPayload = (await settingsResponse
+        .json()
+        .catch(() => null)) as { settings?: unknown } | null;
+      const settings = validateSubredditSettings(settingsPayload?.settings);
+      if (!settingsResponse.ok || !settings)
+        throw new Error("Current game mode could not be refreshed.");
+      if (active) setSubredditSettings(settings);
+      const response = await fetch(
+        `/api/user/stats${settings.tideMode ? "?variant=tide" : ""}`,
+      );
       const payload = (await response.json().catch(() => null)) as
         | (UserStatsResponse & { message?: string })
         | null;
@@ -1407,6 +1421,8 @@ export const App = ({
   );
 
   /* ===== Rankings ===== */
+  const [rankingsVariant, setRankingsVariant] =
+    useState<GameVariant>("standard");
   const [rankings, setRankings] = useState<LoadedRankings>({
     hvh: [],
     hva: [],
@@ -1430,7 +1446,7 @@ export const App = ({
     setRankingsLoading(true);
     setRankingsError("");
     try {
-      const j = await fetchRankings(controller.signal);
+      const j = await fetchRankings(controller.signal, rankingsVariant);
       if (rankingsRequestRef.current !== request) return;
       setRankings(j);
       setRankingsLoaded(true);
@@ -1444,7 +1460,7 @@ export const App = ({
         rankingsAbortRef.current = null;
       }
     }
-  }, [cancelRankings]);
+  }, [cancelRankings, rankingsVariant]);
 
   useEffect(() => {
     if (initState?.type !== "init" || mode !== "rankings") return;
@@ -2175,7 +2191,7 @@ export const App = ({
     shareGeneratedPost({
       busyKey: `rankings:${bucket}`,
       endpoint: "/api/share/rankings",
-      payload: { bucket },
+      payload: { bucket, variant: rankingsVariant },
     });
 
   const shareMultiplayerWin = async () => {
@@ -2592,10 +2608,26 @@ export const App = ({
 
   /* ===== Rules and first-game tutorial ===== */
   const RulesOverlay = showRules ? (
-    <HowToPlayDialog variant="rules" onClose={() => setShowRules(false)} />
+    <HowToPlayDialog
+      variant="rules"
+      gameVariant={
+        mode === "ai" || mode === "multiplayer"
+          ? (board?.variant ?? gameVariant)
+          : gameVariant
+      }
+      onClose={() => setShowRules(false)}
+    />
   ) : null;
   const TutorialModal = showTutorial ? (
-    <HowToPlayDialog variant="tutorial" onClose={completeTutorial} />
+    <HowToPlayDialog
+      variant="tutorial"
+      gameVariant={
+        mode === "ai" || mode === "multiplayer"
+          ? (board?.variant ?? gameVariant)
+          : gameVariant
+      }
+      onClose={completeTutorial}
+    />
   ) : null;
 
   /* ===== Chat Input Overlay ===== */
@@ -2734,12 +2766,13 @@ export const App = ({
           playEuclidSubtitle={getPlayEuclidSubtitle(
             soloMode,
             selectedDifficulty,
+            gameVariant,
           )}
           records={getHomeRecordPresentations(homeStats)}
           soloContinuation={
             homeSolo ? getSoloContinuationPresentation(homeSolo) : null
           }
-          h2h={getH2HHomePresentation(homeH2H)}
+          h2h={getH2HHomePresentation(homeH2H, gameVariant)}
           loading={{
             presence: homePresenceLoading,
             solo: homeSoloLoading,
@@ -2750,6 +2783,7 @@ export const App = ({
           status={homeStatus}
           error={homeError}
           soloMode={soloMode}
+          tideMode={subredditSettings.tideMode}
           onSoloModeChange={setSoloMode}
           competitions={challengeAvailability?.competitions}
           competitionNow={challengeNow}
@@ -2828,6 +2862,15 @@ export const App = ({
   } else if (mode === "rankings") {
     content = (
       <RankingsScreen
+        variant={rankingsVariant}
+        onVariantChange={(variant) => {
+          if (variant === rankingsVariant) return;
+          cancelRankings();
+          setRankings({ hvh: [], hva: [] });
+          setRankingsLoaded(false);
+          setRankingsError("");
+          setRankingsVariant(variant);
+        }}
         rankings={rankings}
         loading={rankingsLoading}
         loaded={rankingsLoaded}
@@ -3875,7 +3918,10 @@ const SharedPostView: React.FC<{ share: SharedPostPayload }> = ({ share }) => {
         tabIndex={0}
       >
         <header className="shared-rankings__head">
-          <p className="eyebrow">r/{share.subredditName}</p>
+          <p className="eyebrow">
+            r/{share.subredditName}
+            {share.variant === "tide" ? " · Tide" : ""}
+          </p>
           <p className="muted">{share.subtitle}</p>
           <p className="field__hint">
             Top players right now · shared from Euclid on{" "}

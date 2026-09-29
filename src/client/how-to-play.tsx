@@ -8,6 +8,8 @@ import {
 } from "./ui/board-geometry";
 import { Dialog } from "./ui/Dialog";
 import "./how-to-play.css";
+import type { GameVariant } from "../shared/game/rules";
+import { TideRules } from "./tide-rules";
 
 interface LessonSquare {
   owner: Owner;
@@ -145,7 +147,13 @@ function LessonBoard({ lesson }: { lesson: Lesson }) {
  * Rules as illustrated lessons plus the finish condition. The strip
  * layout lays the lessons side by side for the home screen.
  */
-export function HowToPlay({ layout = "list" }: { layout?: "list" | "strip" }) {
+export function HowToPlay({
+  layout = "list",
+  gameVariant = "standard",
+}: {
+  layout?: "list" | "strip";
+  gameVariant?: GameVariant;
+}) {
   return (
     <div className={`how-to-play how-to-play--${layout}`}>
       <ol className="lessons">
@@ -162,10 +170,14 @@ export function HowToPlay({ layout = "list" }: { layout?: "list" | "strip" }) {
           </li>
         ))}
       </ol>
-      <p className="how-to-play__finish">
-        <strong>First to the target wins.</strong> If the board fills first, the
-        higher score wins.
-      </p>
+      {gameVariant === "tide" ? (
+        <TideRules className="how-to-play__finish" />
+      ) : (
+        <p className="how-to-play__finish">
+          <strong>First to the target wins.</strong> If the board fills first,
+          the higher score wins.
+        </p>
+      )}
     </div>
   );
 }
@@ -183,9 +195,11 @@ export function HowToPlaySummary() {
 export function HowToPlayDialog({
   variant,
   onClose,
+  gameVariant = "standard",
 }: {
   variant: "rules" | "tutorial";
   onClose: () => void;
+  gameVariant?: GameVariant;
 }) {
   const titleId = `euclid-${variant}-title`;
   return (
@@ -194,9 +208,11 @@ export function HowToPlayDialog({
         <p className="eyebrow">
           {variant === "tutorial" ? "Your first game" : "Rules"}
         </p>
-        <h2 id={titleId}>How to play Euclid</h2>
+        <h2 id={titleId}>
+          How to play Euclid{gameVariant === "tide" ? " Tide" : ""}
+        </h2>
       </div>
-      <HowToPlay />
+      <HowToPlay gameVariant={gameVariant} />
       <div className="dialog__actions">
         <button
           type="button"

@@ -49,7 +49,7 @@ export interface SquarePattern {
   readonly oblique: boolean;
 }
 
-/** Complete an integer edge with its clockwise quarter-turn, in legacy order. */
+/** Complete an integer edge with its clockwise quarter-turn. */
 export function squareFromEdge(
   width: number,
   height: number,

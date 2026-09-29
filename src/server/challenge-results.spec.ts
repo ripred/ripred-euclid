@@ -9,6 +9,7 @@ import {
 } from "./challenge-results";
 import { SUBREDDIT_SETTINGS_KEY } from "./subreddit-settings";
 import { MemoryRedis } from "./testing/memory-redis";
+import { DEFAULT_SUBREDDIT_SETTINGS } from "../shared/subreddit-settings";
 
 const winners: ChallengeSpotlights = {
   preview: true,
@@ -40,7 +41,11 @@ describe("public challenge spotlights", () => {
     redis.seed(CHALLENGE_RESULTS_KEY, JSON.stringify(mixed));
     redis.seed(
       SUBREDDIT_SETTINGS_KEY,
-      JSON.stringify({ dailyChallenges: true, weeklyChallenges: true }),
+      JSON.stringify({
+        ...DEFAULT_SUBREDDIT_SETTINGS,
+        dailyChallenges: true,
+        weeklyChallenges: true,
+      }),
     );
     expect(await publicChallengeSpotlights(redis)).toEqual(mixed);
   });
@@ -53,7 +58,10 @@ describe("public challenge spotlights", () => {
     const redis = new MemoryRedis();
     const stored = JSON.stringify(winners);
     redis.seed(CHALLENGE_RESULTS_KEY, stored);
-    redis.seed(SUBREDDIT_SETTINGS_KEY, JSON.stringify(settings));
+    redis.seed(
+      SUBREDDIT_SETTINGS_KEY,
+      JSON.stringify({ ...DEFAULT_SUBREDDIT_SETTINGS, ...settings }),
+    );
 
     expect(await publicChallengeSpotlights(redis)).toEqual({
       preview: true,
@@ -65,7 +73,11 @@ describe("public challenge spotlights", () => {
 
     redis.seed(
       SUBREDDIT_SETTINGS_KEY,
-      JSON.stringify({ dailyChallenges: true, weeklyChallenges: true }),
+      JSON.stringify({
+        ...DEFAULT_SUBREDDIT_SETTINGS,
+        dailyChallenges: true,
+        weeklyChallenges: true,
+      }),
     );
     expect(await publicChallengeSpotlights(redis)).toEqual(winners);
   });
@@ -90,7 +102,11 @@ describe("public challenge spotlights", () => {
     const redis = new MemoryRedis();
     redis.seed(
       SUBREDDIT_SETTINGS_KEY,
-      JSON.stringify({ dailyChallenges: true, weeklyChallenges: true }),
+      JSON.stringify({
+        ...DEFAULT_SUBREDDIT_SETTINGS,
+        dailyChallenges: true,
+        weeklyChallenges: true,
+      }),
     );
     expect(await publicChallengeSpotlights(redis)).toEqual(
       EMPTY_CHALLENGE_SPOTLIGHTS,

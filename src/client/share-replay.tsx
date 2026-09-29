@@ -104,7 +104,11 @@ export function ReplayBoardCard({
       <div className="replay__head">
         <div>
           <p className="eyebrow">
-            {isDemo ? "Teaching demo" : "Real game replay"}
+            {isDemo
+              ? "Teaching demo"
+              : board.variant === "tide"
+                ? "Tide replay"
+                : "Real game replay"}
           </p>
           <p className="replay__label">{replayLabel}</p>
         </div>
@@ -127,6 +131,8 @@ export function ReplayBoardCard({
           width={board.W}
           height={board.H}
           cells={currentFrame.board}
+          tide={currentFrame.tide}
+          ply={currentFrame.moveNumber}
           squares={squares}
           markers={markers}
           arrivingIndex={currentFrame.move?.index ?? null}

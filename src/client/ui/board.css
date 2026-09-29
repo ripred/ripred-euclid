@@ -359,3 +359,18 @@
   stroke-width: 0.05;
   stroke-linecap: round;
 }
+.board__piece[data-turns-left] {
+  transition: opacity 220ms ease;
+}
+.board__life {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 0.045;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+@media (prefers-reduced-motion: reduce) {
+  .board__piece[data-turns-left] {
+    transition: none;
+  }
+}

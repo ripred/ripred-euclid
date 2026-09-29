@@ -36,7 +36,10 @@ function isLiveGame(value: unknown): value is H2HLiveGameSummary {
     isCount(value.height) &&
     value.height > 0 &&
     isCount(value.winScore) &&
-    value.winScore > 0
+    value.winScore > 0 &&
+    (value.variant === undefined ||
+      value.variant === "standard" ||
+      value.variant === "tide")
   );
 }
 

@@ -34,7 +34,12 @@ import type {
   SoloShareRequest,
   UserStatsResponse,
 } from "../shared/types/api";
-import { type AiDifficulty } from "../shared/game/rules";
+import {
+  isGameVariant,
+  type GameVariant,
+  type AiDifficulty,
+  TIDE_MOVE_LIMIT,
+} from "../shared/game/rules";
 import {
   redis,
   reddit,
@@ -47,7 +52,7 @@ import { createPost } from "./core/post";
 import { H2HDomainError } from "./h2h";
 import { resolveH2HPresence } from "./h2h-presence";
 import { H2HStore, H2HStoreError, type H2HSettlementEvent } from "./h2h-store";
-import { H2HSettlementService } from "./h2h-settlement";
+import { H2HSettlementService, H2H_SETTLEMENT_KEYS } from "./h2h-settlement";
 import { RedisCasConflictExhaustedError } from "./redis-cas";
 import { SoloDomainError, rankedSoloSessionMetadata } from "./solo";
 import { SoloStore, SoloStoreError } from "./solo-store";
@@ -171,11 +176,6 @@ const userAvatars = new UserAvatars(redis, (username) =>
   reddit.getSnoovatarUrl(username),
 );
 
-// Legacy/H2H Elo. Trustworthy solo Ranked data uses the versioned SoloStore.
-const PLAYERS_KEY = () => "euclid:players:hvh";
-const OLD_ELOKEY = (uid: string) => `euclid:elo:${uid}`; // legacy (pre-bucket)
-const ELOKEY = (uid: string) => `euclid:elo:hvh:${uid}`;
-
 const SHARE_POST = (id: string) => `euclid:share:post:${id}`;
 const SHARE_RATE = (uid: string, kind: string) =>
   `euclid:share:last:${kind}:${uid}`;
@@ -183,7 +183,6 @@ const SHARE_RATE_MS = 10 * 1000;
 const HUMAN_VS_EUCLID_LABEL = "Redditor vs Euclid";
 const HUMAN_VS_HUMAN_LABEL = "Redditor vs Redditor";
 const LEADERBOARD_LABEL = "Leaderboard";
-const RANKED_SOLO_METADATA = rankedSoloSessionMetadata();
 
 /* ===== Metrics helpers ===== */
 const MSET = (name: string) => `euclid:metric:set:${name}`;
@@ -493,29 +492,29 @@ function parseEloRecord(raw: string | null | undefined): RatingRecord | null {
   }
 }
 
-async function getPlayers(): Promise<string[]> {
-  return readStringList(await redis.get(PLAYERS_KEY()));
+async function getPlayers(variant: GameVariant): Promise<string[]> {
+  return readStringList(
+    await redis.get(H2H_SETTLEMENT_KEYS.playersForVariant(variant)),
+  );
 }
-async function getElo(uid: string): Promise<RatingRecord> {
-  const current = parseEloRecord(await redis.get(ELOKEY(uid)));
+async function getElo(
+  uid: string,
+  variant: GameVariant,
+): Promise<RatingRecord> {
+  const current = parseEloRecord(
+    await redis.get(H2H_SETTLEMENT_KEYS.elo(uid, variant)),
+  );
   if (current) return current;
-
-  const legacy = await redis.get(OLD_ELOKEY(uid));
-  if (legacy) {
-    const parsed = parseEloRecord(legacy);
-    if (parsed) return parsed;
-    slog("[ELO] ignored malformed legacy record", { uid });
-  }
 
   return { ...DEFAULT_ELO };
 }
-async function getRankingRows(bucket: ShareBucket) {
-  if (bucket === "hva") return soloStore.getRankedRows();
+async function getRankingRows(bucket: ShareBucket, variant: GameVariant) {
+  if (bucket === "hva") return soloStore.getRankedRows(variant);
 
-  const ids = await getPlayers();
+  const ids = await getPlayers(variant);
   const rowsRaw = await Promise.all(
     ids.map(async (uid) => {
-      const rec = await getElo(uid);
+      const rec = await getElo(uid, variant);
       const [name, avatar] = await Promise.all([
         redis.get(NAMEKEY(uid)),
         redis.get(AVAKEY(uid)),
@@ -1090,8 +1089,11 @@ router.get("/api/games/list", async (_req, res) => {
   }
 });
 
-router.get("/api/user/stats", async (_req, res) => {
+router.get("/api/user/stats", async (req, res) => {
   try {
+    const variant = req.query.variant ?? "standard";
+    if (!isGameVariant(variant))
+      return res.status(400).json({ message: "Invalid game mode." });
     const uid = context.userId;
     if (!uid)
       return res
@@ -1099,8 +1101,8 @@ router.get("/api/user/stats", async (_req, res) => {
         .json({ status: "error", message: "userId missing" });
     await drainH2HSettlementsBestEffort("user stats");
     const [hvh, soloRating] = await Promise.all([
-      getElo(uid),
-      soloStore.getRankedRating(uid),
+      getElo(uid, variant),
+      soloStore.getRankedRating(uid, variant),
     ]);
     const hva: RatingRecord = {
       rating: soloRating.rating,
@@ -1109,7 +1111,7 @@ router.get("/api/user/stats", async (_req, res) => {
       losses: soloRating.losses,
       draws: soloRating.draws,
     };
-    const response: UserStatsResponse = { hvh, hva };
+    const response: UserStatsResponse = { hvh, hva, variant };
     res.json(response);
   } catch (error: unknown) {
     res.status(500).json({ status: "error", message: errorMessage(error) });
@@ -1234,14 +1236,22 @@ router.post("/api/metrics/ai-click", async (_req, res) => {
 /* =========================
    Rankings (both buckets) — exclude anonymous entries
    ========================= */
-router.get("/api/rankings", async (_req, res) => {
+router.get("/api/rankings", async (req, res) => {
   try {
+    const variant = req.query.variant ?? "standard";
+    if (!isGameVariant(variant))
+      return res.status(400).json({ message: "Invalid game mode." });
     await drainH2HSettlementsBestEffort("rankings");
     const [hvh, hva] = await Promise.all([
-      getRankingRows("hvh"),
-      getRankingRows("hva"),
+      getRankingRows("hvh", variant),
+      getRankingRows("hva", variant),
     ]);
-    res.json({ hvh, hva, hvaRules: RANKED_SOLO_METADATA });
+    res.json({
+      hvh,
+      hva,
+      variant,
+      hvaRules: rankedSoloSessionMetadata(variant),
+    });
   } catch (error: unknown) {
     console.error("[RANKINGS] error", error);
     res.status(500).json({ status: "error", message: errorMessage(error) });
@@ -1259,6 +1269,9 @@ router.post("/api/share/rankings", async (req, res) => {
       return res.status(401).json({ ok: false, message: "userId missing" });
 
     const { bucket } = (req.body || {}) as { bucket?: ShareBucket };
+    const variant: unknown = req.body?.variant ?? "standard";
+    if (!isGameVariant(variant))
+      return res.status(400).json({ message: "Invalid game mode." });
     if (bucket !== "hvh" && bucket !== "hva")
       return res
         .status(400)
@@ -1266,7 +1279,7 @@ router.post("/api/share/rankings", async (req, res) => {
 
     await drainH2HSettlementsBestEffort("share rankings");
     await enforceShareRateLimit(uid, `rankings:${bucket}`);
-    const rows = await getRankingRows(bucket);
+    const rows = await getRankingRows(bucket, variant);
     if (rows.length === 0)
       return res.status(409).json({
         ok: false,
@@ -1275,19 +1288,21 @@ router.post("/api/share/rankings", async (req, res) => {
 
     const sharedAt = nowISO();
     const subredditName = await getCurrentSubredditName();
+    const modeLabel = variant === "tide" ? "Tide " : "";
     const title =
       bucket === "hvh"
-        ? `Euclid ${LEADERBOARD_LABEL} — ${HUMAN_VS_HUMAN_LABEL} — ${formatShareDate()}`
-        : `Euclid ${LEADERBOARD_LABEL} — ${HUMAN_VS_EUCLID_LABEL} — ${formatShareDate()}`;
+        ? `Euclid ${modeLabel}${LEADERBOARD_LABEL} — ${HUMAN_VS_HUMAN_LABEL} — ${formatShareDate()}`
+        : `Euclid ${modeLabel}${LEADERBOARD_LABEL} — ${HUMAN_VS_EUCLID_LABEL} — ${formatShareDate()}`;
     const payload = await saveSharePayload({
       kind: "rankings",
       subredditName,
       sharedAt,
       bucket,
-      title: `Euclid ${LEADERBOARD_LABEL}`,
+      variant,
+      title: `Euclid ${modeLabel}${LEADERBOARD_LABEL}`,
       subtitle: `${bucket === "hvh" ? HUMAN_VS_HUMAN_LABEL : `${HUMAN_VS_EUCLID_LABEL} • Ranked`} • ${formatShareDate(sharedAt)}`,
       rows: rows.slice(0, 10),
-      ...(bucket === "hva" ? { solo: RANKED_SOLO_METADATA } : {}),
+      ...(bucket === "hva" ? { solo: rankedSoloSessionMetadata(variant) } : {}),
     });
     const { post, sharedAs } = await createCustomSharePost(title, payload);
     slog("[SHARE] rankings posted", { uid, bucket, postId: post.id, sharedAs });
@@ -1393,13 +1408,14 @@ router.post("/api/share/h2h-result", async (req, res) => {
       subredditName,
       sharedAt,
       mode: "h2h",
+      ...(board.variant === "tide" ? { variant: "tide" as const } : {}),
       title: `${winnerName} Wins!`,
-      subtitle: `${HUMAN_VS_HUMAN_LABEL} • ${formatShareDate(sharedAt)}`,
+      subtitle: `${board.variant === "tide" ? "Tide • " : ""}${HUMAN_VS_HUMAN_LABEL} • ${formatShareDate(sharedAt)}`,
       headline: `${winnerName} Wins!`,
       details: byForfeit
         ? `${winnerName} advanced after ${loserName} left the match.`
         : `Final score ${s1}-${s2}`,
-      footer: `First to ${boardForShare.winScore} points • Shared from r/${subredditName}`,
+      footer: `First to ${boardForShare.winScore} points${board.variant === "tide" ? ` or ${TIDE_MOVE_LIMIT} moves` : ""} • Shared from r/${subredditName}`,
       board: boardForShare,
       p1Name,
       p2Name,
@@ -1636,8 +1652,12 @@ router.get("/api/admin/metrics", async (_req, res) => {
 
     const activeGames = (await h2hStore.listLiveGames()).length;
     const rankedPlayers = {
-      hvh: (await getPlayers()).length,
-      hva: await soloStore.countRankedPlayers(),
+      hvh:
+        (await getPlayers("standard")).length +
+        (await getPlayers("tide")).length,
+      hva:
+        (await soloStore.countRankedPlayers("standard")) +
+        (await soloStore.countRankedPlayers("tide")),
     };
 
     res.json({

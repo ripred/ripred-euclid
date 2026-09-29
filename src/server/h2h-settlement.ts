@@ -9,7 +9,6 @@ import {
 } from "./h2h-store";
 import {
   commitRedisCasWrites as commitOrNoChange,
-  deleteRedisCasWrite as deleteWrite,
   redisMultiCas,
   setRedisCasWrite as setWrite,
   type RedisCasClient,
@@ -18,18 +17,22 @@ import {
 } from "./redis-cas";
 import { asCount, isRecord, isStringArray } from "../shared/guards";
 import { parseJson, uniqueStrings } from "./stored-json";
+import type { GameVariant } from "../shared/game/rules";
 
 const ELO_START = 1_200;
 const ELO_K = 32;
 const RECEIPT_VERSION = 1;
 const DEFAULT_DRAIN_LIMIT = 8;
 const DEFAULT_MAX_DRAIN_LIMIT = 100;
+const H2H_PLAYERS_KEY = "euclid:players:hvh";
 
 export const H2H_SETTLEMENT_KEYS = Object.freeze({
   receipt: (eventId: string) => `euclid:h2h:settlement:done:${eventId}`,
-  elo: (userId: string) => `euclid:elo:hvh:${userId}`,
-  legacyElo: (userId: string) => `euclid:elo:${userId}`,
-  players: "euclid:players:hvh",
+  elo: (userId: string, variant: GameVariant = "standard") =>
+    `euclid:elo:hvh:${variant === "tide" ? "tide:" : ""}${userId}`,
+  players: H2H_PLAYERS_KEY,
+  playersForVariant: (variant: GameVariant = "standard") =>
+    `${H2H_PLAYERS_KEY}${variant === "tide" ? ":tide" : ""}`,
   completedUsers: "euclid:metric:set:h2h_completed_users",
   gameOverCount: "euclid:metric:count:h2h_game_over_count",
   playerLeftCount: "euclid:metric:count:h2h_player_left_count",
@@ -139,14 +142,10 @@ function parseElo(raw: string | undefined, field: string): H2HEloRecord | null {
 
 function effectiveElo(
   currentRaw: string | undefined,
-  legacyRaw: string | undefined,
   field: string,
 ): H2HEloRecord {
-  const current = parseElo(currentRaw, field);
-  if (current) return current;
-  const legacy = parseElo(legacyRaw, `${field} legacy record`);
   return (
-    legacy ?? {
+    parseElo(currentRaw, field) ?? {
       rating: ELO_START,
       games: 0,
       wins: 0,
@@ -270,11 +269,11 @@ export class H2HSettlementService {
     const event = normalizeH2HSettlementEvent(eventInput);
     const fingerprint = h2hSettlementFingerprint(event);
     const [firstId, secondId] = event.playerIds;
+    const variant = event.variant ?? "standard";
     const receiptKey = H2H_SETTLEMENT_KEYS.receipt(event.eventId);
-    const firstEloKey = H2H_SETTLEMENT_KEYS.elo(firstId);
-    const secondEloKey = H2H_SETTLEMENT_KEYS.elo(secondId);
-    const firstLegacyKey = H2H_SETTLEMENT_KEYS.legacyElo(firstId);
-    const secondLegacyKey = H2H_SETTLEMENT_KEYS.legacyElo(secondId);
+    const firstEloKey = H2H_SETTLEMENT_KEYS.elo(firstId, variant);
+    const secondEloKey = H2H_SETTLEMENT_KEYS.elo(secondId, variant);
+    const playersKey = H2H_SETTLEMENT_KEYS.playersForVariant(variant);
     const terminalCountKey =
       event.endedReason === "player_left"
         ? H2H_SETTLEMENT_KEYS.playerLeftCount
@@ -296,9 +295,7 @@ export class H2HSettlementService {
         receiptKey,
         firstEloKey,
         secondEloKey,
-        firstLegacyKey,
-        secondLegacyKey,
-        H2H_SETTLEMENT_KEYS.players,
+        playersKey,
         H2H_SETTLEMENT_KEYS.completedUsers,
         terminalCountKey,
         dailyKey,
@@ -359,12 +356,10 @@ export class H2HSettlementService {
 
         const first = effectiveElo(
           snapshot.get(firstEloKey),
-          snapshot.get(firstLegacyKey),
           `Elo record for ${firstId}`,
         );
         const second = effectiveElo(
           snapshot.get(secondEloKey),
-          snapshot.get(secondLegacyKey),
           `Elo record for ${secondId}`,
         );
         const [nextFirst, nextSecond] = updateEloPair(
@@ -373,7 +368,7 @@ export class H2HSettlementService {
           event.resultForFirst,
         );
         const players = parseStringSet(
-          snapshot.get(H2H_SETTLEMENT_KEYS.players),
+          snapshot.get(playersKey),
           "H2H player index",
         );
         const completedUsers = parseStringSet(
@@ -406,15 +401,9 @@ export class H2HSettlementService {
         setWrite(writes, receiptKey, JSON.stringify(receipt));
         setWrite(writes, firstEloKey, JSON.stringify(nextFirst));
         setWrite(writes, secondEloKey, JSON.stringify(nextSecond));
-        if (snapshot.get(firstLegacyKey) !== undefined) {
-          deleteWrite(writes, firstLegacyKey);
-        }
-        if (snapshot.get(secondLegacyKey) !== undefined) {
-          deleteWrite(writes, secondLegacyKey);
-        }
         setWrite(
           writes,
-          H2H_SETTLEMENT_KEYS.players,
+          playersKey,
           JSON.stringify([...new Set([...players, firstId, secondId])]),
         );
         setWrite(

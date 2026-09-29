@@ -1,4 +1,7 @@
 import { useId, type ReactNode } from "react";
+import type { SerializableBoard } from "../../shared/types/api";
+import { TIDE_STONE_LIFETIME } from "../../shared/game/rules";
+import { tidePieceState } from "../tide";
 
 import {
   BOARD_BLEED,
@@ -88,6 +91,7 @@ function PieceShape({
   ids,
   className = "",
   order,
+  life,
 }: {
   owner: Owner;
   x: number;
@@ -96,6 +100,7 @@ function PieceShape({
   className?: string;
   /** Place among the board's pieces, for staggered entrances. */
   order?: number;
+  life?: ReturnType<typeof tidePieceState>;
 }) {
   const r = PIECE_RADIUS;
   const glossX = x - r * 0.28;
@@ -103,7 +108,12 @@ function PieceShape({
   return (
     <g
       className={`board__piece board__piece--${owner} ${className}`}
-      style={order === undefined ? undefined : staggerStyle(order)}
+      data-anchored={life?.anchored || undefined}
+      data-turns-left={life && !life.anchored ? life.turns : undefined}
+      style={{
+        ...(order === undefined ? {} : staggerStyle(order)),
+        ...(life ? { opacity: life.opacity } : {}),
+      }}
     >
       <circle
         className="board__piece-shadow"
@@ -136,6 +146,17 @@ function PieceShape({
           transform={`rotate(-24 ${glossX} ${glossY})`}
         />
       </g>
+      {life && !life.anchored ? (
+        <circle
+          className="board__life"
+          cx={x}
+          cy={y}
+          r={r + 0.055}
+          pathLength={1}
+          strokeDasharray={`${life.remaining / TIDE_STONE_LIFETIME} 1`}
+          transform={`rotate(-90 ${x} ${y})`}
+        />
+      ) : null}
     </g>
   );
 }
@@ -197,6 +218,8 @@ export interface BoardDiagramProps {
   width: number;
   height: number;
   cells: ArrayLike<number>;
+  tide?: SerializableBoard["tide"] | undefined;
+  ply?: number;
   blockedPoints?: readonly number[];
   squares?: readonly BoardSquareShape[];
   footprints?: readonly BoardFootprint[];
@@ -223,6 +246,8 @@ export function BoardDiagram({
   width,
   height,
   cells,
+  tide,
+  ply = 0,
   blockedPoints = [],
   squares = [],
   footprints = [],
@@ -391,6 +416,7 @@ export function BoardDiagram({
             y={centre(Math.floor(index / width))}
             ids={ids}
             order={order}
+            life={tidePieceState(tide, index, ply)}
             className={index === arrivingIndex ? "board__piece--arriving" : ""}
           />
         ))}

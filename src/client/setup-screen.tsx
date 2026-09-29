@@ -17,6 +17,7 @@ import { BoardDiagram } from "./ui/BoardDiagram";
 import { boardAspectRatio } from "./ui/board-geometry";
 import { PageShell } from "./ui/PageShell";
 import "./setup-screen.css";
+import { TideRules } from "./tide-rules";
 
 export interface SetupScreenProps {
   soloMode: SoloMode;
@@ -168,9 +169,25 @@ export function SetupScreen(props: SetupScreenProps) {
                 </div>
               </div>
 
+              {props.settings.tideMode && (
+                <div>
+                  <p className="field__hint">
+                    <strong>
+                      Tide is on for all new games in this subreddit.
+                    </strong>
+                  </p>
+                  <TideRules />
+                </div>
+              )}
+
               {ranked ? (
                 <div className="setup-ranked">
-                  <RulesPreview label={rulesSummary(RANKED_SOLO_RULES)} />
+                  <RulesPreview
+                    label={rulesSummary({
+                      ...RANKED_SOLO_RULES,
+                      variant: props.settings.tideMode ? "tide" : "standard",
+                    })}
+                  />
                   <div className="setup-ranked__copy">
                     <p>
                       Ranked uses one comparable preset, so every rating is

@@ -164,9 +164,13 @@ export function shouldAdoptH2HState(
   incomingGameId: string | null | undefined,
   incomingRevision: number | null | undefined,
 ): boolean {
-  if (!activeGameId) return false;
-  if (incomingGameId && incomingGameId !== activeGameId) return false;
-  return incomingRevision == null || incomingRevision >= currentRevision;
+  return (
+    Boolean(activeGameId) &&
+    incomingGameId === activeGameId &&
+    typeof incomingRevision === "number" &&
+    Number.isSafeInteger(incomingRevision) &&
+    incomingRevision >= currentRevision
+  );
 }
 
 /** Fit the rendered board area; minimum-sized cells can overflow into scrolling. */

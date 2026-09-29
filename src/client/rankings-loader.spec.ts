@@ -31,6 +31,24 @@ const row: RankingsShareRow = {
 };
 
 describe("live rankings requests", () => {
+  it("requests and retains the separate Tide leaderboard", async () => {
+    fetchMock.mockResolvedValue(response({ variant: "tide", hvh: [row] }));
+    await expect(fetchRankings(undefined, "tide")).resolves.toEqual({
+      variant: "tide",
+      hvh: [row],
+      hva: [],
+    });
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
+      "/api/rankings?variant=tide",
+      { signal: null },
+    );
+  });
+  it("rejects a leaderboard returned for the wrong mode", async () => {
+    fetchMock.mockResolvedValue(response({ variant: "standard", hvh: [row] }));
+    await expect(fetchRankings(undefined, "tide")).rejects.toThrow(
+      "could not be read",
+    );
+  });
   it("preserves the local fixture marker so sample results cannot be mistaken for live rankings", async () => {
     fetchMock.mockResolvedValue(response({ hvh: [row], preview: true }));
     await expect(fetchRankings()).resolves.toEqual({

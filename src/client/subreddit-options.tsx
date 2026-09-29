@@ -7,6 +7,7 @@ import { errorMessage } from "../shared/error-message";
 import { fetchJsonRecord, JsonRequestError } from "./fetch-json";
 import type { SetupScreenProps } from "./setup-screen";
 import { Switch } from "./ui/Switch";
+import { TideRules } from "./tide-rules";
 
 export function SubredditOptions({
   settings,
@@ -115,6 +116,19 @@ export function SubredditOptions({
       className="panel options__subreddit"
       aria-label="Subreddit options"
     >
+      <fieldset disabled={loading || saving || !loaded}>
+        <legend>Game mode</legend>
+        <Switch
+          label="Tide mode"
+          hint="Use Tide for every new Practice, Ranked, and Redditor game. Games already in progress keep their rules."
+          checked={settings.tideMode}
+          onChange={(enabled) => void save("tideMode", enabled)}
+        />
+        <TideRules />
+        <p className="field__hint">
+          Tide ratings and leaderboards are separate from Standard.
+        </p>
+      </fieldset>
       <fieldset disabled={loading || saving || !loaded}>
         <legend>Challenge visibility</legend>
         <p className="field__hint">

@@ -2,6 +2,7 @@ import { isRecord } from "./guards";
 
 /** Subreddit-wide moderator settings. Disabled competitions are hidden. */
 export interface SubredditSettings {
+  tideMode: boolean;
   dailyChallenges: boolean;
   weeklyChallenges: boolean;
   challengeApplyTiming: "immediately" | "next-start";
@@ -9,13 +10,14 @@ export interface SubredditSettings {
 }
 export const DEFAULT_SUBREDDIT_SETTINGS: Readonly<SubredditSettings> =
   Object.freeze({
+    tideMode: false,
     dailyChallenges: false,
     weeklyChallenges: false,
     challengeApplyTiming: "next-start",
     showLiveChallengeStandings: true,
   });
 
-/** Accept legacy two-switch records without dropping their saved choices. */
+/** Validate moderator choices and supply defaults for newly added settings. */
 export function validateSubredditSettings(
   value: unknown,
 ): SubredditSettings | null {
@@ -27,17 +29,17 @@ export function validateSubredditSettings(
     ) ||
     typeof value.dailyChallenges !== "boolean" ||
     typeof value.weeklyChallenges !== "boolean" ||
-    (value.challengeApplyTiming !== undefined &&
-      value.challengeApplyTiming !== "immediately" &&
+    (value.tideMode !== undefined && typeof value.tideMode !== "boolean") ||
+    (value.challengeApplyTiming !== "immediately" &&
       value.challengeApplyTiming !== "next-start") ||
-    (value.showLiveChallengeStandings !== undefined &&
-      typeof value.showLiveChallengeStandings !== "boolean")
+    typeof value.showLiveChallengeStandings !== "boolean"
   )
     return null;
   return {
+    tideMode: value.tideMode ?? false,
     dailyChallenges: value.dailyChallenges,
     weeklyChallenges: value.weeklyChallenges,
-    challengeApplyTiming: value.challengeApplyTiming ?? "next-start",
-    showLiveChallengeStandings: value.showLiveChallengeStandings ?? true,
+    challengeApplyTiming: value.challengeApplyTiming,
+    showLiveChallengeStandings: value.showLiveChallengeStandings,
   };
 }

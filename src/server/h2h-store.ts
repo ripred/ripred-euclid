@@ -34,11 +34,10 @@ import {
 } from "./redis-cas";
 import { asCount, isCount, isNonBlankString, isRecord } from "../shared/guards";
 import { parseJson, readStringList, uniqueStrings } from "./stored-json";
+import { isGameVariant, type GameVariant } from "../shared/game/rules";
+import { validateSubredditSettings } from "../shared/subreddit-settings";
+import { SUBREDDIT_SETTINGS_KEY } from "./subreddit-settings";
 
-/*
- * Match keys live under a versioned namespace; games saved in the earlier,
- * unversioned keys are no longer read. Ratings live elsewhere and carry over.
- */
 const H2H_GAMES = "euclid:h2h:v2";
 
 export const H2H_STORE_KEYS = Object.freeze({
@@ -160,6 +159,8 @@ export type H2HSettlementEvent = {
   endedReason: H2HSettlementEndReason;
   endedBy: string | null;
   endedAt: number;
+  /** Standard uses the default rating bucket. */
+  variant?: GameVariant;
 };
 
 export class H2HSettlementDataError extends Error {
@@ -286,16 +287,9 @@ function archiveTerminalBoard(
   }
 }
 
-function monotonicTimestamp(
-  candidate: number,
-  floor: number | undefined,
-): number {
+function monotonicTimestamp(candidate: number, floor: number): number {
   // Preserve invalid candidates so the domain remains the validation authority.
-  if (
-    !Number.isSafeInteger(candidate) ||
-    candidate < 0 ||
-    floor === undefined
-  ) {
+  if (!Number.isSafeInteger(candidate) || candidate < 0) {
     return candidate;
   }
   return Math.max(candidate, floor);
@@ -334,6 +328,11 @@ export function normalizeH2HSettlementEvent(
   if (value.version !== H2H_SETTLEMENT_EVENT_VERSION) {
     throw new H2HSettlementDataError(
       "A pending settlement has an unsupported version.",
+    );
+  }
+  if (value.variant !== undefined && !isGameVariant(value.variant)) {
+    throw new H2HSettlementDataError(
+      "A pending settlement has an invalid variant.",
     );
   }
 
@@ -421,6 +420,7 @@ export function normalizeH2HSettlementEvent(
     endedReason,
     endedBy,
     endedAt: requireSettlementInteger(value.endedAt, "endedAt"),
+    ...(value.variant === "tide" ? { variant: "tide" as const } : {}),
   };
 }
 
@@ -508,11 +508,6 @@ export function createH2HSettlementEvent(
     );
   }
   const endedAt = state.board.lastSaved;
-  if (endedAt === undefined) {
-    throw new H2HSettlementDataError(
-      "A terminal state must have a persisted completion timestamp.",
-    );
-  }
 
   return normalizeH2HSettlementEvent({
     version: H2H_SETTLEMENT_EVENT_VERSION,
@@ -527,7 +522,16 @@ export function createH2HSettlementEvent(
     endedReason,
     endedBy: state.endedBy,
     endedAt,
+    ...(state.board.variant === "tide" ? { variant: "tide" } : {}),
   });
+}
+
+function newGameVariant(snapshot: RedisCasSnapshot): GameVariant {
+  return validateSubredditSettings(
+    parseJson(snapshot.get(SUBREDDIT_SETTINGS_KEY)),
+  )?.tideMode
+    ? "tide"
+    : "standard";
 }
 
 function appendSettlementEvent(
@@ -581,7 +585,7 @@ function isStale(
   maxIdleMs: number,
 ): boolean {
   const timestamp = state.board.turnStartedAt;
-  return timestamp !== undefined && now - timestamp >= maxIdleMs;
+  return now - timestamp >= maxIdleMs;
 }
 
 class TurnExpired extends Error {
@@ -831,24 +835,10 @@ export class H2HStore {
     requireIdentifier(gameId, "gameId");
     requireRevision(terminalRevision);
     const resultKey = H2H_STORE_KEYS.result(gameId, terminalRevision);
-    const readArchive = async (): Promise<H2HCanonicalStateSnapshot | null> => {
-      const archived = await this.redis.get(resultKey);
-      if (!archived) return null;
-      const state = createH2HCanonicalState(gameId, parseJson(archived));
-      return state.ended && state.revision === terminalRevision ? state : null;
-    };
-    const archived = await readArchive();
-    if (archived) return archived;
-
-    // Legacy completed games predate round archives. They remain shareable
-    // while the requested terminal revision is still the current game record.
-    const current = await this.getState(gameId);
-    if (current?.ended && current.revision === terminalRevision) return current;
-
-    // A rematch can atomically create the archive and replace the current game
-    // between the two reads above. Re-read the archive before reporting that
-    // the requested completed round does not exist.
-    return readArchive();
+    const archived = await this.redis.get(resultKey);
+    if (!archived) return null;
+    const state = createH2HCanonicalState(gameId, parseJson(archived));
+    return state.ended && state.revision === terminalRevision ? state : null;
   }
 
   async cancelQueue(userId: string): Promise<{ removed: boolean }> {
@@ -1019,7 +1009,7 @@ export class H2HStore {
           (player) => player.userId,
         );
         if (!currentPlayerIds.includes(userId)) {
-          // Heal an inconsistent legacy mapping without allowing it to mutate
+          // Heal an inconsistent mapping without allowing it to mutate
           // the real participants' game, even when the request is stale.
           deleteWrite(writes, mappingKey);
           return decision(writes, {
@@ -1044,7 +1034,7 @@ export class H2HStore {
             state.revision === request.expectedRevision + 1 &&
             !state.ended &&
             state.board.m_history.length === 0 &&
-            (state.board.chat?.seq ?? 0) === 0 &&
+            state.board.chat.seq === 0 &&
             actualMappingKeys.every((key) =>
               participantMappingKeys.includes(key),
             ) &&
@@ -1169,6 +1159,7 @@ export class H2HStore {
         [
           gameKey,
           resultKey,
+          SUBREDDIT_SETTINGS_KEY,
           H2H_STORE_KEYS.activeGames,
           ...mappingKeys,
           ...discoveredPlayers.map(H2H_STORE_KEYS.creationBudget),
@@ -1245,9 +1236,16 @@ export class H2HStore {
             userId,
             gameId,
             now,
+            newGameVariant(snapshot),
           );
           const writes = new Map<string, RedisCasWrite>();
           chargeRoundCreation(snapshot, writes, actualPlayers, this.now());
+          if (snapshot.get(resultKey) === undefined) {
+            throw new H2HStoreError(
+              "result_conflict",
+              "The completed round archive is missing.",
+            );
+          }
           archiveTerminalBoard(
             writes,
             snapshot,
@@ -1327,10 +1325,7 @@ export class H2HStore {
       if (state.board.m_players.some((player) => player.userId === userId)) {
         this.requireUnexpiredTurn(state);
       }
-      const effectiveTimestamp = monotonicTimestamp(
-        now,
-        state.board.lastSaved ?? state.board.createdAt,
-      );
+      const effectiveTimestamp = monotonicTimestamp(now, state.board.lastSaved);
       const result = appendH2HChat(
         state.board,
         userId,
@@ -1480,7 +1475,7 @@ export class H2HStore {
               state.board,
               state.board.m_players[state.board.m_turn].userId,
               gameId,
-              Math.max(now, state.board.lastSaved ?? now),
+              Math.max(now, state.board.lastSaved),
             );
             writeTerminalResult(snapshot, writes, ended);
             return decision(writes, {
@@ -1556,16 +1551,17 @@ export class H2HStore {
           state.board.m_players[0].userId,
           state.board.m_players[1].userId,
         ],
-        names: { ...(state.board.playerNames ?? {}) },
+        names: { ...state.board.playerNames },
         scores: [
           state.board.m_players[0].m_score,
           state.board.m_players[1].m_score,
         ],
-        lastSaved: state.board.lastSaved ?? 0,
+        lastSaved: state.board.lastSaved,
         revision: state.revision,
         width: state.board.W,
         height: state.board.H,
         winScore: state.board.winScore,
+        ...(state.board.variant === "tide" ? { variant: "tide" as const } : {}),
       });
     }
 
@@ -1605,6 +1601,7 @@ export class H2HStore {
       watchedGameKeys,
       watchKeys: uniqueStrings([
         H2H_STORE_KEYS.queue,
+        SUBREDDIT_SETTINGS_KEY,
         H2H_STORE_KEYS.activeGames,
         ...userIds.map(H2H_STORE_KEYS.creationBudget),
         ...watchedMappingKeys,
@@ -1739,7 +1736,10 @@ export class H2HStore {
       if (snapshot.get(gameKey) !== undefined) {
         return { action: "no-change", result: { status: "retry" } };
       }
-      const board = createInitialH2HBoard(playerOneId, playerTwoId, { now });
+      const board = createInitialH2HBoard(playerOneId, playerTwoId, {
+        now,
+        variant: newGameVariant(snapshot),
+      });
       chargeRoundCreation(snapshot, writes, [playerOneId, playerTwoId], now);
       const state = createH2HCanonicalState(discovery.proposedGameId, board);
       createdPair = {

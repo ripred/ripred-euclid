@@ -156,9 +156,19 @@ export function createServer(app) {
       identity.run({}, () => app(req, res));
       return;
     }
-    if (req.method === "GET" && url.pathname === "/api/rankings") {
+    if (
+      process.env.EUCLID_SAMPLE_RANKINGS !== "0" &&
+      req.method === "GET" &&
+      url.pathname === "/api/rankings"
+    ) {
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify(MOCK_RANKINGS));
+      res.end(
+        JSON.stringify({
+          ...MOCK_RANKINGS,
+          variant:
+            url.searchParams.get("variant") === "tide" ? "tide" : "standard",
+        }),
+      );
       return;
     }
     if (url.pathname === "/__local/brand-asset" && req.method === "POST") {

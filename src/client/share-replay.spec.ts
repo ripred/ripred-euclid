@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { Board, Player } from "../shared/game/engine";
 
 import {
   SOLO_RULES_VERSION,
@@ -75,7 +76,7 @@ describe("shared game replay orientation", () => {
     expect(frames.at(-1)?.board).toEqual(board.m_board);
   });
 
-  it("retains the player-one-first fallback for legacy share payloads", () => {
+  it("starts a Redditor match replay with player one", () => {
     const board = replayFixture(false);
     const frames = buildReplayFrames(board);
 
@@ -84,5 +85,22 @@ describe("shared game replay orientation", () => {
       1, 2, 1,
     ]);
     expect(frames.at(-1)?.board).toEqual(board.m_board);
+  });
+
+  it("replays Standard scoring with the same move sequence as the game", () => {
+    const board = new Board(new Player(), new Player(), { rng: () => 0 });
+    for (const index of [0, 20, 1, 22, 8, 25, 9, 27]) {
+      board.placePiece(board.pointAt(index % 8, Math.floor(index / 8)));
+      board.advanceTurn();
+    }
+    const frames = buildReplayFrames(board.toJSON());
+
+    expect(frames).toHaveLength(9);
+    expect(frames[6]?.scores).toEqual([0, 0]);
+    expect(frames[7]?.newSquares).toHaveLength(1);
+    expect(frames[7]?.newSquares[0]).toMatchObject({ owner: 1, points: 4 });
+    expect(frames.at(-1)?.scores).toEqual([4, 0]);
+    expect(frames.at(-1)?.board).toEqual(board.m_board);
+    expect(frames.at(-1)?.tide).toBeUndefined();
   });
 });

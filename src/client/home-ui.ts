@@ -3,6 +3,7 @@ import {
   RANKED_SOLO_RULES,
   type AiDifficulty,
   type SoloMode,
+  type GameVariant,
 } from "../shared/game/rules";
 import type {
   H2HMappingResponse,
@@ -12,7 +13,11 @@ import type {
 } from "../shared/types/api";
 import { rulesSummary } from "./format";
 
-export type HomeRecordLabel = "Euclid Ranked" | "Redditor Matches";
+export type HomeRecordLabel =
+  | "Euclid Ranked"
+  | "Redditor Matches"
+  | "Tide Euclid Ranked"
+  | "Tide Redditor Matches";
 
 /** Keeps every Home exit surface aligned with queue and request locking. */
 export function shouldLockHomeNavigation(
@@ -108,8 +113,14 @@ export function getHomeRecordPresentations(
   stats: UserStatsResponse | null,
 ): [CompetitiveRecordPresentation, CompetitiveRecordPresentation] {
   return [
-    formatCompetitiveRecord("Euclid Ranked", stats?.hva ?? null),
-    formatCompetitiveRecord("Redditor Matches", stats?.hvh ?? null),
+    formatCompetitiveRecord(
+      stats?.variant === "tide" ? "Tide Euclid Ranked" : "Euclid Ranked",
+      stats?.hva ?? null,
+    ),
+    formatCompetitiveRecord(
+      stats?.variant === "tide" ? "Tide Redditor Matches" : "Redditor Matches",
+      stats?.hvh ?? null,
+    ),
   ];
 }
 
@@ -117,10 +128,14 @@ export function getHomeRecordPresentations(
 export function getPlayEuclidSubtitle(
   mode: SoloMode,
   difficulty: AiDifficulty,
+  variant: GameVariant = "standard",
 ): string {
-  return mode === "ranked"
-    ? `Ranked · ${AI_DIFFICULTY_LABELS[RANKED_SOLO_RULES.difficulty]} · fixed rules · rating on the line`
-    : `Practice · ${AI_DIFFICULTY_LABELS[difficulty]} · no rating changes`;
+  return (
+    (variant === "tide" ? "Tide · " : "") +
+    (mode === "ranked"
+      ? `Ranked · ${AI_DIFFICULTY_LABELS[RANKED_SOLO_RULES.difficulty]} · fixed rules · rating on the line`
+      : `Practice · ${AI_DIFFICULTY_LABELS[difficulty]} · no rating changes`)
+  );
 }
 
 /** Builds resume copy from a canonical solo snapshot, including player orientation. */
@@ -195,12 +210,13 @@ function getEndedH2HDetail(
  */
 export function getH2HHomePresentation(
   mapping: H2HMappingResponse,
+  variant: GameVariant = "standard",
 ): H2HHomePresentation {
   if (mapping.state === "idle") {
     return {
       state: "idle",
       title: "Play a Redditor",
-      detail: "Start a live match with another redditor.",
+      detail: `${variant === "tide" ? "Tide · " : ""}Start a live match with another redditor.`,
       actionLabel: "Find a match",
     };
   }
@@ -224,11 +240,13 @@ export function getH2HHomePresentation(
     state: "active",
     ended,
     title: ended ? "Review Redditor match" : "Continue Redditor match",
-    detail: ended
-      ? getEndedH2HDetail(mapping, opponentName)
-      : mapping.board.m_turn === localIndex
-        ? `Your turn against ${opponentName}`
-        : `Waiting for ${opponentName}`,
+    detail:
+      (mapping.board.variant === "tide" ? "Tide · " : "") +
+      (ended
+        ? getEndedH2HDetail(mapping, opponentName)
+        : mapping.board.m_turn === localIndex
+          ? `Your turn against ${opponentName}`
+          : `Waiting for ${opponentName}`),
     score: `You ${localScore} · ${opponentName} ${opponentScore}`,
     opponentName,
     actionLabel: ended ? "Review result" : "Continue",

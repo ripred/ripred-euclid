@@ -14,9 +14,11 @@ import type {
 } from "../shared/types/api";
 import {
   AI_DIFFICULTY_LABELS,
+  TIDE_MOVE_LIMIT,
   playerColorForIndex,
   type AiDifficulty,
   type GameOutcome,
+  type GameVariant,
   type PracticeRules,
   type RankedSoloRules,
   type SoloRules,
@@ -63,8 +65,12 @@ import {
   isStringArray,
 } from "../shared/guards";
 import { parseJson as parseStoredJson, uniqueStrings } from "./stored-json";
+import {
+  DEFAULT_SUBREDDIT_SETTINGS,
+  validateSubredditSettings,
+} from "../shared/subreddit-settings";
+import { SUBREDDIT_SETTINGS_KEY } from "./subreddit-settings";
 
-/** Version 2 records carry boards without the retired scoring field. */
 export const SOLO_STORE_SCHEMA_VERSION = 2 as const;
 export const SOLO_RATING_SCHEMA_VERSION = 1 as const;
 export const SOLO_RANKED_START_RATING = 1_200;
@@ -77,15 +83,9 @@ const MAX_FAILURE_MESSAGE_LENGTH = 1_000;
 const metricSet = (name: string) => `euclid:metric:set:${name}`;
 const metricCount = (name: string) => `euclid:metric:count:${name}`;
 
-/* Games and their command receipts; games saved under v1 are no longer read. */
 const SOLO_GAMES = "euclid:solo:v2";
 
-/**
- * Versioned canonical solo keys. The old `euclid:elo:hva:*`,
- * `euclid:players:hva`, and `euclid:solo:last:*` namespaces are intentionally
- * absent so legacy client-claimed results cannot enter the Ranked table.
- * Ratings keep their v1 keys and carry over.
- */
+/** Canonical sessions, command receipts, and isolated Ranked rating tables. */
 export const SOLO_STORE_KEYS = Object.freeze({
   game: (gameId: string) => `${SOLO_GAMES}:game:${gameId}`,
   activeRanked: (userId: string) => `${SOLO_GAMES}:ranked:active:${userId}`,
@@ -96,8 +96,15 @@ export const SOLO_STORE_KEYS = Object.freeze({
   abandon: (gameId: string, commandHash: string) =>
     `${SOLO_GAMES}:abandon:${gameId}:${commandHash}`,
   result: (gameId: string) => `${SOLO_GAMES}:result:${gameId}`,
-  rankedRating: (userId: string) => `euclid:solo:v1:ranked:r1:elo:${userId}`,
+  rankedRating: (userId: string, variant: GameVariant = "standard") =>
+    variant === "tide"
+      ? `euclid:solo:v1:ranked:tide:r1:elo:${userId}`
+      : `euclid:solo:v1:ranked:r1:elo:${userId}`,
   rankedPlayers: "euclid:solo:v1:ranked:r1:players",
+  rankedPlayersFor: (variant: GameVariant = "standard") =>
+    variant === "tide"
+      ? "euclid:solo:v1:ranked:tide:r1:players"
+      : "euclid:solo:v1:ranked:r1:players",
   share: (gameId: string) => `${SOLO_GAMES}:share:${gameId}`,
   sharedPost: (shareId: string) => `euclid:share:post:${shareId}`,
   profileName: (userId: string) => `euclid:name:${userId}`,
@@ -765,7 +772,8 @@ function writeCompletionMetrics(
 
 function describeRules(rules: SoloRules): string {
   const mode = rules.mode === "ranked" ? "Ranked" : "Practice";
-  return `${mode} · First to ${rules.winScore} · ${AI_DIFFICULTY_LABELS[rules.difficulty]}`;
+  const variant = rules.variant === "tide" ? "Tide · " : "";
+  return `${variant}${mode} · First to ${rules.winScore} · ${AI_DIFFICULTY_LABELS[rules.difficulty]}`;
 }
 
 function buildSharePayload(
@@ -782,6 +790,7 @@ function buildSharePayload(
   const humanIsFirst = result.rules.humanPlayer === 0;
   return {
     kind: "result",
+    ...(result.rules.variant === "tide" ? { variant: "tide" } : {}),
     shareId,
     subredditName: input.subredditName,
     sharedAt,
@@ -790,7 +799,10 @@ function buildSharePayload(
     subtitle: describeRules(result.rules),
     headline: `${input.humanName} defeated Euclid!`,
     details: `${humanScore}–${aiScore}`,
-    footer: "Play Euclid on Reddit",
+    footer:
+      result.rules.variant === "tide"
+        ? `Tide · Up to ${TIDE_MOVE_LIMIT} moves · Play Euclid on Reddit`
+        : "Play Euclid on Reddit",
     board: result.snapshot.board,
     p1Name: humanIsFirst ? input.humanName : "Euclid",
     p2Name: humanIsFirst ? "Euclid" : input.humanName,
@@ -989,10 +1001,17 @@ export class SoloStore {
               "The generated solo game ID is already in use.",
             );
           }
+          const settings =
+            validateSubredditSettings(
+              parseStoredJson(snapshot.get(SUBREDDIT_SETTINGS_KEY)),
+            ) ?? DEFAULT_SUBREDDIT_SETTINGS;
           const created = createSoloSession({
             gameId: candidateGameId,
             ownerId: userId,
-            rules,
+            rules: {
+              ...rules,
+              ...(settings.tideMode ? { variant: "tide" as const } : {}),
+            },
             privateSeed: candidateSeed,
             now: timestamp,
           });
@@ -1390,29 +1409,37 @@ export class SoloStore {
     };
   }
 
-  async getRankedRating(userId: string): Promise<SoloRankedRatingRecord> {
+  async getRankedRating(
+    userId: string,
+    variant: GameVariant = "standard",
+  ): Promise<SoloRankedRatingRecord> {
     requireIdentifier(userId, "userId");
     return parseRating(
-      (await this.redis.get(SOLO_STORE_KEYS.rankedRating(userId))) ?? undefined,
+      (await this.redis.get(SOLO_STORE_KEYS.rankedRating(userId, variant))) ??
+        undefined,
     );
   }
 
-  async countRankedPlayers(): Promise<number> {
+  async countRankedPlayers(variant: GameVariant = "standard"): Promise<number> {
     return parseStringList(
-      (await this.redis.get(SOLO_STORE_KEYS.rankedPlayers)) ?? undefined,
+      (await this.redis.get(SOLO_STORE_KEYS.rankedPlayersFor(variant))) ??
+        undefined,
       "Ranked solo players",
     ).length;
   }
 
-  async getRankedRows(): Promise<RankingsShareRow[]> {
+  async getRankedRows(
+    variant: GameVariant = "standard",
+  ): Promise<RankingsShareRow[]> {
     const playerIds = parseStringList(
-      (await this.redis.get(SOLO_STORE_KEYS.rankedPlayers)) ?? undefined,
+      (await this.redis.get(SOLO_STORE_KEYS.rankedPlayersFor(variant))) ??
+        undefined,
       "Ranked solo players",
     );
     const rows = await Promise.all(
       playerIds.map(async (userId): Promise<RankingsShareRow | null> => {
         const [ratingRaw, nameRaw, avatarRaw] = await Promise.all([
-          this.redis.get(SOLO_STORE_KEYS.rankedRating(userId)),
+          this.redis.get(SOLO_STORE_KEYS.rankedRating(userId, variant)),
           this.redis.get(SOLO_STORE_KEYS.profileName(userId)),
           this.redis.get(SOLO_STORE_KEYS.profileAvatar(userId)),
         ]);
@@ -1797,6 +1824,7 @@ export class SoloStore {
       receiptKey,
       candidateGameKey,
       soloReceiptBudgetKey(userId),
+      SUBREDDIT_SETTINGS_KEY,
     ];
     if (activeKey) watchKeys.push(activeKey);
     if (receipt?.gameId) watchKeys.push(SOLO_STORE_KEYS.game(receipt.gameId));
@@ -1889,8 +1917,8 @@ export class SoloStore {
     if (record.rules.mode === "ranked") {
       watchKeys.push(
         SOLO_STORE_KEYS.activeRanked(userId),
-        SOLO_STORE_KEYS.rankedRating(userId),
-        SOLO_STORE_KEYS.rankedPlayers,
+        SOLO_STORE_KEYS.rankedRating(userId, record.rules.variant),
+        SOLO_STORE_KEYS.rankedPlayersFor(record.rules.variant),
       );
     }
     return {
@@ -1922,7 +1950,11 @@ export class SoloStore {
     let record = source;
     let rating: { before: number; after: number } | null = null;
     if (ratingResult !== null) {
-      const ratingKey = SOLO_STORE_KEYS.rankedRating(source.ownerId);
+      const ratingKey = SOLO_STORE_KEYS.rankedRating(
+        source.ownerId,
+        source.rules.variant,
+      );
+      const playersKey = SOLO_STORE_KEYS.rankedPlayersFor(source.rules.variant);
       const current = parseRating(snapshot.get(ratingKey));
       const next = settleSoloRankedRating(current, ratingResult);
       rating = { before: current.rating, after: next.rating };
@@ -1930,10 +1962,10 @@ export class SoloStore {
       setWrite(writes, ratingKey, serialize(next));
       setWrite(
         writes,
-        SOLO_STORE_KEYS.rankedPlayers,
+        playersKey,
         serialize(
           addSetMember(
-            snapshot.get(SOLO_STORE_KEYS.rankedPlayers),
+            snapshot.get(playersKey),
             source.ownerId,
             "Ranked solo players",
           ),

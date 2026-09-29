@@ -7,6 +7,7 @@ import type {
 import { ReplayBoardCard, type ReplayTheme } from "./share-replay";
 import { PageShell } from "./ui/PageShell";
 import { buildWatchDemo } from "./watch-demo";
+import { rulesSummary } from "./format";
 import "./watch-view.css";
 
 type WatchAction = {
@@ -124,7 +125,10 @@ function LiveMatch({
         ))}
       </dl>
       <p className="watch-page__muted">
-        Redditor match · First to {game.winScore}
+        Redditor match ·{" "}
+        {game.variant === "tide"
+          ? rulesSummary(game)
+          : `First to ${game.winScore}`}
       </p>
       <LastActivity timestamp={game.lastSaved} />
       <WatchControls

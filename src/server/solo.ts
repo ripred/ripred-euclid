@@ -4,11 +4,12 @@ import {
   PLAY_STYLES,
   RANKED_SOLO_RULES,
   SOLO_RULES_VERSION,
-  STANDARD_MAX_SCORE,
+  TIDE_MOVE_LIMIT,
   playStyleForDifficulty,
   playerColorForIndex,
   validatePracticeRules,
   type GameOutcome,
+  type GameVariant,
   type PlayerIndex,
   type PracticeRules,
   type RankedSoloRules,
@@ -45,7 +46,6 @@ import {
 import { cloneSquare, squareIndexKey } from "../shared/share-squares";
 import { pointIndex } from "../shared/game/geometry";
 
-/** Version 2 dropped the scoring field when Grid Footprint became the only rule. */
 export const SOLO_SCHEMA_VERSION = 2 as const;
 export const SOLO_AI_USER_ID = "euclid-ai";
 
@@ -194,12 +194,17 @@ function sameValue(left: unknown, right: unknown): boolean {
   );
 }
 
-export function rankedSoloSessionMetadata(): RankedSoloSessionMetadata {
+export function rankedSoloSessionMetadata(
+  variant: GameVariant = "standard",
+): RankedSoloSessionMetadata {
   return {
     mode: "ranked",
     ranked: true,
     rulesVersion: SOLO_RULES_VERSION,
-    rules: { ...RANKED_SOLO_RULES },
+    rules: {
+      ...RANKED_SOLO_RULES,
+      ...(variant === "tide" ? { variant } : {}),
+    },
   };
 }
 
@@ -207,7 +212,10 @@ export function soloSessionMetadata(
   rules: RankedSoloRules | PracticeRules,
 ): SoloSessionMetadata {
   if (rules.mode === "ranked") {
-    return rankedSoloSessionMetadata();
+    return {
+      ...rankedSoloSessionMetadata(rules.variant),
+      rules: { ...rules },
+    };
   }
   return {
     mode: "practice",
@@ -228,6 +236,7 @@ function normalizeStoredRules(value: unknown): RankedSoloRules | PracticeRules {
     "humanPlayer",
     "firstPlayer",
     "difficulty",
+    "variant",
   ]);
   const unknown = Object.keys(value).find((field) => !fullFields.has(field));
   if (unknown !== undefined) {
@@ -236,37 +245,35 @@ function normalizeStoredRules(value: unknown): RankedSoloRules | PracticeRules {
   if (value.rulesVersion !== SOLO_RULES_VERSION) {
     return invalidSession("The solo rules version is not supported.");
   }
+  if (
+    value.variant !== undefined &&
+    value.variant !== "standard" &&
+    value.variant !== "tide"
+  ) {
+    return invalidSession("The solo game variant is not supported.");
+  }
+  const variant: { variant?: GameVariant } =
+    value.variant === undefined ? {} : { variant: value.variant };
 
   if (value.mode === "ranked") {
-    if (!sameValue(value, RANKED_SOLO_RULES)) {
+    const rules = { ...RANKED_SOLO_RULES, ...variant };
+    if (!sameValue(value, rules)) {
       return invalidSession("Ranked solo rules must match the fixed preset.");
     }
-    return { ...RANKED_SOLO_RULES };
+    return rules;
   }
   if (value.mode !== "practice") {
     return invalidSession("The solo mode is not supported.");
   }
 
   try {
-    // Preserve historical targets when resuming or replaying saved Practice games.
-    const winScore = value.winScore;
-    if (
-      typeof winScore !== "number" ||
-      !Number.isInteger(winScore) ||
-      winScore < 1 ||
-      winScore > STANDARD_MAX_SCORE
-    ) {
-      return invalidSession(
-        `winScore must be an integer from 1 through ${STANDARD_MAX_SCORE}.`,
-      );
-    }
     const rules = {
       ...validatePracticeRules({
         difficulty: value.difficulty,
         humanPlayer: value.humanPlayer,
         firstPlayer: value.firstPlayer,
       }),
-      winScore,
+      ...variant,
     };
     if (!sameValue(value, rules)) {
       return invalidSession("Stored Practice rules are not canonical.");
@@ -329,7 +336,8 @@ export function validateSoloStartRequest(input: unknown): ValidatedSoloStart {
 function normalizeHistory(value: unknown, rules: SoloRules): SharePoint[] {
   if (!Array.isArray(value))
     return invalidSession("Move history must be an array.");
-  if (value.length > rules.W * rules.H) {
+  const limit = rules.variant === "tide" ? TIDE_MOVE_LIMIT : rules.W * rules.H;
+  if (value.length > limit) {
     return invalidSession("Move history exceeds the board capacity.");
   }
 
@@ -352,7 +360,7 @@ function normalizeHistory(value: unknown, rules: SoloRules): SharePoint[] {
     ) {
       return invalidSession("Move history contains an out-of-range point.");
     }
-    if (occupied.has(index)) {
+    if (rules.variant !== "tide" && occupied.has(index)) {
       return invalidSession("Move history cannot occupy a cell twice.");
     }
     occupied.add(index);
@@ -396,6 +404,7 @@ function createInitialEngine(
     H: rules.H,
     winScore: rules.winScore,
     rng: NO_RANDOMNESS,
+    variant: rules.variant ?? "standard",
   });
   engine.m_turn = rules.firstPlayer;
   return engine;
@@ -419,6 +428,9 @@ function replaySoloHistory(
     const recorded = history[moveIndex];
     if (!recorded)
       return invalidSession("Move history contains a missing move.");
+    if (engine.m_board[recorded.index] !== 0) {
+      return invalidSession("Move history places a stone on an occupied cell.");
+    }
 
     const player = engine.m_turn;
     const actor = player === rules.humanPlayer ? "human" : "ai";
@@ -484,8 +496,11 @@ function reasonForOutcome(
   outcome: GameOutcome,
 ): SoloEndReason | null {
   if (outcome.status === "running") return null;
-  return engine.m_players.some((player) => player.m_score >= engine.winScore)
-    ? "score_target"
+  if (engine.m_players.some((player) => player.m_score >= engine.winScore)) {
+    return "score_target";
+  }
+  return engine.variant === "tide" && engine.m_history.length >= TIDE_MOVE_LIMIT
+    ? "move_limit"
     : "board_full";
 }
 
@@ -503,6 +518,15 @@ function canonicalBoard(
     W: rules.W,
     H: rules.H,
     winScore: rules.winScore,
+    ...(json.variant === "tide" && json.tide
+      ? {
+          variant: json.variant,
+          tide: {
+            expires: [...json.tide.expires],
+            anchored: [...json.tide.anchored],
+          },
+        }
+      : {}),
     m_board: [...replay.engine.m_board],
     m_players: [serializePlayer(first), serializePlayer(second)],
     m_turn: replay.engine.m_turn,
@@ -841,6 +865,14 @@ function clonePublicBoard(
     m_last: { ...board.m_last },
     playerNames: { ...(board.playerNames ?? {}) },
     playerAvatars: { ...(board.playerAvatars ?? {}) },
+    ...(board.tide
+      ? {
+          tide: {
+            expires: [...board.tide.expires],
+            anchored: [...board.tide.anchored],
+          },
+        }
+      : {}),
   };
   if (board.solo) clone.solo = soloSessionMetadata(board.solo.rules);
   delete (clone as Partial<SoloPrivateBoardSnapshot>).m_targets;

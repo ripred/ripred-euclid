@@ -2,7 +2,9 @@ import { Board, Player } from "../shared/game/engine";
 import {
   STANDARD_BOARD,
   STANDARD_WIN_SCORE,
+  isGameVariant,
   type GameOutcome,
+  type GameVariant,
   type PlayerColor,
   type PlayerIndex,
 } from "../shared/game/rules";
@@ -21,7 +23,6 @@ import type {
 import { asCount, isNonBlankString, isRecord } from "../shared/guards";
 import { squareIndexKey } from "../shared/share-squares";
 
-/** Version 2 dropped the scoring field when Grid Footprint became the only rule. */
 export const H2H_SCHEMA_VERSION = 2;
 
 export const H2H_RULES = Object.freeze({
@@ -35,8 +36,13 @@ export const H2H_CHAT_MAX_ITEMS = 100;
 
 export type H2HBoardSnapshot = CanonicalBoardSnapshot & {
   schemaVersion: number;
+  createdAt: number;
+  lastSaved: number;
+  playerNames: Record<string, string>;
+  playerAvatars: Record<string, string>;
+  chat: NonNullable<SerializableBoard["chat"]>;
   /** Server turn clock; chat and spectator activity must not renew it. */
-  turnStartedAt?: number;
+  turnStartedAt: number;
 };
 
 export type H2HCanonicalStateSnapshot = Omit<H2HCanonicalState, "board"> & {
@@ -66,6 +72,7 @@ export class H2HDomainError extends Error {
 }
 
 export type CreateH2HBoardOptions = {
+  variant?: GameVariant;
   names?: Readonly<Record<string, string>>;
   avatars?: Readonly<Record<string, string>>;
   chat?: Readonly<{
@@ -89,15 +96,11 @@ export type H2HChatAppendResult = {
 
 type CanonicalEnd = {
   ended: boolean;
-  endedReason: Exclude<H2HEndReason, "opponent_left"> | null;
+  endedReason: H2HEndReason | null;
   endedBy: string | null;
 };
 
 const deterministicRng = () => 0;
-
-function hasOwn(source: Record<string, unknown>, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(source, key);
-}
 
 function invalidBoard(message: string): never {
   throw new H2HDomainError("invalid_board", message);
@@ -129,17 +132,13 @@ function requireIdentifier(value: unknown, field: string): string {
   return value;
 }
 
-function requireCompatibleField(
+function requireRuleField(
   source: Record<string, unknown>,
   field: string,
   expected: unknown,
 ): void {
-  if (
-    hasOwn(source, field) &&
-    source[field] !== undefined &&
-    source[field] !== expected
-  ) {
-    invalidBoard(`${field} is incompatible with the current H2H rules.`);
+  if (source[field] !== expected) {
+    invalidBoard(`${field} must match the current H2H rules.`);
   }
 }
 
@@ -149,12 +148,7 @@ function normalizePoint(value: unknown, allowEmpty = false): SharePoint | null {
   const x = value.x;
   const y = value.y;
   const index = value.index;
-  if (
-    allowEmpty &&
-    x === -1 &&
-    y === -1 &&
-    (index === -1 || index === undefined)
-  ) {
+  if (allowEmpty && x === -1 && y === -1 && index === -1) {
     return { x: -1, y: -1, index: -1 };
   }
   if (
@@ -171,7 +165,7 @@ function normalizePoint(value: unknown, allowEmpty = false): SharePoint | null {
   }
 
   const expectedIndex = y * H2H_RULES.W + x;
-  if (index !== undefined && index !== expectedIndex) return null;
+  if (index !== expectedIndex) return null;
   return { x, y, index: expectedIndex };
 }
 
@@ -237,7 +231,6 @@ function normalizeStringRecord(
   value: unknown,
   field: string,
 ): Record<string, string> {
-  if (value === undefined) return {};
   if (!isRecord(value)) return invalidBoard(`${field} must be an object.`);
 
   const entries = Object.entries(value);
@@ -257,7 +250,6 @@ function normalizeChat(
   value: unknown,
   participantIds: ReadonlySet<string>,
 ): NonNullable<SerializableBoard["chat"]> {
-  if (value === undefined) return { seq: 0, items: [] };
   if (!isRecord(value) || !Array.isArray(value.items)) {
     return invalidBoard("chat must contain a sequence and item list.");
   }
@@ -301,18 +293,12 @@ function normalizeChat(
 }
 
 function normalizeHistory(value: unknown): SharePoint[] {
-  if (value === undefined) return [];
   if (!Array.isArray(value))
     return invalidBoard("Move history must be an array.");
 
-  const occupied = new Set<number>();
   return value.map((candidate) => {
     const point = normalizePoint(candidate);
     if (!point) return invalidBoard("Move history contains an invalid point.");
-    if (occupied.has(point.index)) {
-      return invalidBoard("Move history cannot occupy a cell twice.");
-    }
-    occupied.add(point.index);
     return point;
   });
 }
@@ -326,61 +312,50 @@ function validateStoredPlayer(
     invalidBoard(`Player ${playerIndex + 1} identity is invalid.`);
   }
 
-  if (
-    value.m_score !== undefined &&
-    asCount(value.m_score) !== canonical.m_score
-  ) {
+  if (asCount(value.m_score) !== canonical.m_score) {
     invalidBoard(
       `Player ${playerIndex + 1} score does not match move history.`,
     );
   }
-  if (
-    value.m_lastNumSquares !== undefined &&
-    asCount(value.m_lastNumSquares) !== canonical.m_lastNumSquares
-  ) {
+  if (asCount(value.m_lastNumSquares) !== canonical.m_lastNumSquares) {
     invalidBoard(
       `Player ${playerIndex + 1} last-square count does not match move history.`,
     );
   }
-  if (
-    value.m_playStyle !== undefined &&
-    value.m_playStyle !== Board.PS_OFFENSIVE
-  ) {
+  if (value.m_playStyle !== Board.PS_OFFENSIVE) {
     invalidBoard(`Player ${playerIndex + 1} has an invalid H2H play style.`);
   }
-  if (value.m_goofs !== undefined && value.m_goofs !== false) {
+  if (value.m_goofs !== false) {
     invalidBoard(`Player ${playerIndex + 1} cannot contain AI mistake state.`);
   }
-  if (value.m_computer !== undefined && value.m_computer !== false) {
+  if (value.m_computer !== false) {
     invalidBoard(`Player ${playerIndex + 1} must be human.`);
   }
 
-  if (value.m_squares !== undefined) {
-    if (!Array.isArray(value.m_squares)) {
-      invalidBoard(`Player ${playerIndex + 1} squares must be an array.`);
-    }
-    const storedSignatures = value.m_squares.map((candidate) => {
-      const square = normalizeSquare(candidate);
-      if (!square) {
-        return invalidBoard(
-          `Player ${playerIndex + 1} contains an invalid square.`,
-        );
-      }
-      return squareSignature(square);
-    });
-    const canonicalSignatures = canonical.m_squares.map(squareSignature);
-    storedSignatures.sort();
-    canonicalSignatures.sort();
-    if (
-      storedSignatures.length !== canonicalSignatures.length ||
-      storedSignatures.some(
-        (signature, index) => signature !== canonicalSignatures[index],
-      )
-    ) {
-      invalidBoard(
-        `Player ${playerIndex + 1} squares do not match move history.`,
+  if (!Array.isArray(value.m_squares)) {
+    invalidBoard(`Player ${playerIndex + 1} squares must be an array.`);
+  }
+  const storedSignatures = value.m_squares.map((candidate) => {
+    const square = normalizeSquare(candidate);
+    if (!square) {
+      return invalidBoard(
+        `Player ${playerIndex + 1} contains an invalid square.`,
       );
     }
+    return squareSignature(square);
+  });
+  const canonicalSignatures = canonical.m_squares.map(squareSignature);
+  storedSignatures.sort();
+  canonicalSignatures.sort();
+  if (
+    storedSignatures.length !== canonicalSignatures.length ||
+    storedSignatures.some(
+      (signature, index) => signature !== canonicalSignatures[index],
+    )
+  ) {
+    invalidBoard(
+      `Player ${playerIndex + 1} squares do not match move history.`,
+    );
   }
 }
 
@@ -388,6 +363,7 @@ function replayHistory(
   cells: readonly number[],
   history: readonly SharePoint[],
   playerIds: readonly [string, string],
+  variant: GameVariant,
 ): Board {
   const replay = new Board(
     new Player(Board.PS_OFFENSIVE, false, playerIds[0]),
@@ -397,6 +373,7 @@ function replayHistory(
       H: H2H_RULES.H,
       winScore: H2H_RULES.winScore,
       rng: deterministicRng,
+      variant,
     },
   );
 
@@ -406,9 +383,8 @@ function replayHistory(
     }
     const point = history[moveIndex];
     if (!point) return invalidBoard("Move history contains a missing move.");
-    const expectedColor: PlayerColor = moveIndex % 2 === 0 ? 1 : 2;
-    if (cells[point.index] !== expectedColor) {
-      invalidBoard("Board colors do not match alternating move history.");
+    if (replay.m_board[point.index] !== 0) {
+      invalidBoard("Move history places a piece on an occupied cell.");
     }
 
     const movingPlayer = replay.m_players[replay.m_turn];
@@ -429,33 +405,26 @@ function normalizeEnd(
   outcome: GameOutcome,
   participantIds: ReadonlySet<string>,
 ): CanonicalEnd {
-  if (source.ended !== undefined && typeof source.ended !== "boolean") {
-    return invalidBoard("ended must be a boolean when present.");
+  if (typeof source.ended !== "boolean") {
+    return invalidBoard("ended must be a boolean.");
   }
-  const explicitEnded = source.ended;
+  const ended = source.ended;
 
   let reason: CanonicalEnd["endedReason"] = null;
-  if (source.endedReason !== undefined && source.endedReason !== "") {
+  if (source.endedReason !== undefined) {
     if (
       source.endedReason !== "game_over" &&
       source.endedReason !== "tie" &&
-      source.endedReason !== "player_left" &&
-      source.endedReason !== "opponent_left"
+      source.endedReason !== "player_left"
     ) {
       return invalidBoard("The stored end reason is not recognized.");
     }
-    // Legacy readers wrote `opponent_left` from the survivor's viewpoint. Its
-    // endedBy field still identified the departing player, so the canonical,
-    // viewpoint-independent representation is `player_left`.
-    reason =
-      source.endedReason === "opponent_left"
-        ? "player_left"
-        : source.endedReason;
+    reason = source.endedReason;
   }
 
   let endedBy: string | null = null;
-  if (source.endedBy !== undefined && source.endedBy !== "") {
-    if (typeof source.endedBy !== "string") {
+  if (source.endedBy !== undefined) {
+    if (!isNonBlankString(source.endedBy)) {
       return invalidBoard("endedBy must identify a player.");
     }
     endedBy = source.endedBy;
@@ -467,10 +436,6 @@ function normalizeEnd(
       : outcome.status === "running"
         ? null
         : "game_over";
-  const ended =
-    explicitEnded ??
-    (reason !== null || endedBy !== null || terminalReason !== null);
-
   if (!ended) {
     if (reason !== null || endedBy !== null || terminalReason !== null) {
       return invalidBoard("A live board contains terminal game state.");
@@ -479,7 +444,7 @@ function normalizeEnd(
   }
 
   if (terminalReason !== null) {
-    if (reason !== null && reason !== terminalReason) {
+    if (reason !== terminalReason) {
       return invalidBoard("The stored end reason does not match the outcome.");
     }
     if (endedBy !== null) {
@@ -503,21 +468,21 @@ function normalizeEnd(
   return { ended: true, endedReason: "player_left", endedBy };
 }
 
-/**
- * Validates persisted H2H state by replaying its complete move history. Missing
- * fields from the unversioned legacy shape are migrated, but explicit values
- * that contradict the fixed rules or replayed state are rejected.
- */
+/** Validates the current H2H schema by replaying its complete move history. */
 export function normalizeH2HBoard(source: unknown): H2HBoardSnapshot {
   if (!isRecord(source)) return invalidBoard("Board data must be an object.");
+  if (source.variant !== undefined && !isGameVariant(source.variant)) {
+    return invalidBoard("The game variant is invalid.");
+  }
+  const variant = source.variant ?? "standard";
 
-  requireCompatibleField(source, "W", H2H_RULES.W);
-  requireCompatibleField(source, "H", H2H_RULES.H);
-  requireCompatibleField(source, "winScore", H2H_RULES.winScore);
-  requireCompatibleField(source, "rulesVersion", H2H_RULES.rulesVersion);
-  requireCompatibleField(source, "schemaVersion", H2H_SCHEMA_VERSION);
-  requireCompatibleField(source, "m_stopAt150", true);
-  requireCompatibleField(source, "m_createRandomizedRangeOrder", true);
+  requireRuleField(source, "W", H2H_RULES.W);
+  requireRuleField(source, "H", H2H_RULES.H);
+  requireRuleField(source, "winScore", H2H_RULES.winScore);
+  requireRuleField(source, "rulesVersion", H2H_RULES.rulesVersion);
+  requireRuleField(source, "schemaVersion", H2H_SCHEMA_VERSION);
+  requireRuleField(source, "m_stopAt150", true);
+  requireRuleField(source, "m_createRandomizedRangeOrder", true);
 
   if (
     !Array.isArray(source.m_board) ||
@@ -553,8 +518,24 @@ export function normalizeH2HBoard(source: unknown): H2HBoardSnapshot {
     secondStoredPlayer.userId,
   ];
   const participantIds = new Set(playerIds);
-  const replay = replayHistory(cells, history, playerIds);
+  const replay = replayHistory(cells, history, playerIds, variant);
   const replayJson = replay.toJSON();
+  if (variant === "tide") {
+    if (
+      !isRecord(source.tide) ||
+      Object.keys(source.tide).some(
+        (key) => key !== "expires" && key !== "anchored",
+      ) ||
+      JSON.stringify(source.tide.expires) !==
+        JSON.stringify(replayJson.tide?.expires) ||
+      JSON.stringify(source.tide.anchored) !==
+        JSON.stringify(replayJson.tide?.anchored)
+    ) {
+      return invalidBoard("Tide metadata does not match move history.");
+    }
+  } else if (source.tide !== undefined) {
+    return invalidBoard("Standard games cannot contain Tide metadata.");
+  }
   const players: [SharePlayer, SharePlayer] = [
     serializePlayer(replayJson.m_players[0] as SharePlayer),
     serializePlayer(replayJson.m_players[1] as SharePlayer),
@@ -563,47 +544,34 @@ export function normalizeH2HBoard(source: unknown): H2HBoardSnapshot {
   validateStoredPlayer(firstStoredPlayer, players[0], 0);
   validateStoredPlayer(secondStoredPlayer, players[1], 1);
 
-  if (
-    source.m_turn !== undefined &&
-    source.m_turn !== 0 &&
-    source.m_turn !== 1
-  ) {
+  if (source.m_turn !== 0 && source.m_turn !== 1) {
     return invalidBoard("The stored turn is invalid.");
   }
-  if (source.m_turn !== undefined && source.m_turn !== replay.m_turn) {
+  if (source.m_turn !== replay.m_turn) {
     return invalidBoard("The stored turn does not match move history.");
   }
 
   const canonicalLast: SharePoint =
     history.at(-1) ?? ({ x: -1, y: -1, index: -1 } satisfies SharePoint);
-  if (source.m_last !== undefined) {
-    const storedLast = normalizePoint(source.m_last, true);
-    if (!storedLast || !samePoint(storedLast, canonicalLast)) {
-      return invalidBoard("The last move does not match move history.");
-    }
+  const storedLast = normalizePoint(source.m_last, true);
+  if (!storedLast || !samePoint(storedLast, canonicalLast)) {
+    return invalidBoard("The last move does not match move history.");
   }
-  if (
-    source.m_lastPoints !== undefined &&
-    asCount(source.m_lastPoints) !== replay.m_lastPoints
-  ) {
+  if (asCount(source.m_lastPoints) !== replay.m_lastPoints) {
     return invalidBoard("The last move score does not match move history.");
   }
 
-  const storedRevision =
-    source.revision === undefined ? null : asCount(source.revision);
-  if (source.revision !== undefined && storedRevision === null) {
+  const revision = asCount(source.revision);
+  if (revision === null) {
     return invalidBoard("revision must be a non-negative safe integer.");
   }
-  if (storedRevision !== null && storedRevision < history.length) {
+  if (revision < history.length) {
     return invalidBoard("revision cannot precede the replayed move count.");
   }
-  const revision = storedRevision ?? history.length;
-
   if (
-    source.m_targets !== undefined &&
-    (!Array.isArray(source.m_targets) ||
-      source.m_targets.length !== 2 ||
-      source.m_targets.some((target) => target !== null))
+    !Array.isArray(source.m_targets) ||
+    source.m_targets.length !== 2 ||
+    source.m_targets.some((target) => target !== null)
   ) {
     return invalidBoard("H2H games cannot contain AI targets.");
   }
@@ -615,46 +583,31 @@ export function normalizeH2HBoard(source: unknown): H2HBoardSnapshot {
   );
   const chat = normalizeChat(source.chat, participantIds);
 
-  const createdAt =
-    source.createdAt === undefined ? null : asCount(source.createdAt);
-  const lastSaved =
-    source.lastSaved === undefined ? null : asCount(source.lastSaved);
-  if (source.createdAt !== undefined && createdAt === null) {
+  const createdAt = asCount(source.createdAt);
+  const lastSaved = asCount(source.lastSaved);
+  if (createdAt === null) {
     return invalidBoard("createdAt must be a non-negative safe integer.");
   }
-  if (source.lastSaved !== undefined && lastSaved === null) {
+  if (lastSaved === null) {
     return invalidBoard("lastSaved must be a non-negative safe integer.");
   }
-  if (createdAt !== null && lastSaved !== null && lastSaved < createdAt) {
+  if (lastSaved < createdAt) {
     return invalidBoard("lastSaved cannot precede createdAt.");
   }
-  const turnStartedAt =
-    source.turnStartedAt === undefined
-      ? (lastSaved ?? createdAt)
-      : asCount(source.turnStartedAt);
-  if (source.turnStartedAt !== undefined && turnStartedAt === null) {
+  const turnStartedAt = asCount(source.turnStartedAt);
+  if (turnStartedAt === null) {
     return invalidBoard("turnStartedAt must be a non-negative safe integer.");
   }
-  if (
-    turnStartedAt !== null &&
-    ((createdAt !== null && turnStartedAt < createdAt) ||
-      (lastSaved !== null && turnStartedAt > lastSaved))
-  ) {
+  if (turnStartedAt < createdAt || turnStartedAt > lastSaved) {
     return invalidBoard(
       "turnStartedAt must be within the persisted timestamps.",
     );
   }
 
-  if (
-    source.m_displayed_game_over !== undefined &&
-    typeof source.m_displayed_game_over !== "boolean"
-  ) {
+  if (typeof source.m_displayed_game_over !== "boolean") {
     return invalidBoard("m_displayed_game_over must be a boolean.");
   }
-  if (
-    source.m_onlyShowLastSquares !== undefined &&
-    typeof source.m_onlyShowLastSquares !== "boolean"
-  ) {
+  if (typeof source.m_onlyShowLastSquares !== "boolean") {
     return invalidBoard("m_onlyShowLastSquares must be a boolean.");
   }
 
@@ -664,6 +617,7 @@ export function normalizeH2HBoard(source: unknown): H2HBoardSnapshot {
     W: H2H_RULES.W,
     H: H2H_RULES.H,
     winScore: H2H_RULES.winScore,
+    ...(variant === "tide" ? { variant, tide: replayJson.tide! } : {}),
     m_board: [...replay.m_board],
     m_players: players,
     m_turn: replay.m_turn,
@@ -681,9 +635,9 @@ export function normalizeH2HBoard(source: unknown): H2HBoardSnapshot {
     revision,
     rulesVersion: H2H_RULES.rulesVersion,
     schemaVersion: H2H_SCHEMA_VERSION,
-    ...(createdAt !== null ? { createdAt } : {}),
-    ...(lastSaved !== null ? { lastSaved } : {}),
-    ...(turnStartedAt !== null ? { turnStartedAt } : {}),
+    createdAt,
+    lastSaved,
+    turnStartedAt,
     ended: end.ended,
     ...(end.endedReason ? { endedReason: end.endedReason } : {}),
     ...(end.endedBy ? { endedBy: end.endedBy } : {}),
@@ -714,6 +668,7 @@ export function createInitialH2HBoard(
       H: H2H_RULES.H,
       winScore: H2H_RULES.winScore,
       rng: deterministicRng,
+      variant: options.variant ?? "standard",
     },
   );
 
@@ -815,12 +770,8 @@ function mutationTimestamps(
   board: H2HBoardSnapshot,
   now: number,
 ): { createdAt: number; lastSaved: number } {
-  const createdAt = board.createdAt ?? board.lastSaved ?? now;
-  const previousTimestamp = board.lastSaved ?? board.createdAt;
-  if (
-    now < createdAt ||
-    (previousTimestamp !== undefined && now < previousTimestamp)
-  ) {
+  const createdAt = board.createdAt;
+  if (now < board.lastSaved) {
     return reject(
       "invalid_request",
       "now cannot precede the persisted game timestamp.",
@@ -975,7 +926,7 @@ export function appendH2HChat(
     );
   }
 
-  const chat = state.board.chat ?? { seq: 0, items: [] };
+  const chat = state.board.chat;
   if (chat.seq >= Number.MAX_SAFE_INTEGER) {
     return invalidBoard("chat.seq cannot be incremented safely.");
   }
@@ -989,7 +940,7 @@ export function appendH2HChat(
   const nextState = createH2HCanonicalState(gameId, {
     ...state.board,
     chat: { seq: item.id, items },
-    turnStartedAt: state.board.turnStartedAt ?? now,
+    turnStartedAt: state.board.turnStartedAt,
     revision: nextRevision(state.revision),
     ...mutationTimestamps(state.board, now),
   });
@@ -1016,6 +967,7 @@ export function createH2HRematch(
   userId: string,
   gameIdInput: string,
   nowInput: number,
+  variant: GameVariant = "standard",
 ): H2HCanonicalStateSnapshot {
   const gameId = requireIdentifier(gameIdInput, "gameId");
   const now = requireNow(nowInput);
@@ -1036,11 +988,10 @@ export function createH2HRematch(
     state.board.m_players[0].userId,
     state.board.m_players[1].userId,
     {
-      ...(state.board.playerNames ? { names: state.board.playerNames } : {}),
-      ...(state.board.playerAvatars
-        ? { avatars: state.board.playerAvatars }
-        : {}),
+      names: state.board.playerNames,
+      avatars: state.board.playerAvatars,
       now,
+      variant,
     },
   );
   return createH2HCanonicalState(gameId, {

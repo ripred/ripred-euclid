@@ -25,16 +25,11 @@ function SharedAt({ share }: { share: SharedPostPayload }) {
 }
 
 function ResultHeading({ share }: { share: ResultSharePayload }) {
-  // Older frozen shares include board dimensions as a separate metadata item.
-  const subtitle = share.subtitle
-    .split(/\s*[·•]\s*/)
-    .filter((part) => !/^\d+\s*[×x]\s*\d+(?:\s+board)?$/i.test(part))
-    .join(" · ");
   return (
     <header className="share__heading">
       <p className="eyebrow">Euclid · Shared game</p>
       <h1>{share.headline}</h1>
-      <p className="share__rules">{subtitle}</p>
+      <p className="share__rules">{share.subtitle}</p>
     </header>
   );
 }
@@ -79,6 +74,8 @@ function FinalBoard({ share }: { share: ResultSharePayload }) {
         width={share.board.W}
         height={share.board.H}
         cells={final.board}
+        tide={final.tide}
+        ply={final.moveNumber}
         squares={squares}
         title="Final board"
       />
@@ -90,7 +87,9 @@ function RankingsSummary({ share }: { share: RankingsSharePayload }) {
   return (
     <>
       <header className="share__heading">
-        <p className="eyebrow">Euclid · Leaderboard snapshot</p>
+        <p className="eyebrow">
+          Euclid{share.variant === "tide" ? " Tide" : ""} · Leaderboard snapshot
+        </p>
         <h1>{share.title}</h1>
         <p className="share__rules">{share.subtitle}</p>
       </header>

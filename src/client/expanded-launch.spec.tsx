@@ -78,6 +78,26 @@ beforeEach(() => {
           subredditSettings = JSON.parse(String(options.body)).settings;
         return reply({ settings: subredditSettings });
       }
+      if (url === "/api/rankings" || url === "/api/rankings?variant=tide") {
+        const variant = url.includes("variant=tide") ? "tide" : "standard";
+        return reply({
+          variant,
+          hvh: [
+            {
+              userId: `${variant}-leader`,
+              name: `${variant} leader`,
+              rating: 1200,
+              games: 1,
+              wins: 1,
+              losses: 0,
+              draws: 0,
+            },
+          ],
+          hva: [],
+        });
+      }
+      if (url === "/api/share/rankings")
+        return reply({ ok: true, message: "Shared." });
       if (url === "/api/competitions/availability")
         return reply({
           serverNow: Date.now(),
@@ -406,7 +426,7 @@ describe("Options in expanded navigation", () => {
     await click("Subreddit");
     await act(async () =>
       host
-        .querySelector<HTMLInputElement>(".options__subreddit input")!
+        .querySelectorAll<HTMLInputElement>(".options__subreddit input")[1]!
         .click(),
     );
     expect(subredditSettings.dailyChallenges).toBe(true);
@@ -424,6 +444,43 @@ describe("Options in expanded navigation", () => {
     expect(host.querySelector("#challenge-title")).not.toBeNull();
     expect(requests).toContain("/api/challenge-lab/state");
     expect(launches()).toEqual([]);
+  });
+  it("refreshes Tide mode and loads its player records when returning to the menu", async () => {
+    await menu();
+    await click("Options");
+    subredditSettings = { ...subredditSettings, tideMode: true };
+    await click("Done");
+    expect(host.querySelector('[aria-label="Tide mode"]')).not.toBeNull();
+    expect(host.textContent).toContain("Tide · Practice");
+    expect(requests).toContain("/api/user/stats?variant=tide");
+    expect(
+      requests.filter((url) => url === "/api/competitions/availability").length,
+    ).toBeGreaterThan(1);
+  });
+  it("switches and shares the selected leaderboard mode with keyboard navigation", async () => {
+    await menu();
+    await click("Leaderboard");
+    expect(host.textContent).toContain("standard leader");
+    const standard = button("Standard");
+    await act(async () => {
+      standard.focus();
+      standard.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
+      );
+    });
+    expect(requests).toContain("/api/rankings?variant=tide");
+    expect(document.activeElement).toBe(button("Tide"));
+    expect(button("Tide").getAttribute("aria-checked")).toBe("true");
+    expect(host.textContent).toContain("tide leader");
+    expect(host.textContent).not.toContain("standard leader");
+    await click("Share leaderboard");
+    const share = vi
+      .mocked(fetch)
+      .mock.calls.find(([url]) => url === "/api/share/rankings")!;
+    expect(JSON.parse(String(share[1]?.body))).toEqual({
+      bucket: "hvh",
+      variant: "tide",
+    });
   });
   it("keeps Options and all other navigation locked during matchmaking", async () => {
     await mount(null);
