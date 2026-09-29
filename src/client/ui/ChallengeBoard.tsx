@@ -7,6 +7,7 @@ import { useBoardInput } from "./use-board-input";
 import {
   BOARD_BLEED,
   pointLabel,
+  tapAgainPrompt,
   type BoardSquareShape,
 } from "./board-geometry";
 import "../challenge-screen.css";
@@ -164,8 +165,10 @@ export function ChallengeBoard({
       style={{ visibility: input.aimIndex === null ? "hidden" : "visible" }}
       aria-hidden={input.aimIndex === null}
     >
-      Tap {coordinates(input.aimIndex ?? 0)} again to{" "}
-      {editing ? "toggle its block" : "place"}.
+      {tapAgainPrompt(
+        coordinates(input.aimIndex ?? 0),
+        editing ? "toggle its block" : "place",
+      )}
     </p>
   );
   return fitToSpace ? (

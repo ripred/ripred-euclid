@@ -136,6 +136,25 @@
   line-height: 16px;
 }
 
+/* Euclid's turn badge counts its dots while it chooses a move. */
+.player--thinking::before {
+  min-width: 6.5em;
+  animation: thinking-badge 1.2s steps(4) infinite;
+  content: "Thinking";
+}
+
+@keyframes thinking-badge {
+  25% {
+    content: "Thinking.";
+  }
+  50% {
+    content: "Thinking..";
+  }
+  75% {
+    content: "Thinking...";
+  }
+}
+
 .player__row {
   position: relative;
   display: flex;
@@ -256,45 +275,28 @@
   height: 22px;
 }
 
-/* Status ------------------------------------------------------------------- */
+/* Aim prompt: floats over the board's top edge while a touch aim waits for
+   its second tap, so it never takes height from the board. */
 
-.game__status {
+.game__aim {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 50%;
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-2);
   min-height: 28px;
   margin: 0;
   padding: 0 var(--sp-3);
   border-radius: var(--radius-pill);
   background: var(--surface-2);
+  box-shadow: var(--panel-shadow);
   color: var(--text);
   font-size: var(--fs-sm);
   font-weight: 700;
-  text-align: center;
-  overflow-wrap: anywhere;
-}
-
-.game__status--thinking span::after {
-  display: inline-block;
-  width: 1.2em;
-  animation: thinking-dots 1.2s steps(4) infinite;
-  content: "";
-  text-align: left;
-}
-
-@keyframes thinking-dots {
-  0% {
-    content: "";
-  }
-  25% {
-    content: ".";
-  }
-  50% {
-    content: "..";
-  }
-  75% {
-    content: "...";
-  }
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -60%);
 }
 
 /* Board -------------------------------------------------------------------- */
@@ -578,6 +580,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .player--thinking::before {
+    animation: none;
+    content: "Thinking…";
+  }
   .score-pop,
   .player__delta {
     animation-duration: 2.2s !important;

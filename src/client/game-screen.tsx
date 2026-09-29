@@ -30,6 +30,7 @@ import {
   pointIndex,
   pointLabel,
   squareHints,
+  tapAgainPrompt,
   type BoardMarker,
   type BoardSquareShape,
   type Owner,
@@ -109,6 +110,7 @@ export function ScoreCard({
   active,
   avatar,
   feedback = null,
+  thinking = false,
 }: {
   owner: Owner;
   label: string;
@@ -119,6 +121,8 @@ export function ScoreCard({
   active: boolean;
   avatar?: string | undefined;
   feedback?: ScoreFeedbackEvent | null;
+  /** Euclid is choosing its move; the turn badge says so. */
+  thinking?: boolean;
 }) {
   const reduced = useReducedMotion();
   const shown = useCountUp(score, { disabled: reduced, maxJump: 400 });
@@ -128,7 +132,7 @@ export function ScoreCard({
 
   return (
     <div
-      className={`player player--${owner}${active ? " player--active" : ""}`}
+      className={`player player--${owner}${active ? " player--active" : ""}${thinking ? " player--thinking" : ""}`}
     >
       <div className="player__row">
         <Avatar src={avatar} owner={owner} />
@@ -259,6 +263,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const { cellSize: cell, boardWidth: bw, boardHeight: bh } = layout;
   // Scores, status and chat share the board's column so their edges align.
   const column = Math.max(bw, Math.min(boardSpace.width, 360));
+  // Once your move is sent Euclid is choosing its reply, so its card takes the
+  // turn badge before the confirmed board arrives.
+  const turnSide = thinking && myColor ? (myColor === 1 ? 2 : 1) : activeSide;
 
   useLayoutEffect(() => {
     const screen = screenRef.current;
@@ -430,6 +437,12 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     acceptKey: acceptPlacementKey,
   });
   const liveAimIdx = boardInput.aimIndex;
+  const aimPrompt =
+    liveAimIdx === null
+      ? null
+      : tapAgainPrompt(
+          pointLabel(liveAimIdx % board.W, Math.floor(liveAimIdx / board.W)),
+        );
 
   const lastIndex =
     board.m_last.x >= 0
@@ -594,26 +607,18 @@ export const GameScreen: React.FC<GameScreenProps> = ({
               tag={player.tag}
               score={player.score}
               target={board.winScore}
-              active={activeSide === player.owner}
+              active={turnSide === player.owner}
+              thinking={thinking && turnSide === player.owner}
               avatar={player.avatar}
               feedback={scoreFeedback?.player === index ? scoreFeedback : null}
             />
           ))}
         </div>
 
-        <p
-          className={`game__status${thinking ? " game__status--thinking" : ""}`}
-          aria-live="polite"
-        >
-          {activeSide ? <PieceGlyph owner={activeSide} size={16} /> : null}
-          {/* The animated ellipsis replaces a static one while thinking. */}
-          <span>
-            {liveAimIdx !== null
-              ? `Tap ${pointLabel(liveAimIdx % board.W, Math.floor(liveAimIdx / board.W))} again to place`
-              : thinking
-                ? midText.replace(/…$/, "")
-                : midText}
-          </span>
+        {/* The highlighted score card shows whose turn it is, so the board
+            keeps this row's height; screen readers still hear the status. */}
+        <p className="euclid-sr-only" aria-live="polite">
+          {aimPrompt ?? midText}
         </p>
 
         <div
@@ -622,6 +627,11 @@ export const GameScreen: React.FC<GameScreenProps> = ({
           style={{ width: bw, height: bh }}
           onMouseLeave={clearHover}
         >
+          {aimPrompt ? (
+            <p className="game__aim" aria-hidden="true">
+              {aimPrompt}
+            </p>
+          ) : null}
           <div
             className="game__board-art"
             style={{

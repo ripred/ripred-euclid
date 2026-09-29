@@ -75,6 +75,10 @@ export function ownerAt(cells: ArrayLike<number>, index: number): Owner | 0 {
 
 export const ownerName = (owner: Owner) => (owner === 1 ? "red" : "blue");
 
+/** Touch placement asks for a second tap on the aimed point. */
+export const tapAgainPrompt = (point: string, action = "place") =>
+  `Tap ${point} again to ${action}.`;
+
 export function pointLabel(x: number, y: number): string {
   return `${COLUMN_NAMES[x] ?? `column ${x + 1}`}${y + 1}`;
 }
