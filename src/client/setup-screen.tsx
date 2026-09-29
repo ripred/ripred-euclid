@@ -223,10 +223,10 @@ export function SetupScreen(props: SetupScreenProps) {
                 About Euclid
               </h2>
               <p className="muted">
-                Euclid is a Reddit strategy game about placing pieces,
-                completing squares and outscoring Euclid or another redditor.
-                Straight and tilted squares both count, and one move can
-                complete several at once.
+                Euclid is a strategy game about placing pieces, completing
+                squares and outscoring Euclid or another redditor. Straight and
+                tilted squares both count, and one move can complete several at
+                once.
               </p>
               <p className="field__hint">
                 Version <span className="num">{appVersion}</span>
