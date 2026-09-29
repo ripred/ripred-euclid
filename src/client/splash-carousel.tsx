@@ -9,7 +9,11 @@ import {
   type ChallengePeriod,
   type ChallengeWinner,
 } from "../shared/challenge-spotlights";
-import { formatCompetitionDate } from "./competition-display";
+import {
+  COMPETITION_RANKING_GUIDANCE,
+  formatCompetitionDate,
+  formatCompetitionResult,
+} from "./competition-display";
 import type { ExpandedEntry } from "./expanded-entry";
 import { formatChallengeTime } from "./challenge-time";
 import type { RankingsShareRow } from "../shared/types/api";
@@ -228,8 +232,8 @@ const WINNER_COUNT_DELAY_MS = 1100;
 
 /**
  * The champion framed by the square they would have closed: pieces drop in,
- * the band draws around the avatar and confetti falls, then moves and time
- * count up. No solution board is shown; the art is the brand motif, not the puzzle.
+ * the band draws around the avatar and confetti falls, then the time counts up.
+ * No solution board is shown; the art is the brand motif, not the puzzle.
  */
 export function ChallengeWinnerCard({
   period,
@@ -249,7 +253,6 @@ export function ChallengeWinnerCard({
     duration: 1200,
   });
   const name = preview ? winner.username : `u/${winner.username}`;
-  const moveWord = winner.moves === 1 ? "move" : "moves";
 
   return (
     <SplashScene
@@ -284,6 +287,16 @@ export function ChallengeWinnerCard({
         oneLine
       />
       <dl className="splash-winner__stats">
+        <div className="splash-winner__stat splash-winner__stat--squares">
+          <dt>Squares</dt>
+          <dd
+            aria-label={
+              winner.squares == null ? "Squares unavailable" : undefined
+            }
+          >
+            <span className="num">{winner.squares ?? "—"}</span>
+          </dd>
+        </div>
         <div className="splash-winner__stat">
           <dt>Moves</dt>
           <dd>
@@ -302,7 +315,7 @@ export function ChallengeWinnerCard({
             )}
           </dd>
         </div>
-        <div className="splash-winner__stat">
+        <div className="splash-winner__stat splash-winner__stat--time">
           <dt>Time</dt>
           <dd
             className="num"
@@ -318,8 +331,7 @@ export function ChallengeWinnerCard({
         </div>
       </dl>
       <p className="euclid-sr-only">
-        Solved in {winner.moves} {moveWord},{" "}
-        {formatChallengeTime(winner.elapsedMs)}.
+        Result: {formatCompetitionResult(winner)}.
       </p>
       <div className="splash-scene__foot">
         <p
@@ -336,7 +348,7 @@ export function ChallengeWinnerCard({
         <p className="splash-sample">
           {preview
             ? "Layout preview · Sample result"
-            : "Fewest moves wins · time breaks ties"}
+            : COMPETITION_RANKING_GUIDANCE}
         </p>
       </div>
     </SplashScene>

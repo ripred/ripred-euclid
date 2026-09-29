@@ -69,7 +69,7 @@ const INTRO_MS = 3200;
 const FAST_MOVE_MS = 260;
 const BEAT_ANTICIPATION_MS = 750;
 const BEAT_HOLD_MS = 4200;
-const FINAL_HOLD_MS = 4600;
+const COMPLETED_LESSONS_HOLD_MS = 1000;
 const LEADERBOARD_IDLE_MS = 10000;
 const LEADERBOARD_REFRESH_MS = 60_000;
 
@@ -220,7 +220,10 @@ function DemoCaption({
 }) {
   const step = stepIndex === null ? null : DEMO_STEPS[stepIndex];
   return (
-    <div className="preview-caption" aria-live="polite">
+    <div
+      className={`preview-caption${step ? "" : " preview-caption--intro"}`}
+      aria-live="polite"
+    >
       <p className="preview-panel__kicker">
         {surfaceMode === "intro"
           ? "Reddit strategy game"
@@ -239,9 +242,7 @@ function DemoCaption({
         ))}
       </div>
       <div key={step?.id ?? "intro"} className="preview-caption__copy">
-        <p className="preview-caption__title">
-          {step?.title ?? "A minute to learn. A lifetime to master."}
-        </p>
+        {step && <p className="preview-caption__title">{step.title}</p>}
         <p className="preview-panel__body">
           {step?.body ??
             "Place pieces. Close squares, tilted ones included. Outscore Euclid or another redditor."}
@@ -255,8 +256,14 @@ function DemoCaption({
  * Every lesson at a glance, beneath the one playing: finished lessons carry a
  * red piece. Wide posts show it in place of the compact step bars.
  */
-function LessonList({ stepIndex }: { stepIndex: number | null }) {
-  const current = stepIndex ?? -1;
+function LessonList({
+  stepIndex,
+  completed,
+}: {
+  stepIndex: number | null;
+  completed: boolean;
+}) {
+  const current = completed ? DEMO_STEPS.length : (stepIndex ?? -1);
   return (
     <ol className="preview-lessons" aria-hidden="true">
       {DEMO_STEPS.map((lesson, index) => (
@@ -286,6 +293,7 @@ export const PreviewApp = () => {
   const [frameIndex, setFrameIndex] = useState(0);
   const [pendingBeat, setPendingBeat] = useState(false);
   const [stepIndex, setStepIndex] = useState<number | null>(null);
+  const [lessonsCompleted, setLessonsCompleted] = useState(false);
   const [rankings, setRankings] = useState<LoadedRankings>({
     hvh: [],
     hva: [],
@@ -353,6 +361,7 @@ export const PreviewApp = () => {
     setFrameIndex(0);
     setStepIndex(null);
     setPendingBeat(false);
+    setLessonsCompleted(false);
     setLeaderboardActivityVersion((version) => version + 1);
   };
 
@@ -472,6 +481,7 @@ export const PreviewApp = () => {
       setFrameIndex(0);
       setStepIndex(null);
       setPendingBeat(false);
+      setLessonsCompleted(false);
       setSurfaceMode("demo");
     }, INTRO_MS);
     return () => window.clearTimeout(timer);
@@ -482,10 +492,17 @@ export const PreviewApp = () => {
     if (surfaceMode !== "demo" || !canAnimate) return;
     let timer: number;
     if (frameIndex >= LAST_FRAME) {
-      timer = window.setTimeout(() => {
-        setSurfaceMode("leaderboard");
-        setLeaderboardActivityVersion(0);
-      }, FINAL_HOLD_MS);
+      timer = window.setTimeout(
+        () => {
+          if (lessonsCompleted) {
+            setSurfaceMode("leaderboard");
+            setLeaderboardActivityVersion(0);
+          } else {
+            setLessonsCompleted(true);
+          }
+        },
+        lessonsCompleted ? COMPLETED_LESSONS_HOLD_MS : BEAT_HOLD_MS,
+      );
       return () => window.clearTimeout(timer);
     }
     const next = DEMO_FRAMES[frameIndex + 1]!;
@@ -507,7 +524,7 @@ export const PreviewApp = () => {
       onLesson ? BEAT_HOLD_MS : FAST_MOVE_MS,
     );
     return () => window.clearTimeout(timer);
-  }, [frameIndex, canAnimate, pendingBeat, surfaceMode]);
+  }, [frameIndex, canAnimate, pendingBeat, surfaceMode, lessonsCompleted]);
 
   const nextSlide =
     slideIds[(slideIds.indexOf(activeSlide) + 1) % slideIds.length]!;
@@ -518,6 +535,7 @@ export const PreviewApp = () => {
       setFrameIndex(0);
       setStepIndex(null);
       setPendingBeat(false);
+      setLessonsCompleted(false);
     }, LEADERBOARD_IDLE_MS);
     return () => window.clearTimeout(timer);
   }, [canAnimate, leaderboardActivityVersion, activeSlide, nextSlide]);
@@ -647,7 +665,7 @@ export const PreviewApp = () => {
               surfaceMode={surfaceMode === "demo" ? "demo" : "intro"}
               stepIndex={stepIndex}
             />
-            <LessonList stepIndex={stepIndex} />
+            <LessonList stepIndex={stepIndex} completed={lessonsCompleted} />
           </div>
           <div className="preview__progress" aria-hidden="true">
             <span>

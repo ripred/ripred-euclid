@@ -255,9 +255,10 @@
   white-space: nowrap;
 }
 .splash-winner__stats {
+  --winner-stat-columns: minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 1.4fr);
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: var(--winner-stat-columns);
+  gap: 6px;
   margin-inline: 0;
 }
 .splash-winner__stat {
@@ -266,7 +267,7 @@
   display: grid;
   gap: 2px;
   min-width: 0;
-  padding: 10px 12px;
+  padding: 10px 8px;
   border: 1px solid color-mix(in srgb, var(--scene) 45%, var(--line));
   border-radius: var(--radius-md);
   background: var(--surface-2);
@@ -536,6 +537,25 @@
   }
 }
 @media (max-width: 520px) and (max-height: 400px) {
+  /* Compact embeds give the three result measures the full panel width. */
+  .splash-winner.preview {
+    grid-template-areas: "side";
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .splash-winner .splash-scene__stage,
+  .splash-winner .splash-scene__subtitle {
+    display: none;
+  }
+  .splash-winner .preview__side {
+    gap: 6px;
+  }
+  .splash-winner__stats {
+    grid-template-columns: var(--winner-stat-columns);
+  }
+  .splash-winner__stat {
+    grid-auto-flow: row;
+    justify-content: stretch;
+  }
   .splash-scene__head .preview-panel__kicker,
   .splash-scene__foot .splash-sample {
     display: none;

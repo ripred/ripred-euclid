@@ -35,12 +35,9 @@ import {
   readCompetitionState,
   type CompetitionInstance,
 } from "./competition-model";
-import {
-  redisCas,
-  redisMultiCas,
-  type RedisCasClient,
-  type RedisCasWrite,
-} from "./redis-cas";
+import { redisCas, redisMultiCas, type RedisCasWrite } from "./redis-cas";
+import type { CompetitionRedisClient } from "./competition-redis";
+import { ensureCompetitionRanking } from "./competition-ranking";
 import { parseJson } from "./stored-json";
 import {
   parseSubredditSettings,
@@ -95,7 +92,7 @@ export class CompetitionService {
     seed: string,
   ) => CertifiedChallenge;
   constructor(
-    readonly redis: RedisCasClient,
+    readonly redis: CompetitionRedisClient,
     options: CompetitionServiceOptions = {},
   ) {
     this.now = options.now ?? Date.now;
@@ -434,6 +431,7 @@ export class CompetitionService {
         settled: false,
         completionOrder: 0,
         leader: null,
+        rankingVersion: 2,
       };
       const writes: RedisCasWrite[] = [];
       if (previousId) {
@@ -751,6 +749,7 @@ export class CompetitionService {
             settled: false,
             completionOrder: 0,
             leader: null,
+            rankingVersion: 2,
           };
           if (prepare && claim.window.opensAt > now) config.preparedId = id;
           else {
@@ -794,6 +793,7 @@ export class CompetitionService {
   }
 
   private async settle(id: string): Promise<void> {
+    await ensureCompetitionRanking(this.redis, id, this.now());
     const original = readCompetitionInstance(
       await this.redis.get(competitionInstanceKey(id)),
     );
@@ -858,6 +858,7 @@ export class CompetitionService {
           username: instance.leader.username,
           ...(instance.preview ? { preview: true } : {}),
           moves: instance.leader.moves,
+          squares: instance.leader.squares ?? null,
           elapsedMs: instance.leader.elapsedMs,
           dailyWins: counts.daily,
           weeklyWins: counts.weekly,

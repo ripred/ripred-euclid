@@ -43,6 +43,7 @@ export const MOCK_SPOTLIGHTS = {
   daily: {
     username: names[0],
     moves: 2,
+    squares: 3,
     elapsedMs: 18400,
     dailyWins: 7,
     weeklyWins: 2,
@@ -50,6 +51,7 @@ export const MOCK_SPOTLIGHTS = {
   weekly: {
     username: names[499],
     moves: 3,
+    squares: 4,
     elapsedMs: 42700,
     dailyWins: 12,
     weeklyWins: 3,

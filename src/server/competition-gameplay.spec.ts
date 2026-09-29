@@ -67,6 +67,7 @@ function fixture(period: ChallengePeriod = "daily") {
     settled: false,
     completionOrder: 0,
     leader: null,
+    rankingVersion: 2,
   };
   redis.seed(competitionInstanceKey(instance.id), JSON.stringify(instance));
   const store = new CompetitionGameplay(redis, {
@@ -390,6 +391,76 @@ describe("public competition gameplay", () => {
         ?.username,
     ).toBe("alice");
   });
+
+  it.each(CHALLENGE_PERIODS)(
+    "%s ranks actual squares before moves and time, including personal-best replacements",
+    async (period) => {
+      const f = fixture(period);
+      f.instance.certified.puzzle.initial = [0, 1, 2, 3, 8, 10];
+      f.redis.seed(competitionInstanceKey("day1"), JSON.stringify(f.instance));
+      const a = await f.start(alice),
+        b = await f.start(bob);
+      f.advance(10);
+      const bobDone = await f.move(b, bob, 11);
+      const aExtra = await f.move(a, alice, 63);
+      f.advance(100);
+      const aliceDone = await f.move(aExtra, alice, 9);
+      expect(bobDone.personalBest).toMatchObject({
+        squares: 1,
+        moves: 1,
+        elapsedMs: 10,
+      });
+      expect(aliceDone.personalBest).toMatchObject({
+        squares: 2,
+        moves: 2,
+        elapsedMs: 110,
+      });
+      expect(
+        (await f.store.standings(period)).standings.map((entry) => [
+          entry.username,
+          entry.squares,
+        ]),
+      ).toEqual([
+        ["alice", 2],
+        ["bob", 1],
+      ]);
+      expect(
+        f.redis.json<CompetitionInstance>(competitionInstanceKey("day1"))
+          ?.leader?.username,
+      ).toBe("alice");
+
+      const retry = await f.store.mutate(
+        period,
+        alice,
+        "retry",
+        f.cmd(aliceDone),
+      );
+      f.advance(1);
+      const fewerSquares = await f.move(retry, alice, 11);
+      expect(fewerSquares.personalBest).toEqual(aliceDone.personalBest);
+      const next = await f.store.mutate(
+        period,
+        alice,
+        "retry",
+        f.cmd(fewerSquares),
+      );
+      f.advance(1000);
+      const fewerMoves = await f.move(next, alice, 9);
+      expect(fewerMoves.personalBest).toMatchObject({
+        squares: 2,
+        moves: 1,
+        elapsedMs: 1000,
+      });
+      expect(
+        f.redis.json<StoredCompetitionResult>(
+          competitionBestKey("day1", alice.userId),
+        )?.attemptId,
+      ).toBe(fewerMoves.snapshot?.attemptId);
+      expect(
+        await f.redis.zRange(competitionLeaderboardKey("day1"), 0, -1),
+      ).toHaveLength(2);
+    },
+  );
 
   it("retains tie priority on an equal repeat and starts a fresh retry without losing the best", async () => {
     const f = fixture();

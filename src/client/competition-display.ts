@@ -1,5 +1,24 @@
 import type { ChallengePeriod } from "../shared/challenge-spotlights";
-import type { CompetitionAvailability } from "../shared/competitions";
+import type {
+  CompetitionAvailability,
+  CompetitionResult,
+} from "../shared/competitions";
+import { formatChallengeTime } from "./challenge-time";
+
+export const COMPETITION_RANKING_GUIDANCE =
+  "Most squares wins, then fewest moves, then shortest time, then first achieved.";
+
+/** Use the same result summary for standings, personal bests, and winners. */
+export function formatCompetitionResult(
+  result: Pick<CompetitionResult, "moves" | "squares" | "elapsedMs">,
+): string {
+  const moves = `${result.moves} ${result.moves === 1 ? "move" : "moves"}`;
+  const squares =
+    result.squares == null
+      ? "squares unavailable"
+      : `${result.squares} ${result.squares === 1 ? "square" : "squares"}`;
+  return `${squares} · ${moves} · ${formatChallengeTime(result.elapsedMs)}`;
+}
 
 export function competitionLabel(period: ChallengePeriod): string {
   return period === "daily" ? "Daily challenge" : "Weekly challenge";

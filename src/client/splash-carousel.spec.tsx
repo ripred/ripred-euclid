@@ -71,6 +71,7 @@ beforeEach(() => {
     daily: {
       username: "sample_player_001",
       moves: 2,
+      squares: 3,
       elapsedMs: 18400,
       dailyWins: 7,
       weeklyWins: 2,
@@ -78,6 +79,7 @@ beforeEach(() => {
     weekly: {
       username: "sample_player_500",
       moves: 3,
+      squares: 4,
       elapsedMs: 42700,
       dailyWins: 12,
       weeklyWins: 3,
@@ -145,7 +147,7 @@ afterEach(async () => {
 });
 
 describe("splash carousel", () => {
-  it("advances after the final lesson with the mouse resting over the slide", async () => {
+  it("completes all six lesson dots before advancing and resets them on replay", async () => {
     await mount();
     for (let elapsed = 0; elapsed < 45000; elapsed += 100) {
       if (
@@ -159,6 +161,14 @@ describe("splash carousel", () => {
     expect(host.querySelector(".preview__progress")?.textContent).toContain(
       "Move 33 of 33",
     );
+    const lessons = () =>
+      Array.from(host.querySelectorAll(".preview-lessons li"));
+    expect(
+      lessons().map((lesson) => lesson.getAttribute("data-state")),
+    ).toEqual(["done", "done", "done", "done", "done", "current"]);
+    expect(
+      lessons()[5]!.querySelector(".preview-lessons__mark")?.textContent,
+    ).toBe("6");
     await act(async () => {
       host
         .querySelector(".splash-viewport")!
@@ -168,10 +178,26 @@ describe("splash carousel", () => {
     });
     await advance(3000);
     expect(active()).toBe("rules");
-    await advance(2000);
+    expect(lessons()[5]!.getAttribute("data-state")).toBe("current");
+    await advance(1300);
+    expect(active()).toBe("rules");
+    expect(
+      lessons().map((lesson) => lesson.getAttribute("data-state")),
+    ).toEqual(Array(6).fill("done"));
+    expect(host.querySelectorAll(".preview-lessons__mark svg")).toHaveLength(6);
+    await advance(1000);
     expect(active()).toBe("leaderboard");
     await advance(10000);
     expect(active()).toBe("daily");
+    await click("Show How to play");
+    expect(active()).toBe("rules");
+    expect(
+      lessons().map((lesson) => lesson.getAttribute("data-state")),
+    ).toEqual(Array(6).fill("next"));
+    expect(host.querySelectorAll(".preview-lessons__mark svg")).toHaveLength(0);
+    await advance(5000);
+    expect(lessons()[0]!.getAttribute("data-state")).toBe("current");
+    expect(lessons()[5]!.getAttribute("data-state")).toBe("next");
   });
 
   it("finishes the teaching game, then cycles standings, both winners, and rules", async () => {
@@ -181,13 +207,16 @@ describe("splash carousel", () => {
     await advance(5000);
     expect(active()).toBe("rules");
     expect(host.textContent).toContain("Move 1 of 33");
-    await advance(37000);
+    await advance(38000);
     expect(active()).toBe("leaderboard");
     for (const next of ["daily", "weekly", "rules"]) {
       await advance(10000);
       expect(active()).toBe(next);
       expect(button("Open Euclid")).toBe(open);
     }
+    expect(
+      host.querySelectorAll('.preview-lessons [data-state="next"]'),
+    ).toHaveLength(6);
     expect(host.querySelectorAll("[data-slide][inert]")).toHaveLength(3);
   });
 
@@ -227,7 +256,7 @@ describe("splash carousel", () => {
     expect(active()).toBe("daily");
   });
 
-  it("labels sample winners, includes time and both win totals, without activity navigation", async () => {
+  it("labels sample winners, includes squares, time, and both win totals, without activity navigation", async () => {
     await mount();
     await click("Show Weekly Challenge Winner");
     const weekly = host.querySelector('[data-slide="weekly"]')!;
@@ -235,6 +264,9 @@ describe("splash carousel", () => {
       "Weekly Challenge Winner",
     );
     expect(weekly.textContent).toContain("Completed challenge");
+    expect(
+      weekly.querySelector(".splash-winner__stat--squares")?.textContent,
+    ).toBe("Squares4");
     expect(weekly.textContent).toContain("0:42.7");
     expect(weekly.textContent).toContain("12 daily wins");
     expect(weekly.textContent).toContain("3 weekly wins");
@@ -264,13 +296,54 @@ describe("splash carousel", () => {
       2,
     );
     expect(daily.querySelector(".euclid-sr-only")?.textContent).toBe(
-      "Solved in 2 moves, 0:18.4.",
+      "Result: 3 squares · 2 moves · 0:18.4.",
     );
     const shown = () =>
       daily.querySelector(".splash-winner__stat dd.num")?.textContent;
     expect(shown()).toBe("0:00.0");
     await advance(3000);
     expect(shown()).toBe("0:18.4");
+  });
+
+  it.each(["daily", "weekly"] as const)(
+    "shows unavailable legacy squares honestly on the %s winner",
+    async (period) => {
+      challenges.preview = false;
+      delete challenges[period]!.squares;
+      await mount();
+      const winner = host.querySelector(`[data-slide="${period}"]`)!;
+      const squares = winner.querySelector(".splash-winner__stat--squares dd")!;
+      expect(squares.textContent).toBe("—");
+      expect(squares.getAttribute("aria-label")).toBe("Squares unavailable");
+      expect(winner.querySelector(".euclid-sr-only")?.textContent).toContain(
+        "squares unavailable",
+      );
+      expect(winner.textContent).toContain(
+        "Most squares wins, then fewest moves, then shortest time, then first achieved.",
+      );
+    },
+  );
+
+  it("keeps all result measures and the full time for a week-long solve", async () => {
+    reduced = true;
+    challenges.weekly!.elapsedMs = 604799999;
+    await mount();
+    await click("Show Weekly Challenge Winner");
+    await advance(100);
+    const winner = host.querySelector('[data-slide="weekly"]')!;
+    expect(
+      Array.from(winner.querySelectorAll(".splash-winner__stat dt")).map(
+        (label) => label.textContent,
+      ),
+    ).toEqual(["Squares", "Moves", "Time"]);
+    const time = winner.querySelector<HTMLElement>(
+      ".splash-winner__stat--time dd",
+    )!;
+    expect(time.textContent).toBe("10079:59.9");
+    expect(time.style.getPropertyValue("--time-digits")).toBe("10");
+    expect(winner.querySelector(".euclid-sr-only")?.textContent).toBe(
+      "Result: 4 squares · 3 moves · 10079:59.9.",
+    );
   });
 
   it("dates finalized winners", async () => {

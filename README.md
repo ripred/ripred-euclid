@@ -1,7 +1,5 @@
 # Euclid
 
-**A minute to learn. A lifetime to master.**
-
 Euclid is a turn-based strategy game you play right inside Reddit. Place a dot, claim the four corners of a square, and score. That's the basic idea. The fun starts when you notice that squares don't have to sit upright, corners can do double duty, and one well-placed dot can finish several squares at once.
 
 ![Red and blue squares on Euclid's current board](subreddit/images/euclid_board_banner_desktop.png)
@@ -56,7 +54,7 @@ When subreddit moderators enable them, **Daily challenge** and **Weekly challeng
 
 Sign in and select **Start challenge** to reveal the board and start the timer. Complete the target number of squares before the deadline. The certified minimum is something to aim for, not a move limit. There's no undo or hint button. **Retry same puzzle** starts a fresh timed attempt and keeps your best completed result. **Abandon Challenge** discards the active attempt and returns to the game menu, keeping any earlier completed best result. Returning later offers a fresh Start. Using Back, reloading, or switching tabs keeps the attempt running.
 
-Standings use **fewest moves, then shortest time, then first achieved**. Only your best completed attempt counts. Challenge results are separate from solo and multiplayer Elo. Moderators can hide live standings; you still see your own result. At the deadline the server finalizes the winner, and enabled challenges can show their latest winner in the splash rotation.
+Standings use **most squares completed, then fewest moves, then shortest time, then first achieved**. Only your best completed attempt counts. Personal bests, standings, and daily/weekly winner cards show all three result measures. Older results whose square count cannot be recovered show it as unavailable. Challenge results are separate from solo and multiplayer Elo. Moderators can hide live standings; you still see your own result. At the deadline the server finalizes the winner, and enabled challenges can show their latest winner in the splash rotation.
 
 ### Moderator controls
 

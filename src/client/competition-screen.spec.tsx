@@ -170,6 +170,7 @@ beforeEach(() => {
           state.personalBest = {
             username: "player",
             moves: state.snapshot.placements.length,
+            squares: state.snapshot.completedSquares.length,
             elapsedMs: state.snapshot.elapsedMs,
             achievedAt: NOW + 4000,
           };
@@ -298,7 +299,7 @@ describe("public competition play", () => {
     state.snapshot = fresh();
     await mount();
     expect(host.textContent).not.toContain("One puzzle for this subreddit");
-    expect(host.textContent).not.toContain("Fewest moves wins");
+    expect(host.textContent).not.toContain("Most squares wins");
     expect(host.querySelector("#competition-standings-title")).toBeNull();
     expect(point(8).getAttribute("aria-disabled")).toBe("false");
 
@@ -307,7 +308,9 @@ describe("public competition play", () => {
     expect(dialog?.getAttribute("aria-modal")).toBe("true");
     expect(dialog?.textContent).toContain("Daily challenge details");
     expect(dialog?.textContent).toContain("One puzzle for this subreddit");
-    expect(dialog?.textContent).toContain("Fewest moves wins");
+    expect(dialog?.textContent).toContain(
+      "Most squares wins, then fewest moves, then shortest time, then first achieved.",
+    );
     expect(dialog?.querySelector("#competition-standings-title")).toBeTruthy();
     expect(point(8).getAttribute("aria-disabled")).toBe("true");
     await click(point(8));
@@ -343,7 +346,7 @@ describe("public competition play", () => {
     await click(button("Retry same puzzle"));
     expect(host.textContent).toContain("Pieces placed: 0");
     expect(host.textContent).toContain("Your best:");
-    expect(host.textContent).toContain("2 moves · 0:04.0");
+    expect(host.textContent).toContain("1 square · 2 moves · 0:04.0");
     expect(
       host.querySelector('[data-index="63"]')?.getAttribute("aria-disabled"),
     ).toBe("true");
@@ -462,6 +465,7 @@ describe("abandoning a competition attempt", () => {
       const best = {
         username: "player",
         moves: 2,
+        squares: 1,
         elapsedMs: 2500,
         achievedAt: NOW - 1000,
       };
@@ -492,7 +496,9 @@ describe("abandoning a competition attempt", () => {
       await mount(period);
       expect(host.querySelector('[role="grid"]')).toBeNull();
       expect(button("Start challenge").disabled).toBe(false);
-      expect(host.textContent).toContain("Your best: 2 moves · 0:02.5");
+      expect(host.textContent).toContain(
+        "Your best: 1 square · 2 moves · 0:02.5",
+      );
       expect(host.textContent).not.toContain("Pieces placed: 1");
       expect(mutations()).toHaveLength(1);
       await click(button("Start challenge"));
@@ -625,6 +631,37 @@ describe("abandoning a competition attempt", () => {
 });
 
 describe("competition results", () => {
+  it.each(["daily", "weekly"] as const)(
+    "shows unavailable square counts in legacy %s bests, standings, and winners",
+    async (period) => {
+      const result = {
+        username: "legacy_player",
+        moves: 2,
+        elapsedMs: 2500,
+        achievedAt: NOW,
+      };
+      state.personalBest = result;
+      standings.standings = [{ ...result, rank: 1 }];
+      state.latestResult = {
+        instanceId: "old",
+        period,
+        opensAt: NOW - 86400000,
+        endsAt: NOW - 36000000,
+        superseded: false,
+        winner: { ...result, dailyWins: 1, weeklyWins: 0 },
+      };
+      await mount(period);
+      expect(host.querySelector(".competition-best")?.textContent).toContain(
+        "squares unavailable · 2 moves · 0:02.5",
+      );
+      await click(button("Details & standings"));
+      for (const selector of [".competition-results", ".competition-final"])
+        expect(host.querySelector(selector)?.textContent).toContain(
+          "squares unavailable · 2 moves · 0:02.5",
+        );
+    },
+  );
+
   it("hides live standings and rank while preserving the player's best", async () => {
     state.competition.showStandings = false;
     state.personalBest = {
@@ -662,6 +699,7 @@ describe("competition results", () => {
       {
         username: "fast_player",
         moves: 2,
+        squares: 3,
         elapsedMs: 2500,
         achievedAt: NOW,
         rank: 1,
@@ -670,7 +708,7 @@ describe("competition results", () => {
     await mount();
     await click(button("Details & standings"));
     expect(host.textContent).toContain("u/fast_player");
-    expect(host.textContent).toContain("2 moves · 0:02.5");
+    expect(host.textContent).toContain("3 squares · 2 moves · 0:02.5");
     await click(button("Next page"));
     expect(requests.at(-1)?.url).toBe(
       "/api/competitions/daily/standings?offset=20",
@@ -690,6 +728,7 @@ describe("competition results", () => {
       winner: {
         username: "winner",
         moves: 2,
+        squares: 4,
         elapsedMs: 1234,
         dailyWins: 1,
         weeklyWins: 0,
@@ -701,6 +740,7 @@ describe("competition results", () => {
     expect(host.textContent).toContain("Latest finalized result");
     expect(host.textContent).toContain("Period ended 27 Sept 2026, 00:00 GMT");
     expect(host.textContent).toContain("u/winner");
+    expect(host.textContent).toContain("4 squares · 2 moves · 0:01.2");
     expect(host.textContent).not.toMatch(/yesterday/i);
   });
 });

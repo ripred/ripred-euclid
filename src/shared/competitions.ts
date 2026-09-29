@@ -31,8 +31,21 @@ export interface CompetitionApplyRequest {
 export interface CompetitionResult {
   username: string;
   moves: number;
+  /** Actual completed squares; absent/null for legacy results without recoverable detail. */
+  squares?: number | null;
   elapsedMs: number;
   achievedAt: number;
+}
+/** Squares, moves, then time; unknown legacy counts follow known counts. */
+export function compareCompetitionResults(
+  a: Pick<CompetitionResult, "moves" | "squares" | "elapsedMs">,
+  b: Pick<CompetitionResult, "moves" | "squares" | "elapsedMs">,
+): number {
+  return (
+    (b.squares ?? -1) - (a.squares ?? -1) ||
+    a.moves - b.moves ||
+    a.elapsedMs - b.elapsedMs
+  );
 }
 export interface CompetitionStanding extends CompetitionResult {
   rank: number;

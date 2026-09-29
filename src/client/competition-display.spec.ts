@@ -4,10 +4,28 @@ import {
   competitionLabel,
   formatCompetitionCountdown,
   formatCompetitionDate,
+  formatCompetitionResult,
 } from "./competition-display";
 import type { CompetitionAvailability } from "../shared/competitions";
 
 describe("competition presentation", () => {
+  it.each([
+    [{ moves: 1, squares: 1, elapsedMs: 1234 }, "1 square · 1 move · 0:01.2"],
+    [
+      { moves: 2, squares: 7, elapsedMs: 604799999 },
+      "7 squares · 2 moves · 10079:59.9",
+    ],
+    [{ moves: 3, elapsedMs: 2500 }, "squares unavailable · 3 moves · 0:02.5"],
+    [
+      { moves: 3, squares: null, elapsedMs: 2500 },
+      "squares unavailable · 3 moves · 0:02.5",
+    ],
+  ])(
+    "formats every result measure without inventing legacy square counts",
+    (result, expected) => {
+      expect(formatCompetitionResult(result)).toBe(expected);
+    },
+  );
   it("formats UTC midnight explicitly as GMT independent of local timezone", () => {
     expect(formatCompetitionDate(Date.UTC(2026, 8, 28))).toBe(
       "28 Sept 2026, 00:00 GMT",

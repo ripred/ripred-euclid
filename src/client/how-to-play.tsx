@@ -182,15 +182,6 @@ export function HowToPlay({
   );
 }
 
-export function HowToPlaySummary() {
-  return (
-    <>
-      {LESSONS.length === 4 ? "Four" : LESSONS.length} ideas carry the whole
-      game. Mastering them takes a lifetime.
-    </>
-  );
-}
-
 /** Rules and first-game tutorial share one dialog; only the action differs. */
 export function HowToPlayDialog({
   variant,

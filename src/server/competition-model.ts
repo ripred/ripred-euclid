@@ -38,6 +38,8 @@ export interface CompetitionLifecycleState {
 }
 export interface StoredCompetitionResult extends CompetitionResult {
   userId: string;
+  /** Identifies the canonical completed snapshot for future result recovery. */
+  attemptId?: string;
   order: number;
   member: string;
 }
@@ -54,6 +56,12 @@ export interface CompetitionInstance {
   settled: boolean;
   completionOrder: number;
   leader: StoredCompetitionResult | null;
+  rankingVersion?: 2;
+  rankingMigration?: {
+    offset: number;
+    sourceOrder: number;
+    leader: StoredCompetitionResult | null;
+  };
 }
 export const competitionInstanceKey = (id: string) =>
   `euclid:competition:instance:${id}`;
@@ -84,6 +92,10 @@ export function readStoredCompetitionResult(
     isNonBlankString(value.username) &&
     isNonBlankString(value.userId) &&
     typeof value.member === "string" &&
+    (value.attemptId === undefined || isNonBlankString(value.attemptId)) &&
+    (value.squares === undefined ||
+      value.squares === null ||
+      isCount(value.squares)) &&
     [value.moves, value.elapsedMs, value.achievedAt, value.order].every(isCount)
     ? (value as unknown as StoredCompetitionResult)
     : null;

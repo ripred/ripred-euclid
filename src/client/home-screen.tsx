@@ -14,7 +14,7 @@ import {
   type H2HHomePresentation,
   type SoloContinuationPresentation,
 } from "./home-ui";
-import { HowToPlay, HowToPlaySummary } from "./how-to-play";
+import { HowToPlay } from "./how-to-play";
 import { BoardMacro, BrandMark, TokenCluster, Wordmark } from "./ui/Brand";
 import { Icon, type IconName } from "./ui/Icon";
 import { PieceGlyph } from "./ui/BoardDiagram";
@@ -434,9 +434,6 @@ export function HomeScreen(props: HomeScreenProps) {
           <p className="home-hero__user" title={formatUsername(username)}>
             {formatUsername(username)}
           </p>
-          <p className="home-hero__tagline">
-            A minute to learn. A lifetime to master.
-          </p>
         </header>
 
         {(anythingLoading || status || error) && (
@@ -700,12 +697,7 @@ export function HomeScreen(props: HomeScreenProps) {
         </section>
 
         <section className="home-learn" aria-labelledby="home-learn-title">
-          <div className="home-learn__head">
-            <h2 id="home-learn-title">Learn in a minute</h2>
-            <p className="muted">
-              <HowToPlaySummary />
-            </p>
-          </div>
+          <h2 id="home-learn-title">How to play</h2>
           <HowToPlay
             layout="strip"
             gameVariant={props.tideMode ? "tide" : "standard"}

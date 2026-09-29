@@ -69,9 +69,7 @@ function completeButtonMarkup(markup: string, className: string): string {
 describe("home dashboard structure", () => {
   it("introduces four shared lessons including blocking your opponent", () => {
     const markup = renderToStaticMarkup(<HomeScreen {...homeProps()} />);
-    expect(markup).toContain(
-      "Four ideas carry the whole game. Mastering them takes a lifetime.",
-    );
+    expect(markup).toContain('<h2 id="home-learn-title">How to play</h2>');
     expect(markup.match(/class="lesson"/g)).toHaveLength(4);
     expect(markup).toContain("Block your opponent");
   });

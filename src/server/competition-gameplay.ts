@@ -21,6 +21,7 @@ import type {
   CompetitionStateResponse,
   CompetitionSummary,
 } from "../shared/competitions";
+import { compareCompetitionResults } from "../shared/competitions";
 import { isCanonicalIdentifier, isCount, isRecord } from "../shared/guards";
 import { type SubredditSettings } from "../shared/subreddit-settings";
 import {
@@ -47,23 +48,30 @@ import {
   SUBREDDIT_SETTINGS_KEY,
   parseSubredditSettings,
 } from "./subreddit-settings";
+import {
+  competitionAttemptKey,
+  competitionAttemptHistoryKey,
+  competitionBestKey,
+  competitionLeaderboardKey,
+  competitionRankMember,
+  readCompetitionRankMember,
+  withCompetitionRankMember,
+} from "./competition-ranking-model";
+import { ensureCompetitionRanking } from "./competition-ranking";
+import { recoverChallengeWinnerSquares } from "./challenge-results";
+
+export {
+  competitionAttemptKey,
+  competitionAttemptHistoryKey,
+  competitionBestKey,
+  competitionLeaderboardKey,
+  competitionRankMember,
+} from "./competition-ranking-model";
 
 export interface CompetitionIdentity {
   userId: string;
   username: string;
 }
-export const competitionAttemptKey = (id: string, userId: string) =>
-  `euclid:competition:attempt:${id}:${encodeURIComponent(userId)}`;
-export const competitionAttemptHistoryKey = (
-  id: string,
-  userId: string,
-  attemptId: string,
-) =>
-  `euclid:competition:attempt-history:${id}:${encodeURIComponent(userId)}:${encodeURIComponent(attemptId)}`;
-export const competitionBestKey = (id: string, userId: string) =>
-  `euclid:competition:best:${id}:${encodeURIComponent(userId)}`;
-export const competitionLeaderboardKey = (id: string) =>
-  `euclid:competition:leaderboard:${id}`;
 export const competitionReceiptKey = (
   id: string,
   userId: string,
@@ -80,12 +88,17 @@ interface GameplayInput extends CompetitionCommand {
 }
 const readAttempt = (raw: string | null | undefined) =>
   readChallengeSnapshot(parseJson(raw));
+const readRankedResult = (raw: string | null | undefined) => {
+  const result = readStoredCompetitionResult(raw);
+  return result && withCompetitionRankMember(result);
+};
 const publicResult = (
   best: StoredCompetitionResult | null,
 ): CompetitionResult | null =>
   best && {
     username: best.username,
     moves: best.moves,
+    squares: best.squares ?? null,
     elapsedMs: best.elapsedMs,
     achievedAt: best.achievedAt,
   };
@@ -107,35 +120,10 @@ function command(input: unknown): GameplayInput {
   return input as unknown as GameplayInput;
 }
 
-/** Lexicographic ordering avoids packing millisecond times into lossy floating-point scores. */
-export function competitionRankMember(
-  result: Omit<StoredCompetitionResult, "member">,
-): string {
-  return [
-    String(result.moves).padStart(2, "0"),
-    String(result.elapsedMs).padStart(16, "0"),
-    String(result.order).padStart(16, "0"),
-    JSON.stringify({
-      userId: result.userId,
-      username: result.username,
-      achievedAt: result.achievedAt,
-    }),
-  ].join(":");
-}
 function standing(member: string, rank: number): CompetitionStanding {
-  const fields = member.split(":");
-  const [moves, elapsedMs] = fields;
-  const details = JSON.parse(fields.slice(3).join(":")) as {
-    username: string;
-    achievedAt: number;
-  };
-  return {
-    rank,
-    username: details.username,
-    achievedAt: details.achievedAt,
-    moves: Number(moves),
-    elapsedMs: Number(elapsedMs),
-  };
+  const result = readCompetitionRankMember(member);
+  if (!result) throw new Error("Unreadable competition ranking entry.");
+  return { rank, ...publicResult(result)! };
 }
 function availability(
   period: ChallengePeriod,
@@ -226,6 +214,7 @@ export class CompetitionGameplay {
       await this.redis.get(COMPETITION_STATE_KEY),
     ).periods[period];
     const id = config.currentId;
+    if (id) await ensureCompetitionRanking(this.redis, id, this.now());
     const [instanceRaw, attemptRaw, bestRaw] = id
       ? await Promise.all([
           this.redis.get(competitionInstanceKey(id)),
@@ -238,7 +227,7 @@ export class CompetitionGameplay {
         ])
       : [undefined, undefined, undefined];
     const instance = readCompetitionInstance(instanceRaw),
-      best = readStoredCompetitionResult(bestRaw);
+      best = readRankedResult(bestRaw);
     return this.response(
       period,
       config,
@@ -267,6 +256,7 @@ export class CompetitionGameplay {
         hasMore: false,
         serverNow,
       };
+    await ensureCompetitionRanking(this.redis, info.instanceId, this.now());
     const entries = await this.redis.zRange(
       competitionLeaderboardKey(info.instanceId),
       offset,
@@ -341,6 +331,7 @@ export class CompetitionGameplay {
       60_000,
       this.now(),
     );
+    await ensureCompetitionRanking(this.redis, c.instanceId, this.now());
     const attemptId = this.newId();
     const historyKey = c.attemptId
       ? competitionAttemptHistoryKey(c.instanceId, identity.userId, c.attemptId)
@@ -388,7 +379,7 @@ export class CompetitionGameplay {
             "unavailable",
             "This challenge has not opened yet.",
           );
-        const best = readStoredCompetitionResult(values.get(bestKey));
+        const best = readRankedResult(values.get(bestKey));
         const previous = readAttempt(values.get(attemptKey));
         const receipt = parseJson(values.get(receiptKey)) as
           | GameplayReceipt
@@ -490,20 +481,17 @@ export class CompetitionGameplay {
           instance.completionOrder += 1;
           if (!Number.isSafeInteger(instance.completionOrder))
             throw new Error("Competition completion sequence exhausted.");
-          if (
-            !best ||
-            snapshot.placements.length < best.moves ||
-            (snapshot.placements.length === best.moves &&
-              snapshot.elapsedMs < best.elapsedMs)
-          ) {
-            const result = {
-              userId: identity.userId,
-              username: identity.username,
-              moves: snapshot.placements.length,
-              elapsedMs: snapshot.elapsedMs,
-              achievedAt: now,
-              order: instance.completionOrder,
-            };
+          const result = {
+            userId: identity.userId,
+            username: identity.username,
+            attemptId: snapshot.attemptId,
+            moves: snapshot.placements.length,
+            squares: snapshot.completedSquares.length,
+            elapsedMs: snapshot.elapsedMs,
+            achievedAt: now,
+            order: instance.completionOrder,
+          };
+          if (!best || compareCompetitionResults(result, best) < 0) {
             nextBest = { ...result, member: competitionRankMember(result) };
             if (best)
               writes.push({
@@ -594,6 +582,11 @@ export class CompetitionGameplay {
           await this.redis.get(competitionSummaryKey(config.latestSummaryId)),
         ) as CompetitionSummary | undefined) ?? null)
       : null;
+    if (latestResult)
+      latestResult.winner = await recoverChallengeWinnerSquares(
+        this.redis,
+        latestResult.winner,
+      );
     let settings = parseSubredditSettings(
       await this.redis.get(SUBREDDIT_SETTINGS_KEY),
     );

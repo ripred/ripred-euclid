@@ -16,6 +16,8 @@ export interface ChallengeWinner {
   preview?: boolean;
   avatar?: string;
   moves: number;
+  /** Actual completed squares; old published winners may not have this detail. */
+  squares?: number | null;
   elapsedMs: number;
   dailyWins: number;
   weeklyWins: number;
@@ -55,11 +57,15 @@ function readWinner(value: unknown): ChallengeWinner | null {
     !isRecord(value) ||
     !isNonBlankString(value.username) ||
     (value.avatar !== undefined && typeof value.avatar !== "string") ||
+    (value.squares !== undefined &&
+      value.squares !== null &&
+      !isCount(value.squares)) ||
     !WINNER_COUNTS.every((field) => isCount(value[field]))
   )
     return null;
   return {
     username: value.username,
+    ...(value.squares !== undefined ? { squares: value.squares } : {}),
     ...(value.preview === true ? { preview: true } : {}),
     ...(isCount(value.opensAt) ? { opensAt: value.opensAt } : {}),
     ...(isCount(value.endsAt) ? { endsAt: value.endsAt } : {}),

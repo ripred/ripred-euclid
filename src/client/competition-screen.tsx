@@ -12,12 +12,13 @@ import {
   requestCompetitionStandings,
 } from "./competition-api";
 import {
+  COMPETITION_RANKING_GUIDANCE,
   competitionAvailabilityText,
   competitionLabel,
   formatCompetitionDate,
+  formatCompetitionResult,
 } from "./competition-display";
 import { useCompetitionClock } from "./use-competition-availability";
-import { formatChallengeTime } from "./challenge-time";
 import { challengeObjective } from "./challenge-display";
 import { ChallengeTimer } from "./ChallengeTimer";
 import { ChallengeBoard } from "./ui/ChallengeBoard";
@@ -26,12 +27,7 @@ import { PageShell } from "./ui/PageShell";
 import "./competition-screen.css";
 
 function ResultLine({ result }: { result: CompetitionResult }) {
-  return (
-    <span>
-      {result.moves} {result.moves === 1 ? "move" : "moves"} ·{" "}
-      {formatChallengeTime(result.elapsedMs)}
-    </span>
-  );
+  return <span>{formatCompetitionResult(result)}</span>;
 }
 
 /** Daily and weekly use the same authoritative, resumable competition flow. */
@@ -432,8 +428,8 @@ export function CompetitionScreen({
             </p>
             <p className="field__hint">
               Arrow keys move focus; Enter or Space places a piece. No undo or
-              hints. The move target is the certified minimum, not a move limit.
-              Fewest moves wins, then shortest time, then first achieved.
+              hints. The move target is the certified minimum, not a move limit.{" "}
+              {COMPETITION_RANKING_GUIDANCE}
             </p>
           </section>
           <section

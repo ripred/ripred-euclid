@@ -318,8 +318,15 @@ html.euclid-inline,
 }
 
 /* Short posts, such as some native mobile embeds. */
+@media (max-width: 520px) and (max-height: 400px) {
+  /* The carousel header already labels the intro; keep its instructions visible. */
+  .euclid-preview .preview-caption--intro .preview-panel__kicker {
+    display: none;
+  }
+}
+
 @media (max-height: 400px) {
-  .preview-caption .preview-panel__body,
+  .preview-caption__title + .preview-panel__body,
   .splash-standings .splash-scene__card > .preview-panel__body,
   .preview__progress {
     display: none;
