@@ -18,7 +18,6 @@ import {
   getSoloAssistancePolicy,
   getSoloExitAction,
   getSoloResultPresentation,
-  getSoloSharePresentation,
   isSoloHumanTurn,
   shouldAdoptSoloSnapshot,
 } from "./solo-ui";
@@ -375,37 +374,5 @@ describe("solo request intents", () => {
       RangeError,
     );
     expect(() => createSoloAbandonIntent(snapshot, " ")).toThrow(TypeError);
-  });
-});
-
-describe("solo share presentation", () => {
-  it("marks only a confirmed posted response as complete", () => {
-    expect(
-      getSoloSharePresentation({
-        status: "posted",
-        message: "Win shared to r/Euclid.",
-      }),
-    ).toEqual({
-      completed: true,
-      notice: "Win shared to r/Euclid.",
-    });
-
-    expect(
-      getSoloSharePresentation({
-        status: "pending",
-        message: "The win is prepared.",
-      }),
-    ).toEqual({
-      completed: false,
-      notice: "The win is prepared. Posting has not been confirmed yet.",
-    });
-  });
-
-  it("does not report completion when the API status is missing", () => {
-    expect(getSoloSharePresentation({})).toEqual({
-      completed: false,
-      notice:
-        "Reddit did not return a confirmed share status. Please try again.",
-    });
   });
 });

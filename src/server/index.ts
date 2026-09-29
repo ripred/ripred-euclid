@@ -25,7 +25,6 @@ import type {
   RatingRecord,
   RankingsSharePayload,
   ResultSharePayload,
-  SerializableBoard,
   ShareBucket,
   SharePostDescriptor,
   SharedPostPayload,
@@ -49,6 +48,12 @@ import {
 } from "@devvit/web/server";
 import type { UiResponse } from "@devvit/web/shared";
 import { createPost } from "./core/post";
+import { resultHub, setupCommunityPosts } from "./community-posts";
+import { ShareComments, ShareCommentPendingError } from "./share-comments";
+import {
+  describeSharedResult,
+  RESULT_HUB_TITLES,
+} from "../shared/result-sharing";
 import { H2HDomainError } from "./h2h";
 import { resolveH2HPresence } from "./h2h-presence";
 import { H2HStore, H2HStoreError, type H2HSettlementEvent } from "./h2h-store";
@@ -70,6 +75,7 @@ const h2hStore = new H2HStore(redis);
 const h2hSettlements = new H2HSettlementService(redis);
 const soloStore = new SoloStore(redis);
 const competitions = new CompetitionService(redis);
+const shareComments = new ShareComments(redis, reddit);
 
 async function currentModeratorId(): Promise<string | null> {
   const userId = context.userId;
@@ -115,6 +121,17 @@ router.post("/internal/competitions/maintenance", async (_req, res) => {
   } catch (error) {
     console.error("Challenge maintenance failed", error);
     res.status(503).json({ message: "Challenge maintenance will retry." });
+  }
+});
+
+router.post("/internal/community/setup", async (_req, res) => {
+  try {
+    res.json({ status: "ok", posts: await setupCommunityPosts() });
+  } catch (error) {
+    console.error("Community post setup failed", error);
+    res
+      .status(503)
+      .json({ message: "Community post setup needs to be retried." });
   }
 });
 
@@ -564,17 +581,7 @@ function parseSharePostDescriptor(input: unknown): SharePostDescriptor | null {
   return { shareType: maybe.shareType, shareId: maybe.shareId };
 }
 
-async function saveSharePayload(
-  payload:
-    | Omit<RankingsSharePayload, "shareId">
-    | Omit<ResultSharePayload, "shareId">,
-): Promise<SharedPostPayload> {
-  const shareId = randomUUID();
-  const stored = { ...payload, shareId } as SharedPostPayload;
-  await redis.set(SHARE_POST(shareId), JSON.stringify(stored));
-  return stored;
-}
-
+// Standalone posts created by older versions still resolve their snapshots.
 async function loadSharePayload(
   shareId: string,
 ): Promise<SharedPostPayload | null> {
@@ -588,80 +595,19 @@ async function loadSharePayload(
   }
 }
 
-function buildShareFallbackText(payload: SharedPostPayload) {
-  if (payload.kind === "rankings") {
-    const rows = payload.rows
-      .slice(0, 5)
-      .map(
-        (row, index) =>
-          `${index + 1}. ${row.name || row.userId} — ${row.rating} (${row.wins}-${row.losses})`,
-      );
-    return [payload.title, payload.subtitle, ...rows].join("\n");
-  }
-
-  const board = payload.board;
-  return [
-    payload.title,
-    payload.subtitle,
-    payload.headline,
-    payload.details,
-    `${payload.p1Name} ${board.m_players[0]?.m_score ?? 0} — ${board.m_players[1]?.m_score ?? 0} ${payload.p2Name}`,
-    payload.footer,
-  ].join("\n");
-}
-
-function buildShareSplash(payload: SharedPostPayload) {
-  return {
-    appDisplayName: "Euclid",
-    backgroundUri: "splash.jpg",
-    buttonLabel: "Open Post",
-    heading: payload.title,
-    description:
-      payload.kind === "rankings" ? payload.subtitle : payload.headline,
-  };
-}
-
 async function getCurrentSubredditName() {
   return context.subredditName || (await reddit.getCurrentSubreddit()).name;
 }
 
-async function createCustomSharePost(
-  title: string,
+async function publishShareComment(
   payload: SharedPostPayload,
+  idempotencyKey?: string,
 ) {
-  const subredditName = await getCurrentSubredditName();
-  const descriptor: SharePostDescriptor = {
-    shareType: payload.kind,
-    shareId: payload.shareId,
-  };
-  const fallbackText = buildShareFallbackText(payload);
-  const baseOptions = {
-    subredditName,
-    title,
-    entry: "game" as const,
-    postData: descriptor,
-    textFallback: { text: fallbackText },
-    splash: buildShareSplash(payload),
-  };
-
-  try {
-    const post = await reddit.submitCustomPost({
-      ...baseOptions,
-      runAs: "USER",
-      userGeneratedContent: { text: fallbackText },
-    });
-    return { post, subredditName, sharedAs: "USER" as const };
-  } catch (userError: unknown) {
-    slog("[SHARE] user-auth custom post failed, falling back to app account", {
-      title,
-      error: errorMessage(userError),
-    });
-    const post = await reddit.submitCustomPost({
-      ...baseOptions,
-      runAs: "APP",
-    });
-    return { post, subredditName, sharedAs: "APP" as const };
-  }
+  return shareComments.publish(
+    payload,
+    await resultHub(payload),
+    idempotencyKey,
+  );
 }
 
 async function enforceShareRateLimit(uid: string, kind: string) {
@@ -685,6 +631,11 @@ function sendShareError(
   label: string,
   error: unknown,
 ): Response {
+  if (error instanceof ShareCommentPendingError) {
+    return res
+      .status(202)
+      .json({ ok: true, status: "pending", message: error.message });
+  }
   const normalized = normalizeShareError(error);
   if (normalized.retryAfterMs !== undefined) {
     return res.status(429).json({
@@ -1259,7 +1210,7 @@ router.get("/api/rankings", async (req, res) => {
 });
 
 /* =========================
-   Share custom posts to Reddit
+   Share comments to Reddit
    ========================= */
 
 router.post("/api/share/rankings", async (req, res) => {
@@ -1289,11 +1240,8 @@ router.post("/api/share/rankings", async (req, res) => {
     const sharedAt = nowISO();
     const subredditName = await getCurrentSubredditName();
     const modeLabel = variant === "tide" ? "Tide " : "";
-    const title =
-      bucket === "hvh"
-        ? `Euclid ${modeLabel}${LEADERBOARD_LABEL} — ${HUMAN_VS_HUMAN_LABEL} — ${formatShareDate()}`
-        : `Euclid ${modeLabel}${LEADERBOARD_LABEL} — ${HUMAN_VS_EUCLID_LABEL} — ${formatShareDate()}`;
-    const payload = await saveSharePayload({
+    const payload: RankingsSharePayload = {
+      shareId: randomUUID(),
       kind: "rankings",
       subredditName,
       sharedAt,
@@ -1303,15 +1251,14 @@ router.post("/api/share/rankings", async (req, res) => {
       subtitle: `${bucket === "hvh" ? HUMAN_VS_HUMAN_LABEL : `${HUMAN_VS_EUCLID_LABEL} • Ranked`} • ${formatShareDate(sharedAt)}`,
       rows: rows.slice(0, 10),
       ...(bucket === "hva" ? { solo: rankedSoloSessionMetadata(variant) } : {}),
-    });
-    const { post, sharedAs } = await createCustomSharePost(title, payload);
-    slog("[SHARE] rankings posted", { uid, bucket, postId: post.id, sharedAs });
+    };
+    const shared = await publishShareComment(payload);
+    slog("[SHARE] rankings commented", { uid, bucket, ...shared });
     return res.json({
       ok: true,
-      message: `${LEADERBOARD_LABEL} shared to r/${subredditName}${sharedAs === "APP" ? " via the app account." : "."}`,
-      postId: post.id,
-      permalink: post.permalink,
-      sharedAs,
+      message: `${LEADERBOARD_LABEL} added to ${RESULT_HUB_TITLES[bucket === "hvh" ? "h2h" : "ai"]}.`,
+      status: "posted",
+      ...shared,
     });
   } catch (error: unknown) {
     return sendShareError(res, "rankings", error);
@@ -1360,7 +1307,7 @@ router.post("/api/share/h2h-result", async (req, res) => {
       });
     }
 
-    const state = await enrichH2HProfiles(storedState);
+    const state = storedState;
     if (!state.ended)
       return res
         .status(409)
@@ -1381,56 +1328,65 @@ router.post("/api/share/h2h-result", async (req, res) => {
         .status(403)
         .json({ ok: false, message: "Only the winner can share this result." });
 
+    const idempotencyKey = `h2h:${state.gameId}:${terminalRevision}`;
+    const previousShare = await shareComments.getPosted(idempotencyKey);
+    if (previousShare) {
+      return res.json({
+        ok: true,
+        status: "posted",
+        message: `Result added to ${RESULT_HUB_TITLES.h2h}.`,
+        ...previousShare,
+      });
+    }
     await enforceShareRateLimit(uid, "h2h");
 
     const gid = state.gameId;
     const board = state.board;
     const u1 = board.m_players[0].userId;
     const u2 = board.m_players[1].userId;
-    const names = board.playerNames ?? {};
+    const names = await enrichH2HNames([u1, u2], board.playerNames);
     const p1Name = names[u1] || "Redditor 1";
     const p2Name = names[u2] || "Redditor 2";
     const winnerName = winnerUid === u1 ? p1Name : p2Name;
     const loserName = winnerUid === u1 ? p2Name : p1Name;
-    const s1 = board.m_players[0].m_score;
-    const s2 = board.m_players[1].m_score;
     const byForfeit = state.endedReason === "player_left";
     const sharedAt = nowISO();
     const subredditName = await getCurrentSubredditName();
-    const title = byForfeit
-      ? `${winnerName} Wins! — by forfeit — ${formatShareDate()}`
-      : `${winnerName} Wins! — ${s1}-${s2} — ${formatShareDate()}`;
-    const boardForShare: SerializableBoard = board;
-    const p1Avatar = board.playerAvatars?.[u1];
-    const p2Avatar = board.playerAvatars?.[u2];
-    const payload = await saveSharePayload({
+    const result = describeSharedResult({
+      board,
+      p1Name,
+      p2Name,
+      outcome:
+        winnerUid === u1
+          ? { state: 1, status: "player1_win", winner: 1 }
+          : { state: 2, status: "player2_win", winner: 2 },
+    });
+    const payload: ResultSharePayload = {
+      shareId: randomUUID(),
       kind: "result",
       subredditName,
       sharedAt,
       mode: "h2h",
       ...(board.variant === "tide" ? { variant: "tide" as const } : {}),
-      title: `${winnerName} Wins!`,
+      title: result.title,
       subtitle: `${board.variant === "tide" ? "Tide • " : ""}${HUMAN_VS_HUMAN_LABEL} • ${formatShareDate(sharedAt)}`,
-      headline: `${winnerName} Wins!`,
+      headline: result.headline,
       details: byForfeit
         ? `${winnerName} advanced after ${loserName} left the match.`
-        : `Final score ${s1}-${s2}`,
-      footer: `First to ${boardForShare.winScore} points${board.variant === "tide" ? ` or ${TIDE_MOVE_LIMIT} moves` : ""} • Shared from r/${subredditName}`,
-      board: boardForShare,
+        : result.details,
+      footer: `First to ${board.winScore} points${board.variant === "tide" ? ` or ${TIDE_MOVE_LIMIT} moves` : ""} • Shared from r/${subredditName}`,
+      board,
       p1Name,
       p2Name,
-      ...(p1Avatar ? { p1Avatar } : {}),
-      ...(p2Avatar ? { p2Avatar } : {}),
       winnerSide: winnerUid === u1 ? 1 : 2,
-    });
-    const { post, sharedAs } = await createCustomSharePost(title, payload);
-    slog("[SHARE] h2h result posted", { uid, gid, postId: post.id, sharedAs });
+    };
+    const shared = await publishShareComment(payload, idempotencyKey);
+    slog("[SHARE] h2h result commented", { uid, gid, ...shared });
     return res.json({
       ok: true,
-      message: `Win shared to r/${subredditName}${sharedAs === "APP" ? " via the app account." : "."}`,
-      postId: post.id,
-      permalink: post.permalink,
-      sharedAs,
+      message: `Result added to ${RESULT_HUB_TITLES.h2h}.`,
+      status: "posted",
+      ...shared,
     });
   } catch (error: unknown) {
     return sendShareError(res, "h2h result", error);
@@ -1444,15 +1400,13 @@ router.post("/api/share/ai-result", async (req, res) => {
       return res.status(401).json({ ok: false, message: "userId missing" });
 
     const request = (req.body ?? {}) as SoloShareRequest;
-    const profile = await refreshCurrentUserProfile(uid);
-    const username = profile.name || "Redditor";
+    const username = (await reddit.getCurrentUsername()) || "Redditor";
     const subredditName = await getCurrentSubredditName();
     const prepared = await soloStore.prepareShare(uid, {
       gameId: request.gameId,
       commandId: request.commandId,
       subredditName,
       humanName: username,
-      ...(profile.avatar ? { humanAvatar: profile.avatar } : {}),
     });
 
     if (prepared.receipt.status === "posted") {
@@ -1461,12 +1415,15 @@ router.post("/api/share/ai-result", async (req, res) => {
         ok: true,
         status: "posted",
         replayed: true,
-        message: `Win shared to r/${subredditName}${receipt.runAs === "APP" ? " via the app account." : "."}`,
+        message: receipt.commentId
+          ? `Result added to ${RESULT_HUB_TITLES.ai}.`
+          : `Result shared to r/${subredditName}.`,
         receipt: {
           gameId: receipt.gameId,
           commandId: receipt.commandId,
           shareId: receipt.shareId,
           postId: receipt.postId,
+          ...(receipt.commentId ? { commentId: receipt.commentId } : {}),
           permalink: receipt.permalink,
           createdAt: receipt.postedAt,
         },
@@ -1480,24 +1437,30 @@ router.post("/api/share/ai-result", async (req, res) => {
         replayed: true,
         shareId: prepared.receipt.shareId,
         message:
-          "This win was already prepared for sharing; no duplicate post was created.",
+          "This result is already being shared; no duplicate comment was created.",
       });
     }
 
-    let submitted: Awaited<ReturnType<typeof createCustomSharePost>>;
+    let submitted: Awaited<ReturnType<typeof publishShareComment>>;
     try {
-      submitted = await createCustomSharePost(
-        prepared.receipt.payload.title,
-        prepared.receipt.payload,
-      );
+      submitted = await publishShareComment(prepared.receipt.payload);
     } catch (submissionError: unknown) {
+      if (submissionError instanceof ShareCommentPendingError) {
+        return res.status(202).json({
+          ok: true,
+          status: "pending",
+          replayed: true,
+          shareId: prepared.receipt.shareId,
+          message: submissionError.message,
+        });
+      }
       try {
         await soloStore.failShare(uid, {
           gameId: request.gameId,
           shareId: prepared.receipt.shareId,
           failureMessage: errorMessage(
             submissionError,
-            "Reddit did not accept the share post.",
+            "Reddit did not accept the result comment.",
           ),
         });
       } catch (receiptError: unknown) {
@@ -1510,17 +1473,19 @@ router.post("/api/share/ai-result", async (req, res) => {
       }
       throw submissionError;
     }
-    const { post, sharedAs } = submitted;
+    const { postId, commentId, permalink, sharedAs } = submitted;
     const receipt = await soloStore.finalizeShare(uid, {
       gameId: request.gameId,
       shareId: prepared.receipt.shareId,
-      postId: post.id,
-      permalink: post.permalink,
+      postId,
+      commentId,
+      permalink,
       runAs: sharedAs,
     });
     slog("[SHARE] ai result posted", {
       uid,
-      postId: post.id,
+      postId,
+      commentId,
       sharedAs,
       gameId: request.gameId,
     });
@@ -1528,12 +1493,13 @@ router.post("/api/share/ai-result", async (req, res) => {
       ok: true,
       status: "posted",
       replayed: false,
-      message: `Win shared to r/${subredditName}${sharedAs === "APP" ? " via the app account." : "."}`,
+      message: `Result added to ${RESULT_HUB_TITLES.ai}.`,
       receipt: {
         gameId: receipt.gameId,
         commandId: receipt.commandId,
         shareId: receipt.shareId,
         postId: receipt.postId,
+        ...(receipt.commentId ? { commentId: receipt.commentId } : {}),
         permalink: receipt.permalink,
         createdAt: receipt.postedAt,
       },

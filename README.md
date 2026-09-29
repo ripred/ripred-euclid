@@ -40,6 +40,10 @@ The main menu offers **Play Euclid**, **Play a Redditor**, **Daily Challenge**, 
 
 You can place pieces with a mouse or keyboard (arrow keys to move, Enter or Space to place). On touch screens with small board points, the first tap aims and the second tap on that point places. Completed squares light up so you can see exactly where the points came from.
 
+After completing a win or loss against Euclid, **Share result** adds an app comment to the pinned **Redditors vs Euclid** hub. Its heading names the winner and includes the score, such as **trent beat Euclid, 156–132** or **Euclid beat trent, 156–132**. Draws and abandoned games cannot be shared.
+
+Redditor match winners share to the pinned **Redditors vs Redditors** hub. Shared leaderboards go to the hub for their mode, too. Both hubs show the newest app comments first and keep ordinary comments closed. Previously shared standalone posts remain available.
+
 The two leaderboards keep solo and multiplayer results separate. **Watch live** opens the Redditor match lobby; if nobody is playing, you can watch the recorded teaching game instead.
 
 ## Daily and weekly challenges

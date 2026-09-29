@@ -587,7 +587,7 @@ describe("abandonment and canonical terminal results", () => {
     });
   });
 
-  it("completes from canonical moves and does not expose an AI win for sharing", () => {
+  it("completes from canonical moves and allows sharing a completed AI win", () => {
     // Filling points in reading order loses when Euclid moves first.
     let record = practice({
       difficulty: "beginner",
@@ -607,7 +607,7 @@ describe("abandonment and canonical terminal results", () => {
     expect(result).not.toBeNull();
     expect(result?.resultForHuman).toBe(0);
     expect(result?.board).not.toHaveProperty("m_targets");
-    expect(publicSoloSnapshot(record).canShare).toBe(false);
+    expect(publicSoloSnapshot(record).canShare).toBe(true);
   });
 
   it("rejects stale or duplicate terminal abandonment", () => {

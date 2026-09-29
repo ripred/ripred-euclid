@@ -37,7 +37,6 @@ import type {
   SoloAbandonResponse,
   SoloMoveResponse,
   SoloSessionSnapshot,
-  SoloShareResponse,
   SoloStartResponse,
   SoloStateResponse,
   UserStatsResponse,
@@ -91,6 +90,7 @@ import {
   type ThemeMode,
 } from "./theme";
 import { ResultShareView } from "./share-preview";
+import { RESULT_HUB_TITLES } from "../shared/result-sharing";
 import { fetchRankings, type LoadedRankings } from "./rankings-loader";
 import { errorMessage } from "../shared/error-message";
 import {
@@ -116,10 +116,13 @@ import {
   getSoloAssistancePolicy,
   getSoloExitAction,
   getSoloResultPresentation,
-  getSoloSharePresentation,
   isSoloHumanTurn,
   shouldAdoptSoloSnapshot,
 } from "./solo-ui";
+import {
+  getResultSharePresentation,
+  type ResultShareStatusResponse,
+} from "./result-share-ui";
 import { isFreshSoloGameplayKey } from "./solo-keyboard";
 import {
   HomeScreen,
@@ -195,10 +198,8 @@ type AdminMetrics = {
   daily: { dates: string[]; hvh: number[]; ai: Record<AiDifficulty, number[]> };
 };
 
-type ShareResponse = {
+type ShareResponse = ResultShareStatusResponse & {
   ok?: boolean;
-  message?: string;
-  status?: SoloShareResponse["status"];
 };
 
 function reportRequestFailure(action: string, error: unknown): void {
@@ -2150,7 +2151,7 @@ export const App = ({
     }
   };
 
-  const shareGeneratedPost = async ({
+  const shareGeneratedContent = async ({
     busyKey,
     endpoint,
     payload,
@@ -2174,7 +2175,6 @@ export const App = ({
       });
       const j = (await r.json().catch(() => ({}))) as ShareResponse;
       if (!r.ok || !j.ok) throw new Error(j.message || "Share failed.");
-      if (isCurrent()) setNotice(j.message || "Shared to Reddit.");
       return j;
     } catch (e) {
       if (isCurrent()) setNotice(errorMessage(e, "Share failed."));
@@ -2187,12 +2187,18 @@ export const App = ({
     }
   };
 
-  const shareRankings = async (bucket: ShareBucket) =>
-    shareGeneratedPost({
+  const shareRankings = async (bucket: ShareBucket) => {
+    const response = await shareGeneratedContent({
       busyKey: `rankings:${bucket}`,
       endpoint: "/api/share/rankings",
       payload: { bucket, variant: rankingsVariant },
     });
+    if (response)
+      setNotice(
+        getResultSharePresentation(response, bucket === "hvh" ? "h2h" : "ai")
+          .notice,
+      );
+  };
 
   const shareMultiplayerWin = async () => {
     const gameId = gameIdRef.current;
@@ -2205,17 +2211,20 @@ export const App = ({
       h2hRoundEpochRef.current === roundEpoch &&
       gameRevisionRef.current === terminalRevision;
     const payload: H2HShareRequest = { gameId, terminalRevision };
-    const response = await shareGeneratedPost({
+    const response = await shareGeneratedContent({
       busyKey: "multiplayer",
       endpoint: "/api/share/h2h-result",
       payload,
       isCurrent,
     });
     if (!response || !isCurrent()) return;
-    setSharedWins((current) => ({ ...current, multiplayer: true }));
+    const presentation = getResultSharePresentation(response, "h2h");
+    if (presentation.completed)
+      setSharedWins((current) => ({ ...current, multiplayer: true }));
+    setNotice(presentation.notice);
   };
 
-  const shareAiWin = async () => {
+  const shareAiResult = async () => {
     const snapshot = soloSnapshotRef.current;
     if (
       !snapshot?.canShare ||
@@ -2230,19 +2239,21 @@ export const App = ({
         commandId: createClientCommandId("solo-share"),
       };
     }
-    const response = await shareGeneratedPost({
+    const isCurrent = () => soloSnapshotRef.current?.gameId === snapshot.gameId;
+    const response = await shareGeneratedContent({
       busyKey: "ai",
       endpoint: "/api/share/ai-result",
       payload: {
         gameId: snapshot.gameId,
         commandId: soloShareCommandRef.current.commandId,
       },
+      isCurrent,
     });
-    if (!response || soloSnapshotRef.current?.gameId !== snapshot.gameId) {
+    if (!response || !isCurrent()) {
       return;
     }
 
-    const presentation = getSoloSharePresentation(response);
+    const presentation = getResultSharePresentation(response, "ai");
     if (presentation.completed) {
       setSharedWins((current) => ({ ...current, ai: true }));
     }
@@ -3586,13 +3597,14 @@ export const App = ({
                     className="btn btn--primary"
                     disabled={h2hExitPending}
                     onClick={shareMultiplayerWin}
+                    title={`Post a result comment in ${RESULT_HUB_TITLES.h2h}`}
                   >
                     <Icon name="share" size={18} />
                     {shareBusy === "multiplayer"
                       ? "Sharing…"
                       : h2hExitPending
                         ? "Please wait…"
-                        : "Share win"}
+                        : "Share result"}
                   </button>
                 )}
               {spectating ? (
@@ -3777,23 +3789,22 @@ export const App = ({
             )}
             actions={
               <>
-                {soloSnapshot.canShare &&
-                  presentation.isLocalVictory &&
-                  !sharedWins.ai && (
-                    <button
-                      type="button"
-                      className="btn btn--primary"
-                      disabled={soloExitPending}
-                      onClick={() => void shareAiWin()}
-                    >
-                      <Icon name="share" size={18} />
-                      {shareBusy === "ai"
-                        ? "Sharing…"
-                        : soloExitPending
-                          ? "Please wait…"
-                          : "Share win"}
-                    </button>
-                  )}
+                {soloSnapshot.canShare && !sharedWins.ai && (
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    disabled={soloExitPending}
+                    onClick={() => void shareAiResult()}
+                    title={`Post a result comment in ${RESULT_HUB_TITLES.ai}`}
+                  >
+                    <Icon name="share" size={18} />
+                    {shareBusy === "ai"
+                      ? "Sharing…"
+                      : soloExitPending
+                        ? "Please wait…"
+                        : "Share result"}
+                  </button>
+                )}
                 <button
                   autoFocus
                   type="button"

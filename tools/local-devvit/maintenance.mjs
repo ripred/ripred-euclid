@@ -4,6 +4,20 @@ import http from "node:http";
 const TOKEN_HEADER = "x-euclid-local-maintenance";
 const LOOPBACK = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 
+/** Only the process-owned scheduler may reach any internal server route. */
+export function localInternalAccess(req, maintenance) {
+  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+  let normalized;
+  try {
+    normalized = decodeURIComponent(pathname).toLowerCase();
+  } catch {
+    return false;
+  }
+  if (normalized !== "/internal" && !normalized.startsWith("/internal/"))
+    return null;
+  return pathname === maintenance.endpoint && maintenance.authorized(req);
+}
+
 /** Local counterpart of Devvit's every-minute internal scheduled endpoint. */
 export function createLocalMaintenance({
   intervalMs = 60_000,

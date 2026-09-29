@@ -1,6 +1,11 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
   "name": "ripred-euclid",
+  "permissions": { "media": true },
+  "triggers": {
+    "onAppInstall": "/internal/community/setup",
+    "onAppUpgrade": "/internal/community/setup"
+  },
   "post": {
     "dir": "dist/client",
     "entrypoints": {

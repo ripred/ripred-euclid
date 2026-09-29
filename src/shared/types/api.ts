@@ -437,7 +437,10 @@ export type SoloShareReceipt = {
   gameId: string;
   commandId: string;
   shareId: string;
+  /** The original result post or the pinned hub containing a result comment. */
   postId: string;
+  /** Absent on legacy standalone result posts. */
+  commentId?: string;
   permalink: string;
   createdAt: string;
 };

@@ -11,7 +11,6 @@ import type {
   SoloAbandonRequest,
   SoloMoveRequest,
   SoloSessionSnapshot,
-  SoloShareResponse,
 } from "../shared/types/api";
 
 export type SoloResultKind = "running" | "win" | "loss" | "tie" | "abandoned";
@@ -40,16 +39,6 @@ export type SoloStartConfiguration =
 export interface RetainedSoloStartCommand {
   intentKey: string;
   commandId: string;
-}
-
-export interface SoloSharePresentation {
-  completed: boolean;
-  notice: string;
-}
-
-export interface SoloShareStatusResponse {
-  status?: SoloShareResponse["status"];
-  message?: string;
 }
 
 export type SoloExitAction =
@@ -116,30 +105,6 @@ export function getOrCreateSoloStartCommand(
   return {
     intentKey,
     commandId: requireCommandId(createCommandId()),
-  };
-}
-
-export function getSoloSharePresentation(
-  response: SoloShareStatusResponse,
-): SoloSharePresentation {
-  const message = response.message?.trim();
-  if (response.status === "posted") {
-    return {
-      completed: true,
-      notice: message || "Shared to Reddit.",
-    };
-  }
-  if (response.status === "pending") {
-    return {
-      completed: false,
-      notice: message
-        ? `${message} Posting has not been confirmed yet.`
-        : "Your win is prepared, but posting has not been confirmed yet.",
-    };
-  }
-  return {
-    completed: false,
-    notice: "Reddit did not return a confirmed share status. Please try again.",
   };
 }
 

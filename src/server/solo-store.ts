@@ -15,7 +15,6 @@ import type {
 import {
   AI_DIFFICULTY_LABELS,
   TIDE_MOVE_LIMIT,
-  playerColorForIndex,
   type AiDifficulty,
   type GameOutcome,
   type GameVariant,
@@ -70,6 +69,10 @@ import {
   validateSubredditSettings,
 } from "../shared/subreddit-settings";
 import { SUBREDDIT_SETTINGS_KEY } from "./subreddit-settings";
+import {
+  canShareSoloResult,
+  describeSharedResult,
+} from "../shared/result-sharing";
 
 export const SOLO_STORE_SCHEMA_VERSION = 2 as const;
 export const SOLO_RATING_SCHEMA_VERSION = 1 as const;
@@ -204,6 +207,8 @@ export type SoloPostedShareReceipt = Omit<
 > & {
   status: "posted";
   postId: string;
+  /** Absent on legacy standalone result posts; postId is the hub for comments. */
+  commentId?: string;
   permalink: string;
   runAs: string;
   postedAt: string;
@@ -232,6 +237,7 @@ export type SoloFinalizeShareInput = {
   gameId: string;
   shareId: string;
   postId: string;
+  commentId?: string;
   permalink: string;
   runAs: string;
 };
@@ -614,6 +620,8 @@ function parseShareReceipt(
   if (
     value.status === "posted" &&
     (typeof value.postId !== "string" ||
+      (value.commentId !== undefined &&
+        !isCanonicalIdentifier(value.commentId)) ||
       typeof value.permalink !== "string" ||
       typeof value.runAs !== "string" ||
       typeof value.postedAt !== "string")
@@ -782,12 +790,21 @@ function buildSharePayload(
   shareId: string,
   sharedAt: string,
 ): ResultSharePayload {
-  const humanSide = playerColorForIndex(result.rules.humanPlayer);
-  const humanScore =
-    result.snapshot.board.m_players[result.rules.humanPlayer].m_score;
-  const aiIndex = result.rules.humanPlayer === 0 ? 1 : 0;
-  const aiScore = result.snapshot.board.m_players[aiIndex].m_score;
   const humanIsFirst = result.rules.humanPlayer === 0;
+  const players = {
+    board: result.snapshot.board,
+    p1Name: humanIsFirst ? input.humanName : "Euclid",
+    p2Name: humanIsFirst ? "Euclid" : input.humanName,
+  };
+  const { winnerSide, ...description } = describeSharedResult({
+    ...players,
+    outcome: result.outcome,
+  });
+  if (winnerSide === null)
+    throw new SoloStoreError(
+      "result_not_shareable",
+      "Only a completed win or loss can be shared.",
+    );
   return {
     kind: "result",
     ...(result.rules.variant === "tide" ? { variant: "tide" } : {}),
@@ -795,17 +812,13 @@ function buildSharePayload(
     subredditName: input.subredditName,
     sharedAt,
     mode: "ai",
-    title: "Redditor vs Euclid",
+    ...description,
     subtitle: describeRules(result.rules),
-    headline: `${input.humanName} defeated Euclid!`,
-    details: `${humanScore}–${aiScore}`,
     footer:
       result.rules.variant === "tide"
         ? `Tide · Up to ${TIDE_MOVE_LIMIT} moves · Play Euclid on Reddit`
         : "Play Euclid on Reddit",
-    board: result.snapshot.board,
-    p1Name: humanIsFirst ? input.humanName : "Euclid",
-    p2Name: humanIsFirst ? "Euclid" : input.humanName,
+    ...players,
     ...(humanIsFirst
       ? input.humanAvatar
         ? { p1Avatar: input.humanAvatar }
@@ -813,7 +826,7 @@ function buildSharePayload(
       : input.humanAvatar
         ? { p2Avatar: input.humanAvatar }
         : {}),
-    winnerSide: humanSide,
+    winnerSide,
     solo: soloSessionMetadata(result.rules),
   };
 }
@@ -1519,10 +1532,10 @@ export class SoloStore {
               "The caller does not own this solo result.",
             );
           }
-          if (canonicalResult.resultForHuman !== 1) {
+          if (!canShareSoloResult(canonicalResult.snapshot)) {
             throw new SoloStoreError(
               "result_not_shareable",
-              "Only a completed human victory can be shared.",
+              "Only a completed win or loss can be shared.",
             );
           }
 
@@ -1642,6 +1655,8 @@ export class SoloStore {
     requireIdentifier(input?.gameId, "gameId");
     requireIdentifier(input?.shareId, "shareId");
     requireIdentifier(input?.postId, "postId");
+    if (input?.commentId !== undefined)
+      requireIdentifier(input.commentId, "commentId");
     requireIdentifier(input?.permalink, "permalink");
     requireIdentifier(input?.runAs, "runAs");
     const shareKey = SOLO_STORE_KEYS.share(input.gameId);
@@ -1684,6 +1699,9 @@ export class SoloStore {
           ...receipt,
           status: "posted",
           postId: input.postId,
+          ...(input.commentId !== undefined
+            ? { commentId: input.commentId }
+            : {}),
           permalink: input.permalink,
           runAs: input.runAs,
           postedAt,

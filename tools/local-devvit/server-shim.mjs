@@ -12,7 +12,8 @@ import http from "node:http";
 import path from "node:path";
 import { CHALLENGE_RESULTS_KEY } from "../../src/server/challenge-results.ts";
 import { createLocalRedis } from "./redis-store.mjs";
-import { createLocalMaintenance } from "./maintenance.mjs";
+import { createLocalMaintenance, localInternalAccess } from "./maintenance.mjs";
+import { createLocalCommunity } from "./community.mjs";
 import {
   MOCK_RANKINGS,
   MOCK_SPOTLIGHTS,
@@ -62,11 +63,15 @@ async function seedSampleWinners() {
 
 /* ---------- Reddit and request context ---------- */
 
-let postCounter = 0;
-/** Posts created locally, so `/__local/post?id=…` can open one like Reddit. */
-const posts = new Map();
+const community = createLocalCommunity({
+  subredditName: LOCAL_SUBREDDIT,
+  currentUsername: () => current().username,
+});
+const { posts, comments } = community;
+export const media = community.media;
 
 export const reddit = {
+  ...community.reddit,
   getModerators({ username }) {
     return {
       all: async () => (username === "local_moderator" ? [{ username }] : []),
@@ -85,19 +90,6 @@ export const reddit = {
   async getCurrentSubreddit() {
     return { name: LOCAL_SUBREDDIT };
   },
-  async submitCustomPost(options) {
-    postCounter += 1;
-    const id = `t3_local_${postCounter}`;
-    posts.set(id, { title: options.title ?? "", postData: options.postData });
-    console.log(
-      `[local-devvit] custom post ${id}: ${options.title ?? "(untitled)"} — open /__local/post?id=${id}`,
-    );
-    return {
-      id,
-      permalink: `/r/${LOCAL_SUBREDDIT}/comments/${id.slice(3)}/`,
-      url: `http://localhost/r/${LOCAL_SUBREDDIT}/comments/${id.slice(3)}/`,
-    };
-  },
 };
 
 export const context = {
@@ -111,6 +103,8 @@ export const context = {
     return posts.get(current().postId)?.postData;
   },
   subredditName: LOCAL_SUBREDDIT,
+  subredditId: "t5_local",
+  appSlug: "euclid",
   appVersion: "local",
 };
 
@@ -142,17 +136,28 @@ function saveBrandAsset(req, res, file) {
 export const getServerPort = () => Number(process.env.EUCLID_API_PORT ?? 7475);
 
 export function createServer(app) {
+  let seedError;
+  const ready = community.seed(redis).catch((error) => {
+    seedError = error;
+    console.error("[local-devvit] community fixtures", error);
+  });
   void seedSampleWinners().catch((error) =>
     console.error("[local-devvit] sample winners", error),
   );
   const maintenance = createLocalMaintenance();
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
-    if (url.pathname === maintenance.endpoint) {
-      if (!maintenance.authorized(req)) {
-        res.writeHead(403).end("Local maintenance is scheduler-only.");
-        return;
-      }
+    const internalAccess = localInternalAccess(req, maintenance);
+    if (internalAccess === false) {
+      res.writeHead(403).end("Local internal endpoints are scheduler-only.");
+      return;
+    }
+    await ready;
+    if (seedError) {
+      res.writeHead(503).end("Local community fixtures could not be prepared.");
+      return;
+    }
+    if (internalAccess === true) {
       identity.run({}, () => app(req, res));
       return;
     }
@@ -178,6 +183,11 @@ export function createServer(app) {
     if (url.pathname === "/__local/posts") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify(Object.fromEntries(posts), null, 2));
+      return;
+    }
+    if (url.pathname === "/__local/comments") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(Object.fromEntries(comments), null, 2));
       return;
     }
     if (url.pathname === "/__local/post") {

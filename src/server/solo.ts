@@ -45,6 +45,7 @@ import {
 } from "../shared/guards";
 import { cloneSquare, squareIndexKey } from "../shared/share-squares";
 import { pointIndex } from "../shared/game/geometry";
+import { canShareSoloResult } from "../shared/result-sharing";
 
 export const SOLO_SCHEMA_VERSION = 2 as const;
 export const SOLO_AI_USER_ID = "euclid-ai";
@@ -896,7 +897,7 @@ export function publicSoloSnapshotFromCanonicalRecord(
     status: record.status,
     outcome: cloneOutcome(record.outcome),
     endedReason: record.endedReason,
-    canShare: soloResultForHumanFromCanonicalRecord(record) === 1,
+    canShare: canShareSoloResult(record),
     humanMoveCount: record.humanMoveCount,
     aiMoveCount: record.aiMoveCount,
     rankedAbandonCountsAsLoss:

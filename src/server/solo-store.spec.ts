@@ -1258,7 +1258,7 @@ describe("SoloStore Ranked settlement and abandonment", () => {
 });
 
 describe("SoloStore canonical result sharing", () => {
-  it("rejects sharing a canonical loss", async () => {
+  it("rejects sharing an abandoned Ranked loss", async () => {
     const { store } = createFixture();
     const ranked = await startRanked(store);
     const rankedMove = await store.move(
@@ -1278,6 +1278,67 @@ describe("SoloStore canonical result sharing", () => {
         humanName: "Owner",
       }),
     ).rejects.toMatchObject({ code: "result_not_shareable" });
+  });
+
+  it("prepares one canonical Euclid victory with winner-first scores and owner checks", async () => {
+    const { redis, store } = createFixture({
+      createSeed: () => "private-practice-seed",
+    });
+    const started = await startPractice(store, "completed-loss", {
+      difficulty: "beginner",
+      humanPlayer: 1,
+      firstPlayer: 0,
+    });
+    let snapshot = started.snapshot;
+    while (snapshot.status === "active") {
+      const response = await store.move(
+        "owner",
+        moveRequest(snapshot, `completed-loss-${snapshot.revision}`),
+      );
+      expect(response.accepted).toBe(true);
+      snapshot = response.snapshot;
+    }
+    expect(snapshot).toMatchObject({
+      status: "completed",
+      outcome: { winner: 1 },
+      canShare: true,
+    });
+    const input = {
+      gameId: snapshot.gameId,
+      commandId: "share-loss",
+      subredditName: "euclid_test",
+      humanName: "Owner",
+    };
+    await expect(store.prepareShare("other-user", input)).rejects.toMatchObject(
+      {
+        code: "not_owner",
+      },
+    );
+    const resultBefore = redis.value(SOLO_STORE_KEYS.result(snapshot.gameId));
+    const preparations = await Promise.all([
+      store.prepareShare("owner", input),
+      store.prepareShare("owner", { ...input, commandId: "share-loss-again" }),
+    ]);
+    expect(
+      preparations.filter(({ shouldSubmit }) => shouldSubmit),
+    ).toHaveLength(1);
+    expect(preparations[0]!.receipt.payload).toEqual(
+      preparations[1]!.receipt.payload,
+    );
+    const payload = preparations[0]!.receipt.payload;
+    const [euclid, human] = snapshot.board.m_players;
+    expect(payload).toMatchObject({
+      title: `Euclid beat Owner, ${euclid.m_score}–${human.m_score}`,
+      headline: "Euclid beat Owner!",
+      details: `${euclid.m_score}–${human.m_score}`,
+      winnerSide: 1,
+      p1Name: "Euclid",
+      p2Name: "Owner",
+    });
+    expect(redis.value(SOLO_STORE_KEYS.result(snapshot.gameId))).toBe(
+      resultBefore,
+    );
+    expect(payload.board).not.toHaveProperty("m_targets");
   });
 
   it("prepares and posts one player-two Practice victory without exposing private AI state", async () => {
@@ -1338,6 +1399,9 @@ describe("SoloStore canonical result sharing", () => {
           winnerSide: 2,
           p1Name: "Euclid",
           p2Name: "Owner",
+          title: `Owner beat Euclid, ${terminal.humanScore}–${terminal.aiScore}`,
+          headline: "Owner beat Euclid!",
+          details: `${terminal.humanScore}–${terminal.aiScore}`,
           subtitle: expect.stringContaining("Practice"),
           solo: { mode: "practice" },
           board: { solo: { rules: { firstPlayer: 1 } } },
@@ -1361,6 +1425,7 @@ describe("SoloStore canonical result sharing", () => {
       gameId: input.gameId,
       shareId: prepared.receipt.shareId,
       postId: "post-2",
+      commentId: "t1_must_not_replace_legacy_post",
       permalink: "/r/euclid_test/comments/post-2/result/",
       runAs: "USER",
     });
@@ -1369,6 +1434,7 @@ describe("SoloStore canonical result sharing", () => {
       commandId: "third-click",
     });
     expect(posted).toMatchObject({ status: "posted", postId: "post-1" });
+    expect(posted).not.toHaveProperty("commentId");
     expect(repeatedPosted).toEqual(posted);
     expect(preparedAfterPost).toEqual({
       receipt: posted,
@@ -1382,6 +1448,57 @@ describe("SoloStore canonical result sharing", () => {
         key.includes(":ranked:"),
       ),
     ).toBe(false);
+  });
+
+  it("persists and replays one result comment while rejecting malformed comment identifiers", async () => {
+    const { redis, store } = createFixture();
+    const win = await findPracticeHumanWin(store);
+    const input = {
+      gameId: win.finalSnapshot.gameId,
+      commandId: "share-comment",
+      subredditName: "euclid_test",
+      humanName: "Owner",
+    };
+    const prepared = await store.prepareShare("owner", input);
+    const target = {
+      gameId: input.gameId,
+      shareId: prepared.receipt.shareId,
+      postId: "t3_solo_hub",
+      commentId: "t1_result_comment",
+      permalink: "/r/euclid_test/comments/solo_hub/results/result_comment/",
+      runAs: "APP",
+    };
+    const shareKey = SOLO_STORE_KEYS.share(input.gameId);
+    const before = redis.value(shareKey);
+    await expect(
+      store.finalizeShare("owner", { ...target, commentId: " " }),
+    ).rejects.toMatchObject({ code: "invalid_identifier" });
+    expect(redis.value(shareKey)).toBe(before);
+
+    const posted = await store.finalizeShare("owner", target);
+    expect(posted).toMatchObject({
+      status: "posted",
+      postId: target.postId,
+      commentId: target.commentId,
+      permalink: target.permalink,
+      runAs: "APP",
+    });
+    expect(redis.json(shareKey)).toEqual(posted);
+    await expect(
+      store.finalizeShare("owner", { ...target, commentId: "t1_duplicate" }),
+    ).resolves.toEqual(posted);
+    await expect(
+      store.prepareShare("owner", {
+        ...input,
+        commandId: "share-comment-again",
+      }),
+    ).resolves.toEqual({ receipt: posted, shouldSubmit: false });
+    expect(redis.value(shareKey)).toBe(JSON.stringify(posted));
+
+    redis.externalSet(shareKey, JSON.stringify({ ...posted, commentId: 42 }));
+    await expect(store.prepareShare("owner", input)).rejects.toMatchObject({
+      code: "data_corrupt",
+    });
   });
 
   it("recovers an explicit submission failure without changing the canonical payload or posting twice", async () => {
