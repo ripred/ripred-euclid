@@ -1,4 +1,5 @@
-import { scoreGridFootprint } from "../shared/scoring";
+import { emptyCells, pointIndex } from "../shared/game/geometry";
+import { completedSquares } from "./completed-squares";
 
 export type Owner = 1 | 2;
 export type DemoStepId =
@@ -27,6 +28,8 @@ export type DemoFrame = {
 };
 export type DemoStep = {
   id: DemoStepId;
+  /** A few words naming the lesson in the lesson list. */
+  label: string;
   title: string;
   body: string;
   before: DemoFrame;
@@ -36,6 +39,7 @@ export type DemoStep = {
 type DemoMove = DotSpec;
 type CapturedStepMeta = {
   id: DemoStepId;
+  label: string;
   title: string;
   buildBody: (frame: DemoFrame) => string;
 };
@@ -95,6 +99,7 @@ const CAPTURED_STEPS = new Map<number, CapturedStepMeta>([
     1,
     {
       id: "place",
+      label: "One dot per turn",
       title: "Every turn places one dot",
       buildBody: () =>
         "This demo starts with a normal setup move: one new dot on one empty point, then the turn passes.",
@@ -104,6 +109,7 @@ const CAPTURED_STEPS = new Map<number, CapturedStepMeta>([
     8,
     {
       id: "straight",
+      label: "Straight squares",
       title: "Straight squares score immediately!",
       buildBody: (frame) => {
         const points = frame.newSquares.reduce(
@@ -118,6 +124,7 @@ const CAPTURED_STEPS = new Map<number, CapturedStepMeta>([
     15,
     {
       id: "rotated",
+      label: "Tilted squares",
       title: "Rotated squares count too!",
       buildBody: (frame) => {
         const points = frame.newSquares.reduce(
@@ -132,6 +139,7 @@ const CAPTURED_STEPS = new Map<number, CapturedStepMeta>([
     16,
     {
       id: "size",
+      label: "Bigger squares",
       title: "Larger squares swing the score!",
       buildBody: (frame) => {
         const points = frame.newSquares.reduce(
@@ -146,6 +154,7 @@ const CAPTURED_STEPS = new Map<number, CapturedStepMeta>([
     22,
     {
       id: "block",
+      label: "Blocking",
       title: "You can block squares too!",
       buildBody: () =>
         "Blue claims the last open corner Red needed, blocking that square before it can ever score.",
@@ -155,6 +164,7 @@ const CAPTURED_STEPS = new Map<number, CapturedStepMeta>([
     33,
     {
       id: "multi",
+      label: "Several at once",
       title: "One move can finish multiple squares!",
       buildBody: (frame) => {
         const count = frame.newSquares.length;
@@ -167,113 +177,6 @@ const CAPTURED_STEPS = new Map<number, CapturedStepMeta>([
     },
   ],
 ]);
-
-function pointIndex(x: number, y: number): number {
-  return y * BOARD_W + x;
-}
-
-function orderSquareCorners(corners: SquareCorners): SquareCorners {
-  const centerX =
-    corners.reduce((sum, point) => sum + point.x, 0) / corners.length;
-  const centerY =
-    corners.reduce((sum, point) => sum + point.y, 0) / corners.length;
-
-  const ordered: SquareCorners = [...corners];
-  ordered.sort((left, right) => {
-    const leftAngle = Math.atan2(left.y - centerY, left.x - centerX);
-    const rightAngle = Math.atan2(right.y - centerY, right.x - centerX);
-    return leftAngle - rightAngle;
-  });
-
-  let startIndex = 0;
-  let firstPoint = ordered[0];
-  for (const [index, point] of ordered.entries()) {
-    if (
-      point.y < firstPoint.y ||
-      (point.y === firstPoint.y && point.x < firstPoint.x)
-    ) {
-      startIndex = index;
-      firstPoint = point;
-    }
-  }
-
-  const first = ordered[startIndex % 4];
-  const second = ordered[(startIndex + 1) % 4];
-  const third = ordered[(startIndex + 2) % 4];
-  const fourth = ordered[(startIndex + 3) % 4];
-  return first && second && third && fourth
-    ? [first, second, third, fourth]
-    : ordered;
-}
-
-function squareKey(corners: PointSpec[]): string {
-  return corners
-    .map((point) => pointIndex(point.x, point.y))
-    .sort((left, right) => left - right)
-    .join(",");
-}
-
-function computeCompletedSquares(
-  board: number[],
-  move: DemoMove,
-): SquareSpec[] {
-  const other = move.owner === 1 ? 2 : 1;
-  const seen = new Set<string>();
-  const squares: SquareSpec[] = [];
-
-  for (let row = 0; row < BOARD_H; row++) {
-    for (let col = 0; col < BOARD_W; col++) {
-      // Treat move-to-candidate as one side and rotate its vector 90 degrees to
-      // derive the remaining corners, including tilted squares.
-      const dx = col - move.x;
-      const dy = row - move.y;
-      const x1 = move.x - dy;
-      const y1 = move.y + dx;
-      const x2 = col - dy;
-      const y2 = row + dx;
-
-      if (
-        x1 < 0 ||
-        x1 >= BOARD_W ||
-        y1 < 0 ||
-        y1 >= BOARD_H ||
-        x2 < 0 ||
-        x2 >= BOARD_W ||
-        y2 < 0 ||
-        y2 >= BOARD_H ||
-        (col === move.x && row === move.y)
-      ) {
-        continue;
-      }
-
-      const corners = orderSquareCorners([
-        { x: move.x, y: move.y },
-        { x: col, y: row },
-        { x: x1, y: y1 },
-        { x: x2, y: y2 },
-      ]);
-      const values = corners.map(
-        (point) => board[pointIndex(point.x, point.y)],
-      );
-
-      if (values.some((value) => value === other || value !== move.owner))
-        continue;
-
-      const key = squareKey(corners);
-      if (seen.has(key)) continue;
-      seen.add(key);
-
-      squares.push({
-        key,
-        owner: move.owner,
-        points: scoreGridFootprint(corners),
-        corners,
-      });
-    }
-  }
-
-  return squares;
-}
 
 function toDots(board: number[]): DotSpec[] {
   const dots: DotSpec[] = [];
@@ -308,7 +211,7 @@ function makeFrame(
 }
 
 function buildDemoSteps(): DemoStep[] {
-  const board = new Array<number>(BOARD_W * BOARD_H).fill(0);
+  const board = emptyCells(BOARD_W, BOARD_H);
   const scores: [number, number] = [0, 0];
   const allSquares = new Map<string, SquareSpec>();
   const steps: DemoStep[] = [];
@@ -320,7 +223,7 @@ function buildDemoSteps(): DemoStep[] {
       throw new Error(`Preview demo move ${moveNumber} is out of turn.`);
     }
 
-    const boardIndex = pointIndex(move.x, move.y);
+    const boardIndex = pointIndex(move.x, move.y, BOARD_W);
     if (board[boardIndex] !== 0) {
       throw new Error(
         `Preview demo move ${moveNumber} tries to reuse an occupied point.`,
@@ -337,7 +240,7 @@ function buildDemoSteps(): DemoStep[] {
     );
 
     board[boardIndex] = move.owner;
-    const newSquares = computeCompletedSquares(board, move);
+    const newSquares = completedSquares(board, BOARD_W, BOARD_H, move);
     const points = newSquares.reduce((sum, square) => sum + square.points, 0);
     if (move.owner === 1) scores[0] += points;
     else scores[1] += points;
@@ -351,6 +254,7 @@ function buildDemoSteps(): DemoStep[] {
 
     steps.push({
       id: stepMeta.id,
+      label: stepMeta.label,
       title: stepMeta.title,
       body: stepMeta.buildBody(after),
       before,

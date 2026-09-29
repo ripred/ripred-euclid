@@ -4,6 +4,7 @@ import {
   GAME_STATES,
   RANKED_SOLO_RULES,
   SOLO_RULES_VERSION,
+  STANDARD_BOARD,
   type PracticeRules,
 } from "../shared/game/rules";
 import type {
@@ -47,9 +48,7 @@ function player(userId: string, score: number, computer = false): SharePlayer {
 const PRACTICE_RULES: PracticeRules = {
   rulesVersion: SOLO_RULES_VERSION,
   mode: "practice",
-  W: 6,
-  H: 8,
-  scoring: "true",
+  ...STANDARD_BOARD,
   winScore: 75,
   humanPlayer: 1,
   firstPlayer: 1,
@@ -82,7 +81,6 @@ function soloSnapshot(
     board: {
       W: rules.W,
       H: rules.H,
-      scoring: rules.scoring,
       winScore: rules.winScore,
       m_board: new Array<number>(rules.W * rules.H).fill(0),
       m_players: players,
@@ -125,7 +123,6 @@ function activeH2H(
     board: {
       W: 8,
       H: 8,
-      scoring: "bbox",
       winScore: 150,
       m_board: new Array<number>(64).fill(0),
       m_players: [player("ada", 34), player("grace", 21)],
@@ -228,7 +225,7 @@ describe("Play Euclid presentation", () => {
       title: "Continue Practice game",
       detail: "Your turn against Euclid",
       score: "You 18 · Euclid 27",
-      rules: "6 × 8 · True Area · first to 75",
+      rules: "first to 75",
       actionLabel: "Continue",
     });
 
@@ -238,7 +235,7 @@ describe("Play Euclid presentation", () => {
       title: "Continue Ranked game",
       detail: "Euclid's turn",
       score: "You 42 · Euclid 36",
-      rules: "8 × 8 · Grid Footprint · first to 150",
+      rules: "first to 150",
     });
   });
 });

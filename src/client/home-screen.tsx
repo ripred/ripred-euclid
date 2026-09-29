@@ -1,3 +1,11 @@
+import { CHALLENGE_COPY } from "./splash-scene";
+import type { ChallengePeriod } from "../shared/challenge-spotlights";
+import { CHALLENGE_PERIODS } from "../shared/challenge-spotlights";
+import type { CompetitionAvailability } from "../shared/competitions";
+import {
+  competitionAvailabilityText,
+  formatCompetitionDate,
+} from "./competition-display";
 import type { SoloMode } from "../shared/game/rules";
 import {
   shouldLockHomeNavigation,
@@ -5,7 +13,7 @@ import {
   type H2HHomePresentation,
   type SoloContinuationPresentation,
 } from "./home-ui";
-import { HowToPlay } from "./how-to-play";
+import { HowToPlay, HowToPlaySummary } from "./how-to-play";
 import { BoardMacro, BrandMark, TokenCluster, Wordmark } from "./ui/Brand";
 import { Icon, type IconName } from "./ui/Icon";
 import { PieceGlyph } from "./ui/BoardDiagram";
@@ -40,6 +48,9 @@ export interface HomeScreenProps {
   /** The selected solo path; Ranked uses fixed server rules. */
   soloMode?: SoloMode;
   onSoloModeChange?: ((mode: SoloMode) => void) | undefined;
+  competitions?: Record<ChallengePeriod, CompetitionAvailability> | undefined;
+  competitionNow?: number | undefined;
+  onChallenge?: ((period: ChallengePeriod) => void) | undefined;
   onPlayEuclid: () => void;
   onPlayRedditor: () => void;
   onContinueSolo: () => void;
@@ -310,10 +321,10 @@ const UTILITIES: readonly {
   icon: IconName;
   action: "onWatchGames" | "onLeaderboard" | "onOptions" | "onRules";
 }[] = [
-  { label: "Live games", icon: "watch", action: "onWatchGames" },
+  { label: "Watch live", icon: "watch", action: "onWatchGames" },
   { label: "Leaderboard", icon: "trophy", action: "onLeaderboard" },
+  { label: "How to play", icon: "help", action: "onRules" },
   { label: "Options", icon: "sliders", action: "onOptions" },
-  { label: "Rules", icon: "help", action: "onRules" },
 ];
 
 /**
@@ -537,6 +548,88 @@ export function HomeScreen(props: HomeScreenProps) {
             />
           </div>
 
+          {props.competitions &&
+            props.onChallenge &&
+            CHALLENGE_PERIODS.some(
+              (period) => props.competitions?.[period].enabled,
+            ) && (
+              <section
+                className="home-challenges"
+                aria-label="Subreddit challenges"
+              >
+                {CHALLENGE_PERIODS.filter(
+                  (period) => props.competitions?.[period].enabled,
+                ).map((period) => {
+                  const competition = props.competitions![period];
+                  return (
+                    <article
+                      className={`panel home-card home-challenge home-challenge--${CHALLENGE_COPY[period].tone}`}
+                      key={period}
+                    >
+                      <TokenCluster
+                        owner={CHALLENGE_COPY[period].owner}
+                        className="home-card__tokens"
+                      />
+                      <div className="home-card__copy">
+                        <p className="eyebrow">Subreddit competition</p>
+                        <h2>
+                          <Icon name="trophy" size={18} />{" "}
+                          {CHALLENGE_COPY[period].name}
+                        </h2>
+                        <p>
+                          {competitionAvailabilityText(
+                            competition,
+                            props.competitionNow ?? 0,
+                          )}
+                        </p>
+                        <p className="field__hint">
+                          {competition.status === "scheduled"
+                            ? "Opens"
+                            : "Closes"}{" "}
+                          {formatCompetitionDate(
+                            competition.status === "scheduled"
+                              ? competition.opensAt
+                              : competition.endsAt,
+                          )}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={navigationLocked}
+                        aria-describedby={lockDescriptionId}
+                        onClick={() => props.onChallenge?.(period)}
+                      >
+                        Open {period} challenge
+                      </button>
+                    </article>
+                  );
+                })}
+              </section>
+            )}
+
+          <nav className="home-nav" aria-label="More Euclid options">
+            <ul>
+              {UTILITIES.map((item) => (
+                <li key={item.label}>
+                  <button
+                    type="button"
+                    className="home-nav__item"
+                    id={
+                      item.action === "onOptions" ? "home-options" : undefined
+                    }
+                    disabled={navigationLocked}
+                    aria-describedby={lockDescriptionId}
+                    onClick={props[item.action]}
+                  >
+                    <Icon name={item.icon} />
+                    <span>{item.label}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </nav>
+
           <aside
             className="panel home-records"
             aria-labelledby="home-records-title"
@@ -563,30 +656,11 @@ export function HomeScreen(props: HomeScreenProps) {
           <div className="home-learn__head">
             <h2 id="home-learn-title">Learn in a minute</h2>
             <p className="muted">
-              Three ideas carry the whole game. Mastering them takes a lifetime.
+              <HowToPlaySummary />
             </p>
           </div>
           <HowToPlay layout="strip" />
         </section>
-
-        <nav className="home-nav" aria-label="More Euclid options">
-          <ul>
-            {UTILITIES.map((item) => (
-              <li key={item.label}>
-                <button
-                  type="button"
-                  className="home-nav__item"
-                  disabled={navigationLocked}
-                  aria-describedby={lockDescriptionId}
-                  onClick={props[item.action]}
-                >
-                  <Icon name={item.icon} />
-                  <span>{item.label}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </nav>
       </div>
     </main>
   );

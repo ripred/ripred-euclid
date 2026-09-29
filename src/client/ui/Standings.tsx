@@ -1,35 +1,6 @@
+import { PlayerAvatar } from "./PlayerAvatar";
 import type { RankingsShareRow } from "../../shared/types/api";
 import "./standings.css";
-
-export function PlayerAvatar({
-  name,
-  avatar,
-  size = 32,
-}: {
-  name: string;
-  avatar?: string | undefined;
-  size?: number;
-}) {
-  const initial = name.trim().replace(/^u\//i, "").charAt(0).toUpperCase();
-  return avatar ? (
-    <img
-      className="avatar"
-      src={avatar}
-      alt=""
-      crossOrigin="anonymous"
-      width={size}
-      height={size}
-    />
-  ) : (
-    <span
-      className="avatar avatar--initial"
-      style={{ width: size, height: size, fontSize: size * 0.42 }}
-      aria-hidden="true"
-    >
-      {initial || "?"}
-    </span>
-  );
-}
 
 const formatRecord = (row: RankingsShareRow) =>
   `${row.wins}W · ${row.losses}L · ${row.draws}D`;
@@ -77,16 +48,23 @@ export function StandingsList({
   rows,
   label,
   limit,
+  from = 1,
   size = "md",
   empty,
 }: {
   rows: readonly RankingsShareRow[];
   label: string;
   limit?: number;
+  /** Rank of the first row shown, for lists that continue a podium. */
+  from?: number;
   size?: "sm" | "md" | "lg";
   empty: string;
 }) {
-  const shown = limit === undefined ? rows : rows.slice(0, limit);
+  const start = from - 1;
+  const shown = rows.slice(
+    start,
+    limit === undefined ? undefined : start + limit,
+  );
   if (shown.length === 0) return <p className="standings__empty">{empty}</p>;
   return (
     <ol className="standings" aria-label={label}>
@@ -94,7 +72,7 @@ export function StandingsList({
         <StandingRow
           key={`${row.userId}-${index}`}
           row={row}
-          rank={index + 1}
+          rank={from + index}
           size={size}
         />
       ))}

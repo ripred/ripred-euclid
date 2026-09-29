@@ -46,7 +46,6 @@ const game: H2HLiveGameSummary = {
   revision: 7,
   width: 8,
   height: 8,
-  scoring: "bbox",
   winScore: 150,
 };
 
@@ -110,7 +109,6 @@ describe("live-game requests", () => {
     { games: [{ ...game, scores: [-1, 0] }] },
     { games: [{ ...game, names: { first: 15 } }] },
     { games: [{ ...game, lastSaved: "1000" }] },
-    { games: [{ ...game, scoring: "unknown" }] },
     { games: [{ ...game, width: 0 }] },
     { games: [{ ...game, height: 1.5 }] },
     { games: [{ ...game, winScore: 0 }] },

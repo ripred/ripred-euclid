@@ -1,3 +1,14 @@
+import { UserAvatars } from "./user-avatars";
+import { userAvatarRouter } from "./user-avatar-routes";
+import { EMPTY_CHALLENGE_SPOTLIGHTS } from "../shared/challenge-spotlights";
+import { challengeRouter } from "./challenge-routes";
+import { CompetitionService } from "./competition-service";
+import { competitionRouter } from "./competition-routes";
+import { publicChallengeSpotlights } from "./challenge-results";
+import {
+  readSubredditSettings,
+  subredditSettingsRouter,
+} from "./subreddit-settings";
 import express, { type Response } from "express";
 import { randomUUID } from "node:crypto";
 import type {
@@ -41,6 +52,8 @@ import { RedisCasConflictExhaustedError } from "./redis-cas";
 import { SoloDomainError, rankedSoloSessionMetadata } from "./solo";
 import { SoloStore, SoloStoreError } from "./solo-store";
 import { RequestLimitError, reserveShareCooldown } from "./request-limits";
+import { readStringList } from "./stored-json";
+import { errorMessage } from "../shared/error-message";
 
 const app = express();
 app.use(express.json({ limit: "15mb" }));
@@ -51,6 +64,54 @@ const router = express.Router();
 const h2hStore = new H2HStore(redis);
 const h2hSettlements = new H2HSettlementService(redis);
 const soloStore = new SoloStore(redis);
+const competitions = new CompetitionService(redis);
+
+async function currentModeratorId(): Promise<string | null> {
+  const userId = context.userId;
+  const subredditName = context.subredditName;
+  if (!userId || !subredditName) return null;
+  const username = await reddit.getCurrentUsername();
+  if (!username) return null;
+  const moderators = await reddit
+    .getModerators({ subredditName, username, limit: 1 })
+    .all();
+  return moderators.some(
+    (m) => m.username.toLowerCase() === username.toLowerCase(),
+  )
+    ? userId
+    : null;
+}
+router.use("/api/challenge-lab", challengeRouter(redis, currentModeratorId));
+router.use(
+  "/api/competitions",
+  competitionRouter(
+    competitions,
+    async () => {
+      const userId = context.userId;
+      if (!userId) return null;
+      const username = await reddit.getCurrentUsername();
+      return username ? { userId, username } : null;
+    },
+    currentModeratorId,
+  ),
+);
+router.use(
+  "/api/subreddit-settings",
+  subredditSettingsRouter(redis, currentModeratorId, (settings) =>
+    competitions.saveSettings(settings),
+  ),
+);
+// Devvit restricts /internal endpoints to platform calls. The local adapter
+// supplies its own trusted loopback authentication for the same route.
+router.post("/internal/competitions/maintenance", async (_req, res) => {
+  try {
+    await competitions.reconcile();
+    res.json({ status: "ok" });
+  } catch (error) {
+    console.error("Challenge maintenance failed", error);
+    res.status(503).json({ message: "Challenge maintenance will retry." });
+  }
+});
 
 /* =========================
    UTIL / CONSTANTS
@@ -58,12 +119,6 @@ const soloStore = new SoloStore(redis);
 const nowISO = () => new Date().toISOString();
 const slog = (...values: unknown[]) =>
   console.log(`[EUCLID ${nowISO()}]`, ...values);
-
-function errorMessage(error: unknown, fallback = "Unknown error"): string {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === "string" && error) return error;
-  return fallback;
-}
 
 async function settleH2HEventBestEffort(
   event: H2HSettlementEvent | null,
@@ -110,21 +165,11 @@ async function drainH2HSettlementsBestEffort(
   }
 }
 
-function parseStringArray(raw: string | null | undefined): string[] {
-  if (!raw) return [];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) &&
-      parsed.every((value) => typeof value === "string")
-      ? parsed
-      : [];
-  } catch {
-    return [];
-  }
-}
-
 const NAMEKEY = (uid: string) => `euclid:name:${uid}`;
 const AVAKEY = (uid: string) => `euclid:avatar:${uid}`;
+const userAvatars = new UserAvatars(redis, (username) =>
+  reddit.getSnoovatarUrl(username),
+);
 
 // Legacy/H2H Elo. Trustworthy solo Ranked data uses the versioned SoloStore.
 const PLAYERS_KEY = () => "euclid:players:hvh";
@@ -147,17 +192,17 @@ const MCOUNT = (name: string) => `euclid:metric:count:${name}`;
 async function addUserToSet(name: string, uid: string | undefined | null) {
   if (!uid) return;
   const key = MSET(name);
-  const arr = parseStringArray(await redis.get(key));
+  const arr = readStringList(await redis.get(key));
   if (!arr.includes(uid)) {
     arr.push(uid);
     await redis.set(key, JSON.stringify(arr));
   }
 }
 async function scard(name: string): Promise<number> {
-  return parseStringArray(await redis.get(MSET(name))).length;
+  return readStringList(await redis.get(MSET(name))).length;
 }
 async function sget(name: string): Promise<Set<string>> {
-  return new Set(parseStringArray(await redis.get(MSET(name))));
+  return new Set(readStringList(await redis.get(MSET(name))));
 }
 async function incrCount(name: string, n = 1): Promise<number> {
   const key = MCOUNT(name);
@@ -205,10 +250,8 @@ async function refreshCurrentUserProfile(
 
   let avatar = (await redis.get(AVAKEY(uid))) ?? "";
   try {
-    const currentUser = await reddit.getCurrentUser();
-    const latestAvatar = (await currentUser?.getSnoovatarUrl()) ?? "";
-    if (latestAvatar) {
-      avatar = latestAvatar;
+    if (name) {
+      avatar = (await userAvatars.get(name)) ?? "";
       await redis.set(AVAKEY(uid), avatar);
     }
   } catch (error: unknown) {
@@ -451,7 +494,7 @@ function parseEloRecord(raw: string | null | undefined): RatingRecord | null {
 }
 
 async function getPlayers(): Promise<string[]> {
-  return parseStringArray(await redis.get(PLAYERS_KEY()));
+  return readStringList(await redis.get(PLAYERS_KEY()));
 }
 async function getElo(uid: string): Promise<RatingRecord> {
   const current = parseEloRecord(await redis.get(ELOKEY(uid)));
@@ -507,10 +550,6 @@ function formatShareDate(input: string | number | Date = Date.now()) {
     day: "numeric",
     year: "numeric",
   });
-}
-
-function shareScoringLabel(scoring: SerializableBoard["scoring"]) {
-  return scoring === "true" ? "True Area" : "Grid Footprint";
 }
 
 function parseSharePostDescriptor(input: unknown): SharePostDescriptor | null {
@@ -666,6 +705,18 @@ function sendShareError(
 /* =========================
    BASIC ROUTES
    ========================= */
+router.use("/api/users", userAvatarRouter(userAvatars));
+
+router.get("/api/challenge-spotlights", async (_req, res) => {
+  try {
+    await competitions.reconcile();
+    res.json(await publicChallengeSpotlights(redis));
+  } catch {
+    // The splash works without winners; it never waits on this request.
+    res.json(EMPTY_CHALLENGE_SPOTLIGHTS);
+  }
+});
+
 router.get<
   { postId: string },
   InitResponse | { status: string; message: string }
@@ -699,6 +750,10 @@ router.get<
 
     res.json({
       type: "init",
+      isModerator: await currentModeratorId()
+        .then(Boolean)
+        .catch(() => false),
+      subredditSettings: await readSubredditSettings(redis),
       postId,
       username,
       appVersion,
@@ -1343,7 +1398,7 @@ router.post("/api/share/h2h-result", async (req, res) => {
       headline: `${winnerName} Wins!`,
       details: byForfeit
         ? `${winnerName} advanced after ${loserName} left the match.`
-        : `${s1}-${s2} • ${shareScoringLabel(boardForShare.scoring)} scoring • ${boardForShare.W}x${boardForShare.H} board`,
+        : `Final score ${s1}-${s2}`,
       footer: `First to ${boardForShare.winScore} points • Shared from r/${subredditName}`,
       board: boardForShare,
       p1Name,

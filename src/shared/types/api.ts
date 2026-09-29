@@ -7,6 +7,7 @@ import type {
   RankedSoloRules,
   SoloRulesVersion,
 } from "../game/rules";
+import type { SubredditSettings } from "../subreddit-settings";
 
 export type ShareBucket = "hvh" | "hva";
 
@@ -64,7 +65,6 @@ export type SoloSessionMetadata =
 export type SerializableBoard = {
   W: number;
   H: number;
-  scoring: "bbox" | "true";
   winScore: number;
   m_board: number[];
   m_players: SharePlayer[];
@@ -135,7 +135,6 @@ export type H2HLiveGameSummary = {
   revision: number;
   width: number;
   height: number;
-  scoring: SerializableBoard["scoring"];
   winScore: number;
 };
 
@@ -494,6 +493,7 @@ export type ResultSharePayload = {
 };
 
 export type RankingsResponse = {
+  preview?: boolean;
   hvh?: RankingsShareRow[];
   hva?: RankingsShareRow[];
   hvaRules?: RankedSoloSessionMetadata;
@@ -507,6 +507,9 @@ export type SharePostDescriptor = {
 };
 
 export type GameInitResponse = {
+  /** Whether the viewer moderates this subreddit; the server re-checks. */
+  isModerator?: boolean;
+  subredditSettings: SubredditSettings;
   type: "init";
   postId: string;
   username: string;

@@ -12,6 +12,7 @@ import {
   type GridPoint,
   type Owner,
 } from "./board-geometry";
+import { staggerStyle } from "./stagger";
 import "./board.css";
 
 const POINT_RADIUS = 0.2;
@@ -86,18 +87,24 @@ function PieceShape({
   y,
   ids,
   className = "",
+  order,
 }: {
   owner: Owner;
   x: number;
   y: number;
   ids: SvgIds;
   className?: string;
+  /** Place among the board's pieces, for staggered entrances. */
+  order?: number;
 }) {
   const r = PIECE_RADIUS;
   const glossX = x - r * 0.28;
   const glossY = y - r * 0.4;
   return (
-    <g className={`board__piece board__piece--${owner} ${className}`}>
+    <g
+      className={`board__piece board__piece--${owner} ${className}`}
+      style={order === undefined ? undefined : staggerStyle(order)}
+    >
       <circle
         className="board__piece-shadow"
         cx={x + 0.05}
@@ -137,14 +144,18 @@ function PieceShape({
 export function PieceGlyph({
   owner,
   size = 18,
+  order,
 }: {
   owner: Owner;
   size?: number;
+  /** Place in a row of tokens, for staggered entrances. */
+  order?: number;
 }) {
   const ids = useSvgIds();
   return (
     <svg
       className="piece-glyph"
+      style={order === undefined ? undefined : staggerStyle(order)}
       width={size}
       height={size}
       viewBox="0 0 1 1"
@@ -186,6 +197,7 @@ export interface BoardDiagramProps {
   width: number;
   height: number;
   cells: ArrayLike<number>;
+  blockedPoints?: readonly number[];
   squares?: readonly BoardSquareShape[];
   footprints?: readonly BoardFootprint[];
   markers?: readonly BoardMarker[];
@@ -211,6 +223,7 @@ export function BoardDiagram({
   width,
   height,
   cells,
+  blockedPoints = [],
   squares = [],
   footprints = [],
   markers = [],
@@ -294,9 +307,18 @@ export function BoardDiagram({
 
           {indices.map((index) => {
             if (ownerAt(cells, index)) return null;
-            const hint = hintAt.get(index);
             const cx = centre(index % width);
             const cy = centre(Math.floor(index / width));
+            if (blockedPoints.includes(index))
+              return (
+                <g key={index} className="board__blocked-point">
+                  <circle cx={cx} cy={cy} r={POINT_RADIUS + 0.02} />
+                  <path
+                    d={`M ${cx - 0.12} ${cy - 0.12} l 0.24 0.24 M ${cx + 0.12} ${cy - 0.12} l -0.24 0.24`}
+                  />
+                </g>
+              );
+            const hint = hintAt.get(index);
             return (
               <g
                 key={index}
@@ -356,20 +378,22 @@ export function BoardDiagram({
         />
       ))}
 
-      {indices.map((index) => {
-        const owner = ownerAt(cells, index);
-        if (!owner) return null;
-        return (
+      {indices
+        .flatMap((index) => {
+          const owner = ownerAt(cells, index);
+          return owner ? [{ index, owner }] : [];
+        })
+        .map(({ index, owner }, order) => (
           <PieceShape
             key={index}
             owner={owner}
             x={centre(index % width)}
             y={centre(Math.floor(index / width))}
             ids={ids}
+            order={order}
             className={index === arrivingIndex ? "board__piece--arriving" : ""}
           />
-        );
-      })}
+        ))}
 
       {blocked.map((square) => (
         <polygon

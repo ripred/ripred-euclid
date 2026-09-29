@@ -13,7 +13,7 @@ export async function fetchRankings(
   const record = await fetchJsonRecord(
     "/api/rankings",
     "Unable to load the leaderboard.",
-    signal,
+    { signal: signal ?? null },
   );
   if (
     !record ||
@@ -28,5 +28,6 @@ export async function fetchRankings(
     hvh: rankings.hvh ?? [],
     hva: rankings.hva ?? [],
     ...(rankings.hvaRules ? { hvaRules: rankings.hvaRules } : {}),
+    ...(rankings.preview === true ? { preview: true } : {}),
   };
 }

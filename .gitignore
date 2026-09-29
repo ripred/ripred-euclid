@@ -13,3 +13,4 @@ legacy/
 .env
 .prettierrc
 .vscode
+.local/

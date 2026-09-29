@@ -8,7 +8,6 @@ export function buildWatchDemo(): SerializableBoard {
   const board = new Board(new Player(), new Player(), {
     W: DEMO_RECORDING.width,
     H: DEMO_RECORDING.height,
-    scoring: "bbox",
     winScore: Number.MAX_SAFE_INTEGER,
     rng: () => 0,
   });

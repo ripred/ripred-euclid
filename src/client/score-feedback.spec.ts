@@ -76,7 +76,6 @@ function boardSnapshot({
   lastPoints = 0,
   firstSquares = [],
   secondSquares = [],
-  scoring = "bbox",
 }: {
   history?: SharePoint[];
   cells?: number[];
@@ -84,12 +83,10 @@ function boardSnapshot({
   lastPoints?: number;
   firstSquares?: ShareSquare[];
   secondSquares?: ShareSquare[];
-  scoring?: "bbox" | "true";
 } = {}): CanonicalBoardSnapshot {
   return {
     W: 8,
     H: 8,
-    scoring,
     winScore: 150,
     m_board: cells,
     m_players: [
@@ -173,7 +170,7 @@ describe("solo score feedback", () => {
       },
     ];
 
-    expect(normalizeSoloScoreFeedback("solo:one", events, "bbox")).toEqual([
+    expect(normalizeSoloScoreFeedback("solo:one", events)).toEqual([
       expect.objectContaining({
         id: "solo:one:8",
         moveCount: 8,
@@ -194,21 +191,17 @@ describe("solo score feedback", () => {
       [point(0, 0), point(1, 0), point(0, 1), point(1, 1)],
       1,
     );
-    const feedback = normalizeSoloScoreFeedback(
-      "solo-copy",
-      [
-        {
-          type: "move",
-          revision: 4,
-          actor: "human",
-          player: 0,
-          point: point(1, 1),
-          pointsScored: 4,
-          completedSquares: [source],
-        },
-      ],
-      "bbox",
-    )[0];
+    const feedback = normalizeSoloScoreFeedback("solo-copy", [
+      {
+        type: "move",
+        revision: 4,
+        actor: "human",
+        player: 0,
+        point: point(1, 1),
+        pointsScored: 4,
+        completedSquares: [source],
+      },
+    ])[0];
 
     source.p1.x = 7;
     expect(feedback?.completedSquares[0]?.p1.x).toBe(0);
@@ -464,19 +457,18 @@ describe("score presentation geometry and copy", () => {
     expect(scoreFeedbackId("game", 12)).toBe("game:12");
   });
 
-  it("returns footprint bounds only when the rule is Grid Footprint", () => {
+  it("returns the upright box around a tilted square", () => {
     const rotated = square(
       [point(2, 0), point(4, 2), point(2, 4), point(0, 2)],
       1,
       25,
     );
-    expect(gridFootprintBounds(rotated, "bbox")).toEqual({
+    expect(gridFootprintBounds(rotated)).toEqual({
       x: 0,
       y: 0,
       width: 5,
       height: 5,
     });
-    expect(gridFootprintBounds(rotated, "true")).toBeNull();
   });
 
   it("uses singular and plural square copy", () => {

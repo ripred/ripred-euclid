@@ -1,3 +1,5 @@
+import { BoardInput } from "./ui/BoardInput";
+import { useBoardInput } from "./ui/use-board-input";
 import React, {
   useEffect,
   useLayoutEffect,
@@ -11,7 +13,7 @@ import type { ShareChatItem, ShareSquare } from "../shared/types/api";
 import type { Board } from "../shared/game/engine";
 import type { PlayerColor, PlayerIndex } from "../shared/game/rules";
 import { rulesSummary } from "./format";
-import { calculateBoardLayout, shouldPlaceFromKey } from "./game-ui";
+import { calculateBoardLayout } from "./game-ui";
 import {
   formatScoreFeedback,
   selectSquareLines,
@@ -23,9 +25,9 @@ import {
   BOARD_BLEED,
   ownerAt,
   ownerName,
+  pointIndex,
   pointLabel,
-  squaresWithCorner,
-  type BoardHint,
+  squareHints,
   type BoardMarker,
   type BoardSquareShape,
   type Owner,
@@ -34,6 +36,7 @@ import { Dialog } from "./ui/Dialog";
 import type { ResultPlayer } from "./game-results";
 import { Icon } from "./ui/Icon";
 import { useBoardSounds, useSounds } from "./sound/use-sounds";
+import { useCountUp } from "./ui/use-count-up";
 import { useReducedMotion } from "./ui/use-reduced-motion";
 import "./game-screen.css";
 
@@ -54,9 +57,6 @@ const squareCorners = (square: ShareSquare) => [
 ];
 
 const HISTORY_MIN_OPACITY = 0.35;
-
-/** Below this cell size, touch placement asks for a confirming second tap. */
-const AIM_CELL_SIZE = 38;
 
 function historyShapes(
   squares: readonly ShareSquare[],
@@ -87,33 +87,6 @@ const freshShapes = (
     tone: "fresh",
     corners: squareCorners(square),
   }));
-
-/** Counts toward a new value so score changes read as earned, not swapped. */
-function useCountUp(value: number, disabled: boolean): number {
-  const [shown, setShown] = useState(value);
-  const shownRef = useRef(value);
-  useEffect(() => {
-    if (disabled || Math.abs(value - shownRef.current) > 400) {
-      shownRef.current = value;
-      setShown(value);
-      return;
-    }
-    const from = shownRef.current;
-    const started = performance.now();
-    let frame = 0;
-    const step = (now: number) => {
-      const progress = Math.min(1, (now - started) / 650);
-      const eased = 1 - (1 - progress) ** 3;
-      const next = Math.round(from + (value - from) * eased);
-      shownRef.current = next;
-      setShown(next);
-      if (progress < 1) frame = requestAnimationFrame(step);
-    };
-    frame = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(frame);
-  }, [value, disabled]);
-  return shown;
-}
 
 function Avatar({ src, owner }: { src?: string | undefined; owner: Owner }) {
   return src ? (
@@ -146,7 +119,7 @@ export function ScoreCard({
   feedback?: ScoreFeedbackEvent | null;
 }) {
   const reduced = useReducedMotion();
-  const shown = useCountUp(score, reduced);
+  const shown = useCountUp(score, { disabled: reduced, maxJump: 400 });
   const progress = target > 0 ? Math.min(1, score / target) : 0;
   const squareWord =
     feedback && feedback.completedSquares.length === 1 ? "square" : "squares";
@@ -349,14 +322,13 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     ...freshShapes(layers[0]!.active, 1, scoreFeedback?.id ?? "none"),
     ...freshShapes(layers[1]!.active, 2, scoreFeedback?.id ?? "none"),
   ];
-  const footprints =
-    board.scoring === "bbox" && scoreFeedback
-      ? scoreFeedback.footprintBounds.map((bounds, index) => ({
-          key: `${scoreFeedback.id}-footprint-${index}`,
-          owner: (scoreFeedback.player + 1) as Owner,
-          ...bounds,
-        }))
-      : [];
+  const footprints = scoreFeedback
+    ? scoreFeedback.footprintBounds.map((bounds, index) => ({
+        key: `${scoreFeedback.id}-footprint-${index}`,
+        owner: (scoreFeedback.player + 1) as Owner,
+        ...bounds,
+      }))
+    : [];
   const footprintSize = footprints[0]
     ? `${footprints[0].width}×${footprints[0].height}`
     : null;
@@ -365,50 +337,13 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [previewIdx, setPreviewIdx] = useState<number | null>(null);
 
-  const { oneMoveTargets, twoMoveTargets } = useMemo(() => {
-    const one = new Set<number>();
-    const two = new Set<number>();
-    if (!assistOn || hoverIdx == null || myColor == null)
-      return { oneMoveTargets: one, twoMoveTargets: two };
-    const W = board.W,
-      H = board.H,
-      arr = board.m_board;
-    if (arr[hoverIdx] !== myColor)
-      return { oneMoveTargets: one, twoMoveTargets: two };
-    const opp = myColor === 1 ? 2 : 1;
-    const x0 = hoverIdx % W,
-      y0 = Math.floor(hoverIdx / W);
-
-    for (const corners of squaresWithCorner(W, H, x0, y0)) {
-      const indices = corners.map((p) => p.y * W + p.x);
-      const values = indices.map((index) => arr[index]);
-      // Any opponent piece in the corners blocks this square for us
-      if (values.some((value) => value === undefined || value === opp))
-        continue;
-      const open = indices.filter((_, i) => values[i] === 0);
-      if (open.length === 1) open.forEach((index) => one.add(index));
-      else if (open.length === 2) open.forEach((index) => two.add(index));
-    }
-    return { oneMoveTargets: one, twoMoveTargets: two };
-  }, [assistOn, hoverIdx, myColor, board.W, board.H, board.m_board]);
-
-  const hints: BoardHint[] =
-    myColor == null
-      ? []
-      : [
-          ...[...oneMoveTargets].map((index) => ({
-            index,
-            owner: myColor,
-            strength: "near" as const,
-          })),
-          ...[...twoMoveTargets]
-            .filter((index) => !oneMoveTargets.has(index))
-            .map((index) => ({
-              index,
-              owner: myColor,
-              strength: "far" as const,
-            })),
-        ];
+  const hints = useMemo(
+    () =>
+      assistOn && hoverIdx != null && myColor != null
+        ? squareHints(board.m_board, board.W, board.H, hoverIdx, myColor)
+        : [],
+    [assistOn, hoverIdx, myColor, board.W, board.H, board.m_board],
+  );
   const assistShowing = assistOn && hoverIdx !== null && hints.length > 0;
 
   const clearHover = () => {
@@ -426,7 +361,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       const rect = grid.getBoundingClientRect();
       const tx = Math.floor((touch.clientX - rect.left) / cell);
       const ty = Math.floor((touch.clientY - rect.top) / cell);
-      const idx = ty * board.W + tx;
+      const idx = pointIndex(tx, ty, board.W);
       if (
         tx >= 0 &&
         tx < board.W &&
@@ -457,13 +392,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   }, [assistOn, isMobile, cell, board.W, board.m_board, myColor]);
 
   /* ===== Touch on dense boards: tap to aim, tap the same point to place ===== */
-  const aimRequired = cell < AIM_CELL_SIZE;
-  const [aimIdx, setAimIdx] = useState<number | null>(null);
-  const pointerTypeRef = useRef("mouse");
-  const liveAimIdx =
-    placingSide && aimIdx !== null && ownerAt(board.m_board, aimIdx) === 0
-      ? aimIdx
-      : null;
   const tapSound = useBoardSounds({
     history: board.m_history,
     cells: board.m_board,
@@ -473,90 +401,31 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   });
   // Every placement path clicks at once; the server still decides the move.
   const place = (x: number, y: number) => {
-    if (placingSide && ownerAt(board.m_board, y * board.W + x) === 0) {
+    if (
+      placingSide &&
+      ownerAt(board.m_board, pointIndex(x, y, board.W)) === 0
+    ) {
       tapSound(placingSide);
     }
     onCellClick(x, y);
   };
-  const onCellActivate = (x: number, y: number) => {
-    const index = y * board.W + x;
-    const touch = pointerTypeRef.current !== "mouse";
-    if (
-      touch &&
-      aimRequired &&
-      placingSide &&
-      ownerAt(board.m_board, index) === 0 &&
-      liveAimIdx !== index
-    ) {
-      setAimIdx(index);
-      return;
-    }
-    setAimIdx(null);
-    place(x, y);
-  };
-
-  /*
-   * Keystrokes never queue ahead of a move: Enter or Space places only when
-   * it was pressed after this turn became placeable and is not a repeat.
-   */
-  const placeableSinceRef = useRef(Infinity);
-  useLayoutEffect(() => {
-    placeableSinceRef.current = placingSide ? performance.now() : Infinity;
-  }, [placingSide, board.m_history.length]);
-
-  /* ===== Keyboard: a roving focus across the points ===== */
-  const [focusIdx, setFocusIdx] = useState(
-    () => Math.floor(board.H / 2) * board.W + Math.floor(board.W / 2),
-  );
-  const safeFocusIdx = Math.min(focusIdx, board.W * board.H - 1);
-  const focusCell = (index: number) => {
-    setFocusIdx(index);
-    gridRef.current
-      ?.querySelector<HTMLElement>(`[data-index="${index}"]`)
-      ?.focus();
-  };
-  const onGridKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    // Act on the point the key event reached, not a possibly stale focus.
-    const targetIndex = Number(
-      (event.target as HTMLElement).dataset.index ?? safeFocusIdx,
-    );
-    const x = targetIndex % board.W;
-    const y = Math.floor(targetIndex / board.W);
-    const moves: Record<string, [number, number]> = {
-      ArrowLeft: [-1, 0],
-      ArrowRight: [1, 0],
-      ArrowUp: [0, -1],
-      ArrowDown: [0, 1],
-    };
-    const move = moves[event.key];
-    if (move) {
-      event.preventDefault();
-      const nx = Math.max(0, Math.min(board.W - 1, x + move[0]));
-      const ny = Math.max(0, Math.min(board.H - 1, y + move[1]));
-      focusCell(ny * board.W + nx);
-      return;
-    }
-    if (event.key === "Home" || event.key === "End") {
-      event.preventDefault();
-      focusCell(y * board.W + (event.key === "Home" ? 0 : board.W - 1));
-      return;
-    }
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      if (
-        shouldPlaceFromKey(
-          event.nativeEvent,
-          placeableSinceRef.current,
-          placingSide !== null,
-        ) &&
-        acceptPlacementKey(event)
-      )
-        place(x, y);
-    }
-  };
+  const boardInput = useBoardInput({
+    width: board.W,
+    height: board.H,
+    cellSize: cell,
+    gridRef,
+    enabled: placingSide !== null,
+    revision: board.m_history.length,
+    isOpen: (index) => ownerAt(board.m_board, index) === 0,
+    onPlace: (index) => place(index % board.W, Math.floor(index / board.W)),
+    acceptKey: acceptPlacementKey,
+  });
+  const liveAimIdx = boardInput.aimIndex;
 
   const lastIndex =
-    board.m_last.x >= 0 ? board.m_last.y * board.W + board.m_last.x : -1;
+    board.m_last.x >= 0
+      ? pointIndex(board.m_last.x, board.m_last.y, board.W)
+      : -1;
   const lastOwner = lastIndex >= 0 ? ownerAt(board.m_board, lastIndex) : 0;
   const markers: BoardMarker[] = [];
   if (lastOwner) {
@@ -779,48 +648,21 @@ export const GameScreen: React.FC<GameScreenProps> = ({
             </div>
           )}
 
-          <div
-            ref={gridRef}
-            className="game__grid"
-            role="grid"
-            aria-label={`Board, ${board.W} by ${board.H}. Use arrow keys to move and Enter to place.`}
-            onKeyDown={onGridKeyDown}
-            style={{
-              gridTemplateColumns: `repeat(${board.W}, ${cell}px)`,
-              gridAutoRows: `${cell}px`,
+          <BoardInput
+            width={board.W}
+            height={board.H}
+            cellSize={cell}
+            controls={boardInput}
+            label="Board. Use arrow keys to move and Enter to place."
+            describeCell={describeCell}
+            onHover={(index) => {
+              setPreviewIdx(index);
+              if (assistOn && myColor != null)
+                setHoverIdx(
+                  ownerAt(board.m_board, index) === myColor ? index : null,
+                );
             }}
-          >
-            {Array.from({ length: board.H }, (_, y) => (
-              <div key={y} role="row" className="game__row">
-                {Array.from({ length: board.W }, (_, x) => {
-                  const index = y * board.W + x;
-                  const owner = ownerAt(board.m_board, index);
-                  return (
-                    <div
-                      key={x}
-                      role="gridcell"
-                      data-index={index}
-                      tabIndex={index === safeFocusIdx ? 0 : -1}
-                      aria-label={describeCell(index)}
-                      className={`game__cell${owner === 0 && placingSide ? " game__cell--open" : ""}`}
-                      onFocus={() => setFocusIdx(index)}
-                      onPointerDown={(event) => {
-                        pointerTypeRef.current = event.pointerType;
-                      }}
-                      onClick={() => onCellActivate(x, y)}
-                      onPointerEnter={(event) => {
-                        if (event.pointerType !== "mouse") return;
-                        setPreviewIdx(index);
-                        if (assistOn && myColor != null) {
-                          setHoverIdx(owner === myColor ? index : null);
-                        }
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            ))}
-          </div>
+          />
         </div>
 
         {chatItems.length > 0 && (

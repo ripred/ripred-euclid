@@ -16,7 +16,6 @@ function resultFixture(
     W: 8,
     H: 8,
     winScore: 150,
-    scoring: "bbox",
   }).toJSON();
   board.m_players = board.m_players.map((player, index) => ({
     ...player,
@@ -84,7 +83,10 @@ describe("shared victory presentation", () => {
         expect(markup).toContain('aria-label="Final scores"');
         expect(markup).toContain(">165<span");
         expect(markup).toContain(">0<span");
-        expect(markup).toContain(share.subtitle);
+        expect(markup).toContain(
+          "Practice · Grid Footprint · First to 150 · Beginner",
+        );
+        expect(markup).not.toContain("8×8");
         expect(markup).toContain('dateTime="2026-09-05T22:00:00.000Z"');
       }
       expect(result).toContain(share.footer);

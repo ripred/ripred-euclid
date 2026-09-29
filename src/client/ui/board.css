@@ -97,12 +97,17 @@
   transform-origin: center;
 }
 
-.board__piece--arriving .board__piece-body {
-  animation: piece-drop 460ms var(--ease-spring) both;
+/* A new piece drops onto the board. Art can play a whole position in by
+   marking an ancestor data-entrance: pieces drop after --piece-delay and
+   bands draw after --band-draw-delay. */
+.board__piece--arriving .board__piece-body,
+[data-entrance] .board__piece-body {
+  animation: piece-drop 460ms var(--piece-delay, 0ms) var(--ease-spring) both;
 }
 
-.board__piece--arriving .board__piece-shadow {
-  animation: piece-shadow 460ms var(--ease-out) both;
+.board__piece--arriving .board__piece-shadow,
+[data-entrance] .board__piece-shadow {
+  animation: piece-shadow 460ms var(--piece-delay, 0ms) var(--ease-out) both;
 }
 
 .board__piece--ghost {
@@ -179,20 +184,26 @@
   fill: var(--blue);
 }
 
+/* Bands draw in as their square closes, or with a data-entrance position. */
 .board__band--fresh .board__band-core,
-.board__band--fresh .board__band-shine {
+.board__band--fresh .board__band-shine,
+[data-entrance] .board__band-core,
+[data-entrance] .board__band-shine {
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
-  animation: band-draw 560ms var(--ease-out) forwards;
+  animation: band-draw 560ms var(--band-draw-delay, 0ms) var(--ease-out)
+    forwards;
 }
 
 .board__band--fresh .board__band-core {
   stroke-width: 0.17;
 }
 
-.board__band--fresh .board__band-shadow {
+.board__band--fresh .board__band-shadow,
+[data-entrance] .board__band-shadow {
   opacity: 0;
-  animation: fade-in 300ms 400ms var(--ease-out) forwards;
+  animation: fade-in 300ms calc(var(--band-draw-delay, 0ms) + 400ms)
+    var(--ease-out) forwards;
 }
 
 @keyframes band-draw {
@@ -335,4 +346,16 @@
   .board__flash {
     display: none;
   }
+}
+
+.board__blocked-point circle {
+  fill: var(--slab-dark);
+  stroke: var(--text-2);
+  stroke-width: 0.025;
+}
+.board__blocked-point path {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 0.05;
+  stroke-linecap: round;
 }

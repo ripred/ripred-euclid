@@ -3,6 +3,8 @@ const PATHS = {
   back: "M15 18l-6-6 6-6",
   close: "M6 6l12 12M18 6L6 18",
   arrow: "M5 12h14M13 6l6 6-6 6",
+  // A tilted square: the game's own shape, for puzzle challenges.
+  challenge: "M9 5l10 4-4 10-10-4z",
   soundOn: "M4 9v6h4l5 4V5L8 9H4zM16.5 8.5a5 5 0 010 7M19.2 5.8a9 9 0 010 12.4",
   soundOff: "M4 9v6h4l5 4V5L8 9H4zM17 9.5l5 5M22 9.5l-5 5",
   chat: "M4 5.5h16v10.5H10l-6 4.5z",

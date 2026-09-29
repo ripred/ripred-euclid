@@ -7,28 +7,53 @@ import { useEffect, useRef, useState, type MouseEvent } from "react";
 import type { InitResponse } from "../shared/types/api";
 import { rankedPresetLabel } from "./format";
 import { DEMO_STEPS } from "./preview-demo";
-import { PREVIEW_ONBOARDING_KEY, storeCompletion } from "./onboarding";
 import { SharePreview } from "./share-preview";
 import { buildReplayFrames, frameShapes } from "./share-replay-model";
 import { ScoreChips } from "./share-replay";
 import { fetchRankings, type LoadedRankings } from "./rankings-loader";
-import { errorMessage } from "./error-message";
+import { errorMessage } from "../shared/error-message";
 import type { ExpandedEntry } from "./expanded-entry";
 import {
   applyThemeModeToDocument,
   installThemeModeSync,
   type ThemeMode,
 } from "./theme";
-import { BoardDiagram } from "./ui/BoardDiagram";
-import {
-  blockedSquares,
-  boardAspectRatio,
-  type BoardMarker,
-} from "./ui/board-geometry";
+import { BoardDiagram, PieceGlyph } from "./ui/BoardDiagram";
+import { blockedSquares, type BoardMarker } from "./ui/board-geometry";
 import { Wordmark } from "./ui/Brand";
-import { Icon } from "./ui/Icon";
+import {
+  SplashCarousel,
+  SplashScene,
+  SceneHead,
+  ChallengeWinnerCard,
+  Confetti,
+  Podium,
+  type SplashSlideId,
+  type SplashSlide,
+} from "./splash-carousel";
+import {
+  CHALLENGE_COPY,
+  PODIUM_COUNT_DELAY_MS,
+  PODIUM_SIZE,
+  useSceneCue,
+} from "./splash-scene";
+import { useReducedMotion } from "./ui/use-reduced-motion";
+import { fetchJsonRecord } from "./fetch-json";
+import {
+  DEFAULT_SUBREDDIT_SETTINGS,
+  validateSubredditSettings,
+  type SubredditSettings,
+} from "../shared/subreddit-settings";
+import {
+  CHALLENGE_PERIODS,
+  EMPTY_CHALLENGE_SPOTLIGHTS,
+  readChallengeSpotlights,
+  spotlightsFor,
+  type ChallengeSpotlights,
+} from "../shared/challenge-spotlights";
 import { StandingsList } from "./ui/Standings";
 import { buildWatchDemo } from "./watch-demo";
+import { useCompetitionAvailability } from "./use-competition-availability";
 
 /* The recorded teaching game, replayed move by move. */
 const DEMO_BOARD = buildWatchDemo();
@@ -44,11 +69,11 @@ const INTRO_MS = 3200;
 const FAST_MOVE_MS = 260;
 const BEAT_ANTICIPATION_MS = 750;
 const BEAT_HOLD_MS = 4200;
-const FINAL_HOLD_MS = 2600;
+const FINAL_HOLD_MS = 4600;
 const LEADERBOARD_IDLE_MS = 10000;
 const LEADERBOARD_REFRESH_MS = 60_000;
 
-type PreviewSurfaceMode = "intro" | "demo" | "leaderboard";
+type PreviewSurfaceMode = "intro" | "demo" | Exclude<SplashSlideId, "rules">;
 
 export function PreviewStatus({
   title,
@@ -76,31 +101,74 @@ export function PreviewStatus({
   );
 }
 
+/* The two boards the leaderboard slide switches between. */
+const STANDINGS_BOARDS = {
+  hvh: {
+    tab: "vs Redditors",
+    label: "Top redditors",
+    describe: () => "Redditor vs Redditor matches.",
+  },
+  hva: {
+    tab: "vs Euclid",
+    label: "Top ranked players",
+    describe: (rankings: LoadedRankings) =>
+      `Ranked · ${rankedPresetLabel(rankings.hvaRules?.rules)}.`,
+  },
+} as const;
+type StandingsBoard = keyof typeof STANDINGS_BOARDS;
+
 export function PreviewLeaderboard({
   rankings,
   rankingsLoading,
   rankingsError,
   onInteract,
+  active = false,
 }: {
   theme: ThemeMode;
   rankings: LoadedRankings;
   rankingsLoading: boolean;
   rankingsError: string | null;
   onInteract: () => void;
+  active?: boolean;
 }) {
-  const [bucket, setBucket] = useState<"hvh" | "hva">("hvh");
-  const hasRows = rankings[bucket].length > 0;
+  const [bucket, setBucket] = useState<StandingsBoard>("hvh");
+  const board = STANDINGS_BOARDS[bucket];
+  const rows = rankings[bucket];
+  const hasRows = rows.length > 0;
+  const { live, cued, reduced } = useSceneCue(active, PODIUM_COUNT_DELAY_MS);
+  const status =
+    rankingsLoading && !hasRows
+      ? "Loading leaderboard…"
+      : rankingsError && !hasRows
+        ? "Unable to load standings. Open the full leaderboard to retry."
+        : null;
 
   return (
-    <div className="preview-standings">
-      <div className="preview-standings__head">
-        <p className="preview-panel__kicker">Leaderboard</p>
+    <SplashScene
+      tone="gold"
+      live={live}
+      className="splash-standings"
+      stage={
+        <>
+          <Confetti />
+          {/* A new board replays the climb to the podium. */}
+          <Podium
+            key={bucket}
+            rows={rows}
+            label={board.label}
+            cued={cued}
+            reduced={reduced}
+          />
+        </>
+      }
+    >
+      <SceneHead icon="trophy" kicker="Leaderboard" title="The players to beat">
         <div
           className="seg preview-standings__tabs"
           role="group"
           aria-label="Leaderboard mode"
         >
-          {(["hvh", "hva"] as const).map((value) => (
+          {(Object.keys(STANDINGS_BOARDS) as StandingsBoard[]).map((value) => (
             <button
               key={value}
               type="button"
@@ -110,95 +178,36 @@ export function PreviewLeaderboard({
                 onInteract();
               }}
             >
-              {value === "hvh" ? "vs Redditors" : "vs Euclid"}
+              {STANDINGS_BOARDS[value].tab}
             </button>
           ))}
         </div>
-      </div>
-      <p className="preview-panel__body">
-        {bucket === "hvh"
-          ? "Redditor vs Redditor matches."
-          : `Ranked · ${rankedPresetLabel(rankings.hvaRules?.rules)}.`}
-      </p>
-      {rankingsLoading && !hasRows ? (
-        <p className="preview-panel__body">Loading leaderboard…</p>
-      ) : rankingsError && !hasRows ? (
-        <p className="preview-panel__body">
-          Unable to load standings. Open the full leaderboard to retry.
-        </p>
+      </SceneHead>
+      <p className="preview-panel__body">{board.describe(rankings)}</p>
+      {status ? (
+        <p className="preview-panel__body">{status}</p>
       ) : (
         <StandingsList
-          rows={rankings[bucket]}
-          label={bucket === "hvh" ? "Top redditors" : "Top ranked players"}
+          rows={rows}
+          label="Chasing the podium"
+          from={PODIUM_SIZE + 1}
           limit={3}
           size="sm"
-          empty="No entries yet. Be the first redditor to claim this board."
+          empty={
+            hasRows
+              ? "Win rated games to claim the next step."
+              : "No entries yet. Be the first redditor to claim this board."
+          }
         />
       )}
-    </div>
-  );
-}
-
-export function PreviewActions({
-  surfaceMode,
-  expansionError,
-  onExpand,
-}: {
-  theme: ThemeMode;
-  surfaceMode: PreviewSurfaceMode;
-  expansionError: string | null;
-  onExpand: (
-    event: MouseEvent<HTMLButtonElement>,
-    entry: ExpandedEntry,
-  ) => void;
-}) {
-  const actions = [
-    {
-      entry: "game",
-      label: "Play Euclid",
-      className: "btn btn--primary btn--lg",
-    },
-    { entry: "watch", label: "Watch live", className: "btn" },
-    {
-      entry: "leaderboard",
-      label: "Full leaderboard",
-      className: "btn btn--ghost",
-    },
-  ] as const;
-
-  // This bar sits outside the demo, so its actions keep their focus and place.
-  return (
-    <div className="preview-actions">
-      {actions
-        .filter(
-          ({ entry }) =>
-            entry !== "leaderboard" || surfaceMode === "leaderboard",
-        )
-        .map(({ entry, label, className }) => (
-          <button
-            key={entry}
-            type="button"
-            className={`${className} preview-actions__${entry}`}
-            data-entry={entry}
-            aria-label={entry === "leaderboard" ? label : undefined}
-            onClick={(event) => onExpand(event, entry)}
-          >
-            {entry === "leaderboard" ? (
-              <>
-                <Icon name="trophy" size={18} />
-                <span className="preview-actions__text">{label}</span>
-              </>
-            ) : (
-              label
-            )}
-          </button>
-        ))}
-      {expansionError && (
-        <p className="preview-actions__error" role="alert">
-          {expansionError}
-        </p>
+      {rankings.preview && (
+        <div className="splash-scene__foot">
+          <p className="splash-sample">
+            Local preview · {rows.length} sample players
+          </p>
+        </div>
       )}
-    </div>
+    </SplashScene>
   );
 }
 
@@ -242,6 +251,31 @@ function DemoCaption({
   );
 }
 
+/**
+ * Every lesson at a glance, beneath the one playing: finished lessons carry a
+ * red piece. Wide posts show it in place of the compact step bars.
+ */
+function LessonList({ stepIndex }: { stepIndex: number | null }) {
+  const current = stepIndex ?? -1;
+  return (
+    <ol className="preview-lessons" aria-hidden="true">
+      {DEMO_STEPS.map((lesson, index) => (
+        <li
+          key={lesson.id}
+          data-state={
+            index < current ? "done" : index === current ? "current" : "next"
+          }
+        >
+          <span className="preview-lessons__mark">
+            {index < current ? <PieceGlyph owner={1} size={16} /> : index + 1}
+          </span>
+          {lesson.label}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export const PreviewApp = () => {
   const [theme, setTheme] = useState<ThemeMode>("dark");
   const [initState, setInitState] = useState<InitResponse | null>(null);
@@ -269,6 +303,75 @@ export const PreviewApp = () => {
   const rankingsPendingRef = useRef(false);
   const [rankingsRefresh, setRankingsRefresh] = useState(0);
   const isPreviewActive = initState?.type === "init" && isDocumentVisible;
+  const reducedMotion = useReducedMotion();
+  const [pauseOverride, setPauseOverride] = useState<boolean | null>(null);
+  const paused = pauseOverride ?? reducedMotion;
+  const canAnimate = isPreviewActive && !paused;
+  const [challenges, setChallenges] = useState<ChallengeSpotlights>(
+    EMPTY_CHALLENGE_SPOTLIGHTS,
+  );
+  // Moderators' subreddit-wide switches; the server re-checks every change.
+  const [subredditSettings, setSubredditSettings] = useState<SubredditSettings>(
+    DEFAULT_SUBREDDIT_SETTINGS,
+  );
+  useEffect(() => {
+    if (initState?.type === "init")
+      setSubredditSettings(
+        validateSubredditSettings(initState.subredditSettings) ??
+          DEFAULT_SUBREDDIT_SETTINGS,
+      );
+  }, [initState]);
+  const { availability } = useCompetitionAvailability(
+    initState?.type === "init",
+    subredditSettings,
+  );
+  const displaySettings = availability
+    ? {
+        ...subredditSettings,
+        dailyChallenges: availability.competitions.daily.enabled,
+        weeklyChallenges: availability.competitions.weekly.enabled,
+      }
+    : subredditSettings;
+  const visibleChallenges = spotlightsFor(challenges, displaySettings);
+  const requestedSlide: SplashSlideId =
+    surfaceMode === "intro" || surfaceMode === "demo" ? "rules" : surfaceMode;
+  // Removing the displayed challenge immediately returns to a remaining slide,
+  // including while rotation is paused or the spotlight refresh fails.
+  const activeSlide: SplashSlideId =
+    (requestedSlide === "daily" || requestedSlide === "weekly") &&
+    !visibleChallenges[requestedSlide]
+      ? "leaderboard"
+      : requestedSlide;
+  const slideIds: SplashSlideId[] = [
+    "rules",
+    "leaderboard",
+    ...(visibleChallenges.daily ? ["daily" as const] : []),
+    ...(visibleChallenges.weekly ? ["weekly" as const] : []),
+  ];
+  const selectSlide = (id: SplashSlideId) => {
+    setSurfaceMode(id === "rules" ? "intro" : id);
+    setFrameIndex(0);
+    setStepIndex(null);
+    setPendingBeat(false);
+    setLeaderboardActivityVersion((version) => version + 1);
+  };
+
+  useEffect(() => {
+    if (initState?.type !== "init") return;
+    const controller = new AbortController();
+    // The server leaves out winners of challenges that are switched off.
+    void fetchJsonRecord("/api/challenge-spotlights", "", {
+      signal: controller.signal,
+    })
+      .then((record) => {
+        if (!controller.signal.aborted)
+          setChallenges(readChallengeSpotlights(record));
+      })
+      .catch(() => {
+        /* Standings and games remain available without spotlights. */
+      });
+    return () => controller.abort();
+  }, [initState, subredditSettings, availability]);
 
   useEffect(() => {
     return installThemeModeSync((nextTheme) => {
@@ -364,7 +467,7 @@ export const PreviewApp = () => {
 
   // Intro poster, then the demo from an empty board.
   useEffect(() => {
-    if (surfaceMode !== "intro" || !isPreviewActive) return;
+    if (surfaceMode !== "intro" || !canAnimate) return;
     const timer = window.setTimeout(() => {
       setFrameIndex(0);
       setStepIndex(null);
@@ -372,15 +475,14 @@ export const PreviewApp = () => {
       setSurfaceMode("demo");
     }, INTRO_MS);
     return () => window.clearTimeout(timer);
-  }, [isPreviewActive, surfaceMode]);
+  }, [canAnimate, surfaceMode]);
 
   // Demo: quick moves, and a pulse, landing and narrated hold for each lesson.
   useEffect(() => {
-    if (surfaceMode !== "demo" || !isPreviewActive) return;
+    if (surfaceMode !== "demo" || !canAnimate) return;
     let timer: number;
     if (frameIndex >= LAST_FRAME) {
       timer = window.setTimeout(() => {
-        storeCompletion(PREVIEW_ONBOARDING_KEY);
         setSurfaceMode("leaderboard");
         setLeaderboardActivityVersion(0);
       }, FINAL_HOLD_MS);
@@ -405,18 +507,20 @@ export const PreviewApp = () => {
       onLesson ? BEAT_HOLD_MS : FAST_MOVE_MS,
     );
     return () => window.clearTimeout(timer);
-  }, [frameIndex, isPreviewActive, pendingBeat, surfaceMode]);
+  }, [frameIndex, canAnimate, pendingBeat, surfaceMode]);
 
+  const nextSlide =
+    slideIds[(slideIds.indexOf(activeSlide) + 1) % slideIds.length]!;
   useEffect(() => {
-    if (surfaceMode !== "leaderboard" || !isPreviewActive) return;
+    if (activeSlide === "rules" || !canAnimate) return;
     const timer = window.setTimeout(() => {
-      setSurfaceMode("intro");
+      setSurfaceMode(nextSlide === "rules" ? "intro" : nextSlide);
       setFrameIndex(0);
       setStepIndex(null);
       setPendingBeat(false);
     }, LEADERBOARD_IDLE_MS);
     return () => window.clearTimeout(timer);
-  }, [isPreviewActive, leaderboardActivityVersion, surfaceMode]);
+  }, [canAnimate, leaderboardActivityVersion, activeSlide, nextSlide]);
 
   const noteLeaderboardInteraction = () => {
     if (surfaceMode !== "leaderboard") return;
@@ -429,7 +533,11 @@ export const PreviewApp = () => {
   ) => {
     try {
       setExpansionError(null);
-      requestExpandedMode(event.nativeEvent, entry);
+      void Promise.resolve(requestExpandedMode(event.nativeEvent, entry)).catch(
+        () => {
+          setExpansionError("Could not open. Please try again.");
+        },
+      );
     } catch {
       setExpansionError("Could not open. Please try again.");
     }
@@ -509,72 +617,100 @@ export const PreviewApp = () => {
           ? lastMarkers
           : [];
 
-  return (
-    <div
-      className={`euclid-preview euclid-preview--${surfaceMode}`}
-      data-demo-steps={DEMO_STEPS.length}
-    >
-      <div className="preview">
-        <div
-          className="preview__board"
-          style={{ aspectRatio: boardAspectRatio(DEMO_BOARD.W, DEMO_BOARD.H) }}
+  const slides: SplashSlide[] = [
+    {
+      id: "rules",
+      title: "How to play",
+      content: (
+        <SplashScene
+          tone="red"
+          live={false}
+          stage={
+            <BoardDiagram
+              width={DEMO_BOARD.W}
+              height={DEMO_BOARD.H}
+              cells={frame.board}
+              squares={squares}
+              markers={markers}
+              arrivingIndex={
+                surfaceMode === "demo" ? (frame.move?.index ?? null) : null
+              }
+              className={surfaceMode === "demo" ? "" : "board--poster"}
+            />
+          }
         >
-          <BoardDiagram
-            width={DEMO_BOARD.W}
-            height={DEMO_BOARD.H}
-            cells={frame.board}
-            squares={squares}
-            markers={markers}
-            arrivingIndex={
-              surfaceMode === "demo" ? (frame.move?.index ?? null) : null
-            }
-            className={surfaceMode === "demo" ? "" : "board--poster"}
-          />
-        </div>
-
-        <div className="preview__side">
           <div className="preview__brand">
-            <Wordmark size="md" />
             <ScoreChips scores={frame.scores} />
           </div>
           <div className="preview__panel">
-            {surfaceMode === "leaderboard" ? (
-              <PreviewLeaderboard
-                theme={theme}
-                rankings={rankings}
-                rankingsLoading={rankingsLoading}
-                rankingsError={rankingsError}
-                onInteract={noteLeaderboardInteraction}
-              />
-            ) : (
-              <DemoCaption surfaceMode={surfaceMode} stepIndex={stepIndex} />
-            )}
+            <DemoCaption
+              surfaceMode={surfaceMode === "demo" ? "demo" : "intro"}
+              stepIndex={stepIndex}
+            />
+            <LessonList stepIndex={stepIndex} />
           </div>
-          {surfaceMode !== "leaderboard" ? (
-            <div className="preview__progress" aria-hidden="true">
-              <span>
-                {surfaceMode === "demo"
-                  ? `Move ${frame.moveNumber} of ${LAST_FRAME}`
-                  : `A full game in ${LAST_FRAME} moves`}
-              </span>
-              <span className="preview__progress-bar">
-                <span
-                  style={{
-                    transform: `scaleX(${surfaceMode === "demo" ? frame.moveNumber / LAST_FRAME : 1})`,
-                  }}
-                />
-              </span>
-            </div>
-          ) : null}
-        </div>
-
-        <PreviewActions
+          <div className="preview__progress" aria-hidden="true">
+            <span>
+              {surfaceMode === "demo"
+                ? `Move ${frame.moveNumber} of ${LAST_FRAME}`
+                : `A full game in ${LAST_FRAME} moves`}
+            </span>
+            <span className="preview__progress-bar">
+              <span
+                style={{
+                  transform: `scaleX(${surfaceMode === "demo" ? frame.moveNumber / LAST_FRAME : 1})`,
+                }}
+              />
+            </span>
+          </div>
+        </SplashScene>
+      ),
+    },
+    {
+      id: "leaderboard",
+      title: "Leaderboard",
+      content: (
+        <PreviewLeaderboard
           theme={theme}
-          surfaceMode={surfaceMode}
-          expansionError={expansionError}
-          onExpand={openExpanded}
+          rankings={rankings}
+          rankingsLoading={rankingsLoading}
+          rankingsError={rankingsError}
+          onInteract={noteLeaderboardInteraction}
+          active={activeSlide === "leaderboard"}
         />
-      </div>
+      ),
+    },
+  ];
+  for (const period of CHALLENGE_PERIODS) {
+    const winner = visibleChallenges[period];
+    if (winner)
+      slides.push({
+        id: period,
+        title: `${CHALLENGE_COPY[period].name} Winner`,
+        content: (
+          <ChallengeWinnerCard
+            period={period}
+            winner={winner}
+            preview={challenges.preview}
+            active={activeSlide === period}
+          />
+        ),
+      });
+  }
+  return (
+    <div
+      className="euclid-preview euclid-preview--splash"
+      data-demo-steps={DEMO_STEPS.length}
+    >
+      <SplashCarousel
+        slides={slides}
+        activeId={activeSlide}
+        onSelect={selectSlide}
+        paused={paused}
+        onPause={setPauseOverride}
+        onExpand={openExpanded}
+        expansionError={expansionError}
+      />
     </div>
   );
 };

@@ -1,0 +1,188 @@
+/* Moderator challenge playground: settings beside the puzzle. Controls use
+   the shared .field, .input, .select, .switch and .notice primitives. */
+
+.challenge-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.75fr) minmax(0, 1.25fr);
+  align-items: start;
+  gap: var(--sp-4);
+}
+
+.challenge-controls fieldset {
+  display: grid;
+  gap: var(--sp-3);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.challenge-controls legend {
+  margin-bottom: var(--sp-3);
+  padding: 0;
+}
+
+.challenge-controls .field__hint {
+  margin: calc(var(--sp-2) * -1) 0 0;
+}
+
+.challenge-templates {
+  display: grid;
+  gap: var(--sp-3);
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+
+.challenge-templates p,
+.challenge-templates .field__hint {
+  margin: 0;
+}
+
+.challenge-templates__timing {
+  font-size: var(--fs-sm);
+}
+
+.challenge-template {
+  display: grid;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.challenge-template h3 {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+.challenge-template__version {
+  display: grid;
+  gap: var(--sp-1);
+  font-size: var(--fs-xs);
+}
+
+.challenge-play {
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.challenge-status {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.challenge-status__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-4);
+}
+
+.challenge-status p {
+  margin: 0;
+}
+
+.challenge-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.challenge-stats li {
+  padding: 4px var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+.challenge-stats__best {
+  border-color: color-mix(in srgb, var(--attention) 55%, var(--line));
+  color: var(--text);
+}
+
+.challenge-timer {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+.challenge-timer strong {
+  color: var(--text);
+  font-size: var(--fs-2xl);
+  font-stretch: var(--wide);
+  font-weight: 900;
+}
+
+.challenge-timer--done strong {
+  color: var(--attention);
+}
+
+.challenge-board-container {
+  width: 100%;
+  overflow: auto;
+  padding: var(--sp-2) 0 var(--sp-4);
+}
+
+/* Competition parents assign the remaining viewport space to this flex item.
+   Keep the touch hint outside the measured board slot so it cannot add height. */
+.challenge-board-fit {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.challenge-board-container--fit {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+.challenge-board-fit__hint {
+  flex: none;
+  margin: 0;
+  text-align: center;
+  font-size: var(--fs-xs);
+}
+
+.challenge-board {
+  position: relative;
+  margin: 0 auto;
+}
+
+.challenge-board-art {
+  position: absolute;
+  pointer-events: none;
+}
+
+.challenge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+@media (max-width: 760px) {
+  .challenge-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

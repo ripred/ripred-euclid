@@ -2,6 +2,7 @@ import { BoardDiagram } from "./ui/BoardDiagram";
 import {
   boardAspectRatio,
   cellsFromPoints,
+  type BoardMarker,
   type GridPoint,
   type Owner,
 } from "./ui/board-geometry";
@@ -11,12 +12,16 @@ import "./how-to-play.css";
 interface LessonSquare {
   owner: Owner;
   corners: GridPoint[];
+  tone?: "history" | "blocked";
 }
 
 interface Lesson {
   title: string;
   body: string;
   squares: LessonSquare[];
+  pieces?: (GridPoint & { owner: Owner })[];
+  marker?: BoardMarker;
+  diagramDescription?: string;
 }
 
 // Each lesson is a real 4×4 position drawn with the game's own board.
@@ -75,6 +80,35 @@ const LESSONS: Lesson[] = [
       },
     ],
   },
+  {
+    title: "Block your opponent",
+    body: "Claim the fourth corner before your opponent can finish a square. The marked red piece stops blue here; blocking alone scores no points.",
+    diagramDescription:
+      "Blue has three corners of a square. The marked red piece occupies its fourth corner, blocking blue from completing it.",
+    // Three earlier red moves make this a legal alternating-turn position.
+    pieces: [
+      { x: 0, y: 0, owner: 1 },
+      { x: 0, y: 1, owner: 1 },
+      { x: 0, y: 3, owner: 1 },
+      { x: 1, y: 1, owner: 2 },
+      { x: 3, y: 1, owner: 2 },
+      { x: 1, y: 3, owner: 2 },
+      { x: 3, y: 3, owner: 1 },
+    ],
+    squares: [
+      {
+        owner: 2,
+        tone: "blocked",
+        corners: [
+          { x: 1, y: 1 },
+          { x: 3, y: 1 },
+          { x: 3, y: 3 },
+          { x: 1, y: 3 },
+        ],
+      },
+    ],
+    marker: { x: 3, y: 3, owner: 1, kind: "last" },
+  },
 ];
 
 function LessonBoard({ lesson }: { lesson: Lesson }) {
@@ -86,26 +120,29 @@ function LessonBoard({ lesson }: { lesson: Lesson }) {
       <BoardDiagram
         width={4}
         height={4}
+        title={lesson.diagramDescription ?? lesson.title}
         cells={cellsFromPoints(
           4,
           4,
-          lesson.squares.flatMap(({ owner, corners }) =>
-            corners.map((corner) => ({ ...corner, owner })),
-          ),
+          lesson.pieces ??
+            lesson.squares.flatMap(({ owner, corners }) =>
+              corners.map((corner) => ({ ...corner, owner })),
+            ),
         )}
-        squares={lesson.squares.map(({ owner, corners }, index) => ({
+        squares={lesson.squares.map(({ owner, corners, tone }, index) => ({
           key: `${lesson.title}-${index}`,
           owner,
-          tone: "history",
+          tone: tone ?? "history",
           corners,
         }))}
+        markers={lesson.marker ? [lesson.marker] : []}
       />
     </div>
   );
 }
 
 /**
- * Rules as three illustrated lessons plus the finish condition. The strip
+ * Rules as illustrated lessons plus the finish condition. The strip
  * layout lays the lessons side by side for the home screen.
  */
 export function HowToPlay({ layout = "list" }: { layout?: "list" | "strip" }) {
@@ -127,10 +164,18 @@ export function HowToPlay({ layout = "list" }: { layout?: "list" | "strip" }) {
       </ol>
       <p className="how-to-play__finish">
         <strong>First to the target wins.</strong> If the board fills first, the
-        higher score wins. Practice games can use True Area scoring instead,
-        which counts a square's real area.
+        higher score wins.
       </p>
     </div>
+  );
+}
+
+export function HowToPlaySummary() {
+  return (
+    <>
+      {LESSONS.length === 4 ? "Four" : LESSONS.length} ideas carry the whole
+      game. Mastering them takes a lifetime.
+    </>
   );
 }
 

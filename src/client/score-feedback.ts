@@ -1,5 +1,4 @@
 import type { PlayerIndex } from "../shared/game/rules";
-import type { SquareScoringMode } from "../shared/scoring";
 import type {
   H2HCanonicalState,
   H2HMoveResponse,
@@ -7,6 +6,7 @@ import type {
   ShareSquare,
   SoloEvent,
 } from "../shared/types/api";
+import { clonePoint, cloneSquare, squarePoints } from "../shared/share-squares";
 
 export type GridFootprintBounds = {
   /** Grid-space column of the footprint's upper-left occupied spot. */
@@ -48,26 +48,6 @@ export type PendingH2HScoreFeedbackResolution<
   events: ScoreFeedbackEvent[];
 };
 
-function clonePoint(point: SharePoint): SharePoint {
-  return { x: point.x, y: point.y, index: point.index };
-}
-
-function cloneSquare(square: ShareSquare): ShareSquare {
-  return {
-    p1: clonePoint(square.p1),
-    p2: clonePoint(square.p2),
-    p3: clonePoint(square.p3),
-    p4: clonePoint(square.p4),
-    points: square.points,
-    remain: square.remain,
-    clr: square.clr,
-  };
-}
-
-function squarePoints(square: ShareSquare): readonly SharePoint[] {
-  return [square.p1, square.p2, square.p3, square.p4];
-}
-
 function squareContainsPoint(square: ShareSquare, point: SharePoint): boolean {
   return squarePoints(square).some(
     (corner) =>
@@ -107,7 +87,6 @@ function createScoreFeedback(
   point: SharePoint,
   pointsScored: number,
   completedSquares: readonly ShareSquare[],
-  scoring: SquareScoringMode,
 ): ScoreFeedbackEvent | null {
   if (pointsScored <= 0) return null;
 
@@ -118,10 +97,7 @@ function createScoreFeedback(
     .sort((left, right) =>
       squareSignature(left).localeCompare(squareSignature(right)),
     );
-  const footprintBounds = squares.flatMap((square) => {
-    const bounds = gridFootprintBounds(square, scoring);
-    return bounds ? [bounds] : [];
-  });
+  const footprintBounds = squares.map(gridFootprintBounds);
 
   return {
     id: scoreFeedbackId(gameId, moveCount),
@@ -151,17 +127,8 @@ export function squareSignature(square: ShareSquare): string {
     .join("|");
 }
 
-/**
- * Returns grid-space bounds for the enclosing Grid Footprint. True Area does
- * not use this rectangle as its scoring basis, so it intentionally returns
- * no bounds.
- */
-export function gridFootprintBounds(
-  square: ShareSquare,
-  scoring: SquareScoringMode,
-): GridFootprintBounds | null {
-  if (scoring !== "bbox") return null;
-
+/** Returns grid-space bounds for the square's Grid Footprint. */
+export function gridFootprintBounds(square: ShareSquare): GridFootprintBounds {
   const points = squarePoints(square);
   const xs = points.map((point) => point.x);
   const ys = points.map((point) => point.y);
@@ -198,7 +165,6 @@ export function formatScoreFeedback(
 export function normalizeSoloScoreFeedback(
   gameId: string,
   events: readonly SoloEvent[],
-  scoring: SquareScoringMode,
 ): ScoreFeedbackEvent[] {
   return events.flatMap((event) => {
     if (event.type !== "move") return [];
@@ -209,7 +175,6 @@ export function normalizeSoloScoreFeedback(
       event.point,
       event.pointsScored,
       event.completedSquares,
-      scoring,
     );
     return feedback ? [feedback] : [];
   });
@@ -233,7 +198,6 @@ export function scoreFeedbackFromH2HMove(
     point,
     response.pointsScored,
     response.completedSquares,
-    response.board.scoring,
   );
 }
 
@@ -292,7 +256,6 @@ export function scoreFeedbackFromH2HSnapshot(
     point,
     current.board.m_lastPoints,
     completedSquares,
-    current.board.scoring,
   );
 }
 

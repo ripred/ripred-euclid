@@ -1,3 +1,4 @@
+import { isCount } from "../shared/guards";
 import {
   playerColorForIndex,
   type PlayerColor,
@@ -97,9 +98,6 @@ export function createSoloStartIntentKey(
   const { rules } = configuration;
   return JSON.stringify({
     mode: "practice",
-    W: rules.W,
-    H: rules.H,
-    scoring: rules.scoring,
     winScore: rules.winScore,
     difficulty: rules.difficulty,
     humanPlayer: rules.humanPlayer ?? null,
@@ -154,7 +152,7 @@ function requireCoordinate(value: number, field: string): number {
 }
 
 function requireRevision(revision: number): number {
-  if (!Number.isSafeInteger(revision) || revision < 0) {
+  if (!isCount(revision)) {
     throw new RangeError("revision must be a non-negative safe integer.");
   }
   return revision;
@@ -166,12 +164,8 @@ export function shouldAdoptSoloSnapshot(
   incoming: Pick<SoloSessionSnapshot, "gameId" | "revision">,
 ): boolean {
   if (!activeGameId || incoming.gameId !== activeGameId) return false;
-  if (!Number.isSafeInteger(currentRevision) || currentRevision < 0)
-    return false;
-  return (
-    Number.isSafeInteger(incoming.revision) &&
-    incoming.revision >= currentRevision
-  );
+  if (!isCount(currentRevision)) return false;
+  return isCount(incoming.revision) && incoming.revision >= currentRevision;
 }
 
 export function getSoloAssistancePolicy(
@@ -281,9 +275,6 @@ export function createPracticeSoloStartIntent(
     mode: "practice",
     commandId: requireCommandId(commandId),
     rules: {
-      W: rules.W,
-      H: rules.H,
-      scoring: rules.scoring,
       winScore: rules.winScore,
       difficulty: rules.difficulty,
       ...(rules.humanPlayer === undefined

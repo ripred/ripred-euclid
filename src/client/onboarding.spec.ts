@@ -61,25 +61,18 @@ describe("onboarding completion storage", () => {
 
 describe("full tutorial visibility", () => {
   const incomplete = {
-    previewDemoCompleted: false,
     fullTutorialCompleted: false,
     completedThisSession: false,
   };
 
-  it("shows only in a playable mode when neither onboarding path is complete", () => {
+  it("shows only in a playable mode until the tutorial is complete", () => {
     expect(shouldShowFullTutorial("ai", incomplete)).toBe(true);
     expect(shouldShowFullTutorial("multiplayer", incomplete)).toBe(true);
     expect(shouldShowFullTutorial("rankings", incomplete)).toBe(false);
     expect(shouldShowFullTutorial(null, incomplete)).toBe(false);
   });
 
-  it("stays hidden after either preview completion or explicit dismissal", () => {
-    expect(
-      shouldShowFullTutorial("ai", {
-        ...incomplete,
-        previewDemoCompleted: true,
-      }),
-    ).toBe(false);
+  it("stays hidden after the tutorial is finished or dismissed", () => {
     expect(
       shouldShowFullTutorial("ai", {
         ...incomplete,

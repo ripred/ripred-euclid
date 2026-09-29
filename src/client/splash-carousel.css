@@ -1,0 +1,619 @@
+/* Reddit's tall inline post is 512px. Larger windows, such as local
+   previews, keep that proportion and centre the post instead of stretching. */
+.euclid-preview--splash {
+  --rise-from: 8px;
+  display: grid;
+  max-height: 512px;
+  margin-block: auto;
+}
+.splash-carousel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-width: 960px;
+  margin: auto;
+}
+.splash-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.splash-header__label {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 650;
+  outline: none;
+}
+.splash-viewport {
+  --splash-fade-duration: 220ms;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: pan-y;
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+}
+.splash-track {
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+}
+.splash-slide {
+  grid-area: 1 / 1;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--splash-fade-duration) ease-in,
+    visibility 0s linear var(--splash-fade-duration);
+}
+/* Reveal the next panel only after the previous one has faded to the theme background. */
+.splash-slide[aria-hidden="false"] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition:
+    opacity var(--splash-fade-duration) ease-out
+      calc(var(--splash-fade-duration) + 60ms),
+    visibility 0s linear;
+}
+.splash-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.splash-navigation .btn {
+  min-height: 36px;
+  height: 36px;
+  padding: 0 10px;
+}
+.splash-dots {
+  display: flex;
+  align-items: center;
+}
+.splash-dots button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 36px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.splash-dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-3);
+  opacity: 0.45;
+  transition:
+    width 250ms,
+    opacity 250ms;
+}
+.splash-dots [aria-current] span {
+  width: 22px;
+  border-radius: 6px;
+  background: var(--red);
+  opacity: 1;
+}
+.splash-pause {
+  min-width: 66px;
+  font-size: var(--fs-xs);
+}
+.splash-footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.splash-footer .btn {
+  min-height: 44px;
+}
+.splash-footer .btn--primary {
+  flex: 1;
+}
+.splash-slide h2 {
+  margin: 0;
+  font-size: clamp(18px, 2.7vw, 26px);
+  font-weight: 850;
+  font-stretch: var(--wide);
+  line-height: 1.15;
+}
+
+/* Scenes: every slide sets its art on a glow in the slide's colour, beside a
+   panel edged in the same colour, so the rotation reads as one story. */
+.splash-scene {
+  --band-draw-delay: 860ms;
+  --scene: var(--red);
+  --scene-text: var(--red-text);
+}
+.splash-scene--blue {
+  --scene: var(--blue);
+  --scene-text: var(--blue-text);
+}
+.splash-scene--gold {
+  --scene: var(--gold);
+  --scene-text: var(--attention);
+}
+.splash-scene__stage {
+  position: relative;
+  aspect-ratio: var(--stage-ratio);
+  container-type: size;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, var(--scene) 30%, transparent),
+    transparent
+  );
+}
+.splash-scene__stage > .board {
+  width: 100%;
+  height: 100%;
+}
+/* Head at the top, foot at the bottom, the slide's substance centred between. */
+.splash-scene__card {
+  display: flex;
+  flex-direction: column;
+  border-color: color-mix(in srgb, var(--scene) 42%, var(--line));
+  box-shadow:
+    inset 0 3px 0 var(--scene),
+    var(--panel-shadow);
+}
+.splash-scene .preview-panel__kicker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--scene-text);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+/* Heading on the left; any controls (such as the leaderboard tabs) wrap to
+   the end of the same row. */
+.splash-scene__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 8px;
+}
+.splash-scene__heading {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.splash-scene__subtitle {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.splash-winner__stats {
+  align-self: stretch;
+  margin-block: auto;
+}
+.splash-scene__foot {
+  margin-top: auto;
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+/* Entrance: pieces drop in turn by their --order, then bands draw closed.
+   Stages with more than four pieces land the rest together with the fourth. */
+.splash-scene__stage[data-entrance] .board__piece {
+  --piece-delay: calc(300ms + min(var(--order, 0), 3) * 140ms);
+}
+.splash-scene--live .splash-scene__head {
+  animation: rise-in 420ms 120ms var(--ease-out) both;
+}
+.splash-scene--live .splash-scene__head ~ * {
+  animation: rise-in 420ms 600ms var(--ease-out) both;
+}
+
+/* Winner: the champion inside the square they would have closed. */
+.splash-winner__square,
+.splash-winner__square .board {
+  width: 100%;
+  height: 100%;
+}
+/* Centred on the square: (2, 2) inside the board's bled viewBox. */
+.splash-winner__avatar {
+  position: absolute;
+  top: 48.8%;
+  left: 50%;
+  display: grid;
+  width: 38%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--surface-2);
+  box-shadow:
+    0 0 0 3px var(--surface),
+    0 0 0 5px var(--scene),
+    0 10px 28px rgb(0 0 0 / 0.4);
+  transform: translate(-50%, -50%);
+}
+.splash-winner__avatar .avatar,
+.splash-podium__avatar .avatar {
+  width: 100% !important;
+  height: 100% !important;
+  font-size: 12cqmin !important;
+}
+/* Usernames stay on one line at the body width; the full name is in the title. */
+.splash-scene__title--one-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.splash-winner__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-inline: 0;
+}
+.splash-winner__stat {
+  --winner-value-size: var(--fs-2xl);
+  container-type: inline-size;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--scene) 45%, var(--line));
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+.splash-winner__stat dt {
+  color: var(--scene-text);
+  font-size: var(--fs-xs);
+  font-weight: 750;
+}
+.splash-winner__stat dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0;
+  font-size: var(--winner-value-size);
+  font-stretch: var(--wide);
+  font-weight: 900;
+  line-height: 1.1;
+}
+.splash-winner__stat dd.num {
+  /* Reserve room for the final value throughout the count-up. */
+  font-size: min(
+    var(--winner-value-size),
+    calc(100cqi / (var(--time-digits) * 0.8))
+  );
+}
+.splash-winner__pieces {
+  display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  gap: 3px;
+}
+.splash-winner__record {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.splash-winner__record strong {
+  color: var(--text);
+}
+.splash-scene--live .splash-winner__avatar {
+  --pop-from: 0.6;
+  animation: pop-in 520ms var(--ease-spring) both;
+}
+.splash-scene--live .splash-winner__pieces .piece-glyph {
+  animation: pop-in 360ms calc(1s + var(--order, 0) * 100ms) var(--ease-spring)
+    both;
+}
+/* Confetti: paper strips in both colours and gold drifting down behind the
+   art, only while the slide is shown. */
+.splash-confetti {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.splash-confetti > span {
+  position: absolute;
+  top: 0;
+  left: var(--x);
+  width: 1.8cqmin;
+  height: 3cqmin;
+  border-radius: 0.4cqmin;
+  background: var(--token-red);
+  opacity: 0;
+}
+.splash-confetti > span:nth-child(3n + 2) {
+  background: var(--token-blue);
+}
+.splash-confetti > span:nth-child(3n) {
+  background: var(--gold-token);
+}
+.splash-confetti > span:nth-child(4n) {
+  width: 2.2cqmin;
+  height: 2.2cqmin;
+  border-radius: 50%;
+}
+.splash-scene--live .splash-confetti > span {
+  animation: confetti-fall var(--fall) linear var(--delay) infinite;
+}
+@keyframes confetti-fall {
+  0% {
+    opacity: 0;
+    transform: translate(0, -4cqh) rotate(0deg) rotateX(0deg);
+  }
+  8%,
+  88% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--drift), 104cqh) rotate(var(--spin))
+      rotateX(720deg);
+  }
+}
+
+/* Podium: three board-stone steps, first in the middle and tallest. */
+.splash-podium {
+  position: absolute;
+  inset: 6% 5% 7%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+  gap: 2.5cqmin;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.splash-podium__place {
+  --step: 26cqh;
+  --avatar: 20cqmin;
+  --cue: 0ms;
+  --token: var(--bronze-token);
+  --token-ink: #fff;
+  display: grid;
+  grid-row: 1;
+  grid-column: 3;
+  justify-items: center;
+  gap: 1.6cqmin;
+  min-width: 0;
+}
+.splash-podium__place--1 {
+  --step: 42cqh;
+  --avatar: 26cqmin;
+  --cue: 280ms;
+  --token: var(--gold-token);
+  --token-ink: #1a1a1a;
+  grid-column: 2;
+}
+.splash-podium__place--2 {
+  --step: 33cqh;
+  --cue: 140ms;
+  --token: var(--silver-token);
+  --token-ink: #1a1a1a;
+  grid-column: 1;
+}
+.splash-podium__avatar {
+  display: grid;
+  width: var(--avatar);
+  aspect-ratio: 1;
+  padding: 1.1cqmin;
+  border-radius: 50%;
+  background: var(--token);
+  box-shadow: 0 1.4cqmin 3cqmin rgb(0 0 0 / 0.4);
+}
+.splash-podium__avatar > * {
+  overflow: hidden;
+  border-radius: 50%;
+}
+.splash-podium__seat {
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 9cqmin;
+  font-weight: 900;
+}
+.splash-podium__name {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: clamp(10px, 3.4cqmin, 15px);
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The step is a slice of the board: a slab face over a darker plinth. */
+.splash-podium__step {
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  gap: 1.2cqmin;
+  width: 100%;
+  height: var(--step);
+  padding-top: 2.4cqmin;
+  border-radius: 1.8cqmin 1.8cqmin 0.8cqmin 0.8cqmin;
+  background: linear-gradient(
+    180deg,
+    var(--slab-light),
+    var(--slab) 22%,
+    var(--slab-dark)
+  );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.45),
+    0 1.6cqmin 0 var(--slab-plinth),
+    0 3cqmin 6cqmin rgb(0 0 0 / 0.35);
+  transform-origin: bottom;
+}
+.splash-podium__rank {
+  display: grid;
+  place-items: center;
+  width: 9cqmin;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--token);
+  color: var(--token-ink);
+  font-size: 4.6cqmin;
+  font-weight: 900;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.55),
+    0 2px 0 rgb(0 0 0 / 0.35);
+}
+.splash-podium__rating {
+  color: #fff;
+  font-size: 5.4cqmin;
+  font-stretch: var(--wide);
+  font-weight: 900;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.45);
+}
+.splash-scene--live .splash-podium__step {
+  animation: podium-rise 620ms calc(var(--cue) + 100ms) var(--ease-spring) both;
+}
+.splash-scene--live .splash-podium__avatar,
+.splash-scene--live .splash-podium__name {
+  animation: pop-in 420ms calc(var(--cue) + 520ms) var(--ease-spring) both;
+}
+@keyframes podium-rise {
+  from {
+    transform: scaleY(0.05);
+  }
+}
+.splash-standings .standings {
+  align-content: start;
+  gap: 6px;
+}
+
+.splash-sample {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+/* The side panel gets narrow before the post switches to its phone layout. */
+@media (max-width: 760px) {
+  .splash-winner__stats {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+  .splash-winner__stat {
+    grid-auto-flow: column;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 6px 10px;
+  }
+  .splash-winner__stat dd,
+  .splash-winner__stat dd.num {
+    font-size: clamp(14px, 3vw, var(--fs-lg));
+  }
+  .splash-winner__pieces {
+    display: none;
+  }
+}
+@media (max-width: 520px) {
+  .splash-scene__title--one-line {
+    font-size: var(--fs-md);
+  }
+  .splash-standings .standing:nth-child(n + 2) {
+    display: none;
+  }
+}
+@media (max-width: 360px) {
+  .preview-caption__title {
+    font-size: var(--fs-sm);
+  }
+}
+@media (max-width: 520px) and (max-height: 400px) {
+  .splash-scene__head .preview-panel__kicker,
+  .splash-scene__foot .splash-sample {
+    display: none;
+  }
+  .splash-scene__foot {
+    padding-top: 6px;
+  }
+  .splash-winner__record {
+    font-size: var(--fs-xs);
+  }
+}
+@media (max-width: 520px) and (min-height: 401px) {
+  .preview {
+    grid-template-areas: "board" "side";
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+  .preview__side {
+    gap: 8px;
+  }
+  .preview__brand,
+  .preview__progress,
+  .splash-scene__foot .splash-sample,
+  .splash-standings .splash-scene__card > .preview-panel__body {
+    display: none;
+  }
+  /* Steps read best wide; the podium takes the full width above the panel. */
+  .splash-standings .splash-scene__stage {
+    width: 100%;
+    max-width: none;
+    aspect-ratio: auto;
+  }
+  .preview__panel {
+    border: 0;
+    padding: 0;
+  }
+  .preview-caption__copy {
+    gap: 4px;
+  }
+  .preview-caption__title {
+    font-size: var(--fs-sm);
+  }
+  .preview-panel__body {
+    font-size: var(--fs-xs);
+  }
+}
+@media (max-height: 500px) {
+  .splash-winner__stat {
+    --winner-value-size: var(--fs-xl);
+    padding: 4px 10px;
+  }
+  .splash-winner__pieces {
+    display: none;
+  }
+}
+@media (max-height: 380px) {
+  .splash-carousel {
+    gap: 4px;
+  }
+  .splash-scene .splash-sample {
+    display: none;
+  }
+  /* The header already names the slide; the podium keeps the room. */
+  .splash-standings h2,
+  .splash-standings .standings {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .splash-slide,
+  .splash-slide[aria-hidden="false"],
+  .splash-dots span,
+  .preview__progress-bar span {
+    transition: none;
+  }
+  .preview-caption__copy,
+  .preview__board .board--poster {
+    animation: none;
+  }
+}

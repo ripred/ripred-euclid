@@ -1,3 +1,15 @@
+import {
+  DEFAULT_SUBREDDIT_SETTINGS,
+  validateSubredditSettings,
+  type SubredditSettings,
+} from "../shared/subreddit-settings";
+import type { ExpandedAction } from "./expanded-entry";
+import { ChallengeScreen } from "./challenge-screen";
+import { CompetitionScreen } from "./competition-screen";
+import {
+  useCompetitionAvailability,
+  useCompetitionClock,
+} from "./use-competition-availability";
 import React, {
   useCallback,
   useEffect,
@@ -33,11 +45,11 @@ import type {
 import { Board, isBoardValid } from "../shared/game/engine";
 import {
   AI_DIFFICULTY_LABELS,
+  STANDARD_WIN_SCORE,
   type AiDifficulty,
   type PlayerColor,
   type SoloMode,
 } from "../shared/game/rules";
-import { recommendedWinTarget, totalSquareScore } from "../shared/scoring";
 import {
   getH2HExitAction,
   getH2HResultPresentation,
@@ -70,7 +82,6 @@ import { Icon } from "./ui/Icon";
 import {
   FULL_TUTORIAL_KEY,
   hasStoredCompletion,
-  PREVIEW_ONBOARDING_KEY,
   shouldShowFullTutorial,
   storeCompletion,
 } from "./onboarding";
@@ -81,12 +92,12 @@ import {
 } from "./theme";
 import { ResultShareView } from "./share-preview";
 import { fetchRankings, type LoadedRankings } from "./rankings-loader";
-import { errorMessage } from "./error-message";
+import { errorMessage } from "../shared/error-message";
 import {
-  readPracticeDifficulty,
-  savePracticeDifficulty,
+  readPracticePreferences,
+  savePracticePreferences,
 } from "./solo-preferences";
-import { isRecord } from "./fetch-json";
+import { isRecord } from "../shared/guards";
 import { useLiveGames } from "./live-games";
 import {
   WatchActions,
@@ -141,6 +152,7 @@ import {
   saveSoundPreference,
 } from "./sound/engine";
 import { SoundContext } from "./sound/use-sounds";
+import { pointIndex } from "../shared/game/geometry";
 
 const HUMAN_VS_EUCLID_LABEL = "Redditor vs Euclid";
 const EUCLID_LABEL = "Euclid";
@@ -236,6 +248,9 @@ function createClientCommandId(prefix: string): string {
 
 /* ===== App (UI + flows) ===== */
 type Mode =
+  | "daily"
+  | "weekly"
+  | "challenge"
   | "ai"
   | "multiplayer"
   | "spectate"
@@ -270,10 +285,31 @@ function readViewportSize(): ViewportSize {
 
 export const App = ({
   initialMode = null,
-}: { initialMode?: "rankings" | "spectate" | null } = {}) => {
+  initialAction = null,
+}: {
+  initialMode?:
+    | "challenge"
+    | "daily"
+    | "weekly"
+    | "rankings"
+    | "spectate"
+    | null;
+  initialAction?: ExpandedAction | null;
+} = {}) => {
+  const pendingInitialAction = useRef(initialAction);
   const appliedThemeRef = useRef<ThemeMode | null>(null);
   const [watchTheme, setWatchTheme] = useState<ThemeMode>("light");
   const [initState, setInitState] = useState<InitResponse | null>(null);
+  const [subredditSettings, setSubredditSettings] = useState<SubredditSettings>(
+    DEFAULT_SUBREDDIT_SETTINGS,
+  );
+  useEffect(() => {
+    if (initState?.type === "init")
+      setSubredditSettings(
+        validateSubredditSettings(initState.subredditSettings) ??
+          DEFAULT_SUBREDDIT_SETTINGS,
+      );
+  }, [initState]);
   const [initError, setInitError] = useState("");
   const [mode, setMode] = useState<Mode>(initialMode);
   const [board, setBoard] = useState<Board | null>(null);
@@ -324,29 +360,24 @@ export const App = ({
     return () => window.clearTimeout(timer);
   }, [activeScoreFeedback]);
 
-  // Remember practice preferences; ranked and resumed games use server rules.
+  // Options edit device preferences; ranked and resumed games use server rules.
+  const [savedPractice] = useState(readPracticePreferences);
   const [selectedDifficulty, setSelectedDifficulty] = useState<AiDifficulty>(
-    readPracticeDifficulty,
+    savedPractice.difficulty,
   );
-  useEffect(() => {
-    savePracticeDifficulty(selectedDifficulty);
-  }, [selectedDifficulty]);
   const [soloMode, setSoloMode] = useState<SoloMode>("practice");
 
-  // Independent W/H (even); the setup screen owns the allowed sizes.
-  const [boardW, setBoardW] = useState<number>(8);
-  const [boardH, setBoardH] = useState<number>(8);
-
-  const [scoringMode, setScoringMode] = useState<"bbox" | "true">("bbox");
-
   // Assist highlights toggle
-  const [assistOn, setAssistOn] = useState<boolean>(false);
+  const [assistOn, setAssistOn] = useState<boolean>(savedPractice.assist);
+  useEffect(() => {
+    savePracticePreferences({
+      difficulty: selectedDifficulty,
+      assist: assistOn,
+    });
+  }, [selectedDifficulty, assistOn]);
 
-  // Setup guidance pairs the board's score ceiling with a target scaled from
-  // the classic 8x8 first-to-150 game.
-  const [bestCase, setBestCase] = useState<number>(0);
-  const [recommended, setRecommended] = useState<number>(150);
-  const [winScore, setWinScore] = useState<number>(150);
+  // Practice may play to another target on the standard board.
+  const [winScore, setWinScore] = useState<number>(STANDARD_WIN_SCORE);
   const soloStartIntentKey = useMemo(
     () =>
       createSoloStartIntentKey(
@@ -355,15 +386,12 @@ export const App = ({
           : {
               mode: "practice",
               rules: {
-                W: boardW,
-                H: boardH,
-                scoring: scoringMode,
                 winScore,
                 difficulty: selectedDifficulty,
               },
             },
       ),
-    [boardH, boardW, scoringMode, selectedDifficulty, soloMode, winScore],
+    [selectedDifficulty, soloMode, winScore],
   );
 
   const [status, setStatus] = useState<string>("");
@@ -605,26 +633,30 @@ export const App = ({
       window.removeEventListener("keydown", wake);
     };
   }, [sounds, soundOn]);
-  const toggleSound = useCallback(() => {
-    const next = !soundOn;
-    sounds.unlock();
-    sounds.setEnabled(next);
-    saveSoundPreference(next);
-    setSoundOn(next);
-    if (next) sounds.place(1, "mine");
-  }, [sounds, soundOn]);
+  const changeSound = useCallback(
+    (next: boolean) => {
+      sounds.unlock();
+      sounds.setEnabled(next);
+      saveSoundPreference(next);
+      setSoundOn(next);
+      if (next) sounds.place(1, "mine");
+    },
+    [sounds],
+  );
+  const toggleSound = useCallback(
+    () => changeSound(!soundOn),
+    [changeSound, soundOn],
+  );
 
   // Tutorial/onboarding
   const [tutorialCompletedThisSession, setTutorialCompletedThisSession] =
     useState(false);
   useEffect(() => {
-    const previewOnboardingSeen = hasStoredCompletion(PREVIEW_ONBOARDING_KEY);
     const fullTutorialCompleted = hasStoredCompletion(FULL_TUTORIAL_KEY);
     setShowTutorial(
       shouldShowFullTutorial(
         mode,
         {
-          previewDemoCompleted: previewOnboardingSeen,
           fullTutorialCompleted,
           completedThisSession: tutorialCompletedThisSession,
         },
@@ -693,17 +725,6 @@ export const App = ({
       active = false;
     };
   }, []);
-  // Scale the recommended target from the 8×8 first-to-150 baseline.
-  useEffect(() => {
-    const W = boardW - (boardW % 2);
-    const H = boardH - (boardH % 2);
-    const cur = totalSquareScore(W, H, scoringMode);
-    const rec = recommendedWinTarget(W, H, scoringMode);
-    setBestCase(cur);
-    setRecommended(rec);
-    setWinScore(rec); // auto-adjust; user can override afterward
-  }, [boardW, boardH, scoringMode]);
-
   const returnFromSolo = useCallback(() => {
     // Every solo exit changes the authoritative saved-game/record summary.
     // Refresh those home cards as part of the transition instead of relying
@@ -778,13 +799,7 @@ export const App = ({
       soloMode === "ranked"
         ? createRankedSoloStartIntent(commandId)
         : createPracticeSoloStartIntent(
-            {
-              W: boardW,
-              H: boardH,
-              scoring: scoringMode,
-              winScore,
-              difficulty: selectedDifficulty,
-            },
+            { winScore, difficulty: selectedDifficulty },
             commandId,
           );
 
@@ -839,11 +854,7 @@ export const App = ({
         soloStartCommandRef.current = null;
       }
       enqueueScoreFeedback(
-        normalizeSoloScoreFeedback(
-          payload.snapshot.gameId,
-          payload.events,
-          payload.snapshot.board.scoring,
-        ),
+        normalizeSoloScoreFeedback(payload.snapshot.gameId, payload.events),
       );
       return true;
     } catch (error) {
@@ -859,13 +870,10 @@ export const App = ({
     }
   }, [
     adoptSoloSnapshot,
-    boardH,
-    boardW,
     returnFromSolo,
     clearScoreFeedback,
     enqueueScoreFeedback,
     homeSolo,
-    scoringMode,
     selectedDifficulty,
     soloMode,
     soloStartIntentKey,
@@ -933,11 +941,7 @@ export const App = ({
 
         if (adoptedSnapshot) {
           enqueueScoreFeedback(
-            normalizeSoloScoreFeedback(
-              payload.snapshot.gameId,
-              payload.events,
-              payload.snapshot.board.scoring,
-            ),
+            normalizeSoloScoreFeedback(payload.snapshot.gameId, payload.events),
           );
         }
         return true;
@@ -1755,6 +1759,28 @@ export const App = ({
     }
   };
 
+  useEffect(() => {
+    if (mode !== null) pendingInitialAction.current = null;
+    if (
+      !pendingInitialAction.current ||
+      initState?.type !== "init" ||
+      mode !== null ||
+      homePresenceLoading ||
+      homeSoloLoading ||
+      !homePresenceReady ||
+      homePresenceReconciliationPending ||
+      homeBusyActionRef.current
+    )
+      return;
+    const action = pendingInitialAction.current;
+    pendingInitialAction.current = null;
+    // An existing match, queue, or unresolved solo lookup requires the home controls.
+    if (homeH2H.state !== "idle" || homeDataErrors.solo) return;
+    if (action === "reddit") void startMultiplayerQueue();
+    else if (homeSolo) void continueSoloFromHome();
+    else void startSoloFromHome();
+  });
+
   const continueSoloFromHome = async (): Promise<boolean> => {
     const cached = homeSolo;
     if (!cached || homeBusyActionRef.current || homeH2H.state === "queued") {
@@ -2020,7 +2046,7 @@ export const App = ({
     clearMultiplayerState({ nextMode: "watch-demo" });
   };
 
-  const playFromWatch = () => {
+  const returnFromWatch = () => {
     if (spectatingRef.current) clearMultiplayerState({ refreshHome: true });
     else returnHome();
   };
@@ -2491,6 +2517,8 @@ export const App = ({
   useEffect(() => {
     const secret = "ripred";
     const onKey = (e: KeyboardEvent) => {
+      // Playground configuration and play never enter ordinary-game shortcuts.
+      if (mode === "challenge" || mode === "daily" || mode === "weekly") return;
       const k = e.key || "";
       if (!k) return;
       if (chatOpen) return;
@@ -2666,6 +2694,18 @@ export const App = ({
   /* =========================
      CONTENT ROUTER
      ========================= */
+  const { availability: challengeAvailability } = useCompetitionAvailability(
+    initState?.type === "init" && mode === null,
+    homeRefreshVersion,
+  );
+  const previousScreen = useRef(mode);
+  useEffect(() => {
+    if (previousScreen.current === "options" && mode === null)
+      document.getElementById("home-options")?.focus();
+    previousScreen.current = mode;
+  }, [mode]);
+  const challengeNow = useCompetitionClock(challengeAvailability?.serverNow);
+
   let content: React.ReactElement;
 
   if (!initState && !initError) {
@@ -2716,6 +2756,13 @@ export const App = ({
           error={homeError}
           soloMode={soloMode}
           onSoloModeChange={setSoloMode}
+          competitions={challengeAvailability?.competitions}
+          competitionNow={challengeNow}
+          onChallenge={(period) => {
+            if (navigationLocked) return;
+            stopHomePresenceMonitoring();
+            setMode(period);
+          }}
           onPlayEuclid={() => void startSoloFromHome()}
           onPlayRedditor={() => void startMultiplayerQueue()}
           onContinueSolo={() => void continueSoloFromHome()}
@@ -2742,6 +2789,26 @@ export const App = ({
         />
       </>
     );
+  } else if (mode === "daily" || mode === "weekly") {
+    content = (
+      <CompetitionScreen
+        key={mode}
+        period={mode}
+        username={initState?.username ?? ""}
+        onLeave={returnHome}
+      />
+    );
+  } else if (mode === "challenge") {
+    content =
+      initState?.type === "init" && initState.isModerator === true ? (
+        <ChallengeScreen onLeave={returnHome} />
+      ) : (
+        <HomeStatusScreen
+          heading="Moderator access required"
+          detail="The challenge playground is available only to moderators of this subreddit."
+          actions={[{ label: "Back to Euclid", onClick: returnHome }]}
+        />
+      );
   } else if (mode === "options") {
     content = (
       <SetupScreen
@@ -2749,18 +2816,18 @@ export const App = ({
         onSoloModeChange={setSoloMode}
         difficulty={selectedDifficulty}
         onDifficultyChange={setSelectedDifficulty}
-        width={boardW}
-        height={boardH}
-        onWidthChange={setBoardW}
-        onHeightChange={setBoardH}
-        scoring={scoringMode}
-        onScoringChange={setScoringMode}
         winScore={winScore}
         onWinScoreChange={setWinScore}
-        bestCase={bestCase}
-        recommended={recommended}
         assistOn={assistOn}
         onAssistChange={setAssistOn}
+        soundOn={soundOn}
+        onSoundChange={changeSound}
+        isModerator={
+          initState?.type === "init" && initState.isModerator === true
+        }
+        settings={subredditSettings}
+        onSettingsChange={setSubredditSettings}
+        onPlayground={() => setMode("challenge")}
         appVersion={initState?.appVersion || "loading"}
         onDone={returnHome}
       />
@@ -2787,7 +2854,7 @@ export const App = ({
         onRefresh={liveGames.refresh}
         onWatch={watchGame}
         onDemo={watchDemo}
-        onPlay={playFromWatch}
+        onBack={returnFromWatch}
       />
     );
   } else if (
@@ -2800,7 +2867,7 @@ export const App = ({
         headline={mode === "watch-demo" ? undefined : watchRecording!.headline}
         theme={watchTheme}
         onAnother={stopWatching}
-        onPlay={playFromWatch}
+        onBack={returnFromWatch}
       />
     );
   } else if (mode === "admin") {
@@ -3252,7 +3319,7 @@ export const App = ({
         theme={watchTheme}
         onAnother={stopWatching}
         onDemo={watchDemo}
-        onPlay={playFromWatch}
+        onBack={returnFromWatch}
       />
     );
   } else if (mode === "multiplayer" && !isBoardValid(board)) {
@@ -3334,7 +3401,7 @@ export const App = ({
     const onCellClick = (x: number, y: number) => {
       if (!board || !gameIdRef.current) return;
       if (spectating) return;
-      const cell = board.m_board[y * board.W + x];
+      const cell = board.m_board[pointIndex(x, y, board.W)];
       if (
         !isMyTurn ||
         cell === undefined ||
@@ -3499,7 +3566,7 @@ export const App = ({
                     watchRecording ? () => setShowWatchReplay(true) : undefined
                   }
                   onAnother={stopWatching}
-                  onPlay={playFromWatch}
+                  onBack={returnFromWatch}
                 />
               ) : (
                 closeButton
@@ -3629,7 +3696,7 @@ export const App = ({
     );
     const soloScoreFeedback = soloScoreFeedbackQueue[0] ?? null;
     const onCellClick = (x: number, y: number) => {
-      const cell = board.m_board[y * board.W + x];
+      const cell = board.m_board[pointIndex(x, y, board.W)];
       if (
         !isSoloHumanTurn(soloSnapshot) ||
         soloPending !== null ||
@@ -3795,9 +3862,12 @@ export const App = ({
       {appReady && ChatOverlay}
       {appReady && RulesOverlay}
       {appReady && TutorialModal}
-      {appReady && !onGameScreen && !globalControlsBlocked && (
-        <SoundToggle floating on={soundOn} onToggle={toggleSound} />
-      )}
+      {appReady &&
+        mode !== "options" &&
+        !onGameScreen &&
+        !globalControlsBlocked && (
+          <SoundToggle floating on={soundOn} onToggle={toggleSound} />
+        )}
     </SoundContext.Provider>
   );
 };

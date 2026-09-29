@@ -7,6 +7,9 @@ import {
   PLAY_STYLES,
   RANKED_SOLO_RULES,
   SOLO_RULES_VERSION,
+  STANDARD_BOARD,
+  STANDARD_MAX_SCORE,
+  STANDARD_WIN_SCORE,
   playStyleForDifficulty,
   validatePracticeRules,
 } from "./rules";
@@ -18,7 +21,6 @@ describe("solo rules", () => {
       mode: "ranked",
       W: 8,
       H: 8,
-      scoring: "bbox",
       winScore: 150,
       humanPlayer: 0,
       firstPlayer: 0,
@@ -39,12 +41,11 @@ describe("solo rules", () => {
     expect(playStyleForDifficulty("brutal")).toBe(PLAY_STYLES.BRUTAL);
   });
 
-  it("canonicalizes a supported Practice configuration", () => {
+  it("places every Practice game on the standard board", () => {
+    expect(STANDARD_MAX_SCORE).toBe(6888);
+    expect(RANKED_SOLO_RULES).toMatchObject(STANDARD_BOARD);
     expect(
       validatePracticeRules({
-        W: 6,
-        H: 10,
-        scoring: "true",
         winScore: 20,
         difficulty: "coffee",
         humanPlayer: 1,
@@ -53,9 +54,8 @@ describe("solo rules", () => {
     ).toEqual({
       rulesVersion: SOLO_RULES_VERSION,
       mode: "practice",
-      W: 6,
-      H: 10,
-      scoring: "true",
+      W: 8,
+      H: 8,
       winScore: 20,
       difficulty: "coffee",
       humanPlayer: 1,
@@ -65,10 +65,7 @@ describe("solo rules", () => {
 
   it("uses explicit defaults only for optional player-order fields", () => {
     const rules = validatePracticeRules({
-      W: 8,
-      H: 8,
-      scoring: "bbox",
-      winScore: 150,
+      winScore: STANDARD_WIN_SCORE,
       difficulty: "beginner",
     });
 
@@ -76,80 +73,28 @@ describe("solo rules", () => {
     expect(rules.firstPlayer).toBe(DEFAULT_PRACTICE_RULES.firstPlayer);
   });
 
-  it("rejects unknown Practice fields instead of silently ignoring them", () => {
-    expect(() =>
-      validatePracticeRules({
-        W: 8,
-        H: 8,
-        scoring: "bbox",
-        winScore: 150,
-        difficulty: "beginner",
-        ranked: true,
-      }),
-    ).toThrow('unknown field "ranked"');
-  });
+  it.each([{ ranked: true }, { W: 8 }, { H: 8 }, { scoring: "bbox" }])(
+    "rejects fields Practice does not configure %#",
+    (extra) => {
+      expect(() =>
+        validatePracticeRules({
+          winScore: STANDARD_WIN_SCORE,
+          difficulty: "beginner",
+          ...extra,
+        }),
+      ).toThrow("unknown field");
+    },
+  );
 
   it.each([
-    [{}, "W must be an even integer"],
+    [{}, "difficulty is not supported"],
+    [{ winScore: 10, difficulty: "impossible" }, "difficulty is not supported"],
     [
-      {
-        W: 5,
-        H: 8,
-        scoring: "bbox",
-        winScore: 10,
-        difficulty: "beginner",
-      },
-      "W must be an even integer",
+      { winScore: STANDARD_MAX_SCORE + 1, difficulty: "beginner" },
+      `winScore must be an integer from 1 through ${STANDARD_MAX_SCORE}`,
     ],
     [
-      {
-        W: 8,
-        H: 18,
-        scoring: "bbox",
-        winScore: 10,
-        difficulty: "beginner",
-      },
-      "H must be an even integer",
-    ],
-    [
-      {
-        W: 8,
-        H: 8,
-        scoring: "diagonal",
-        winScore: 10,
-        difficulty: "beginner",
-      },
-      "scoring must be",
-    ],
-    [
-      {
-        W: 8,
-        H: 8,
-        scoring: "bbox",
-        winScore: 10,
-        difficulty: "impossible",
-      },
-      "difficulty is not supported",
-    ],
-    [
-      {
-        W: 4,
-        H: 4,
-        scoring: "bbox",
-        winScore: Number.MAX_SAFE_INTEGER,
-        difficulty: "beginner",
-      },
-      "winScore must be an integer",
-    ],
-    [
-      {
-        W: 8,
-        H: 8,
-        scoring: "bbox",
-        winScore: 10,
-        difficulty: "beginner",
-        firstPlayer: 2,
-      },
+      { winScore: 10, difficulty: "beginner", firstPlayer: 2 },
       "firstPlayer must be player index",
     ],
   ])("rejects unsupported Practice rules %#", (input, message) => {

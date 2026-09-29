@@ -67,6 +67,24 @@ function completeButtonMarkup(markup: string, className: string): string {
 }
 
 describe("home dashboard structure", () => {
+  it("introduces four shared lessons including blocking your opponent", () => {
+    const markup = renderToStaticMarkup(<HomeScreen {...homeProps()} />);
+    expect(markup).toContain(
+      "Four ideas carry the whole game. Mastering them takes a lifetime.",
+    );
+    expect(markup.match(/class="lesson"/g)).toHaveLength(4);
+    expect(markup).toContain("Block your opponent");
+  });
+
+  it("offers the four utility actions without a challenge button", () => {
+    const markup = renderToStaticMarkup(<HomeScreen {...homeProps()} />);
+    expect(markup.match(/class="home-nav__item"/g)).toHaveLength(4);
+    for (const label of ["Watch live", "Leaderboard", "Options", "How to play"])
+      expect(markup).toContain(`<span>${label}</span>`);
+    expect(markup).not.toContain("Challenges");
+    expect(markup).not.toContain("Challenge playground");
+  });
+
   it("offers difficulty settings beside solo play and locks them during requests", () => {
     const render = (
       busyAction: Exclude<HomeScreenProps["busyAction"], undefined>,
@@ -122,7 +140,7 @@ describe("home dashboard structure", () => {
       markup.indexOf("Play a Redditor"),
     );
     expect(markup.indexOf("Play a Redditor")).toBeLessThan(
-      markup.indexOf("Live games"),
+      markup.indexOf("Watch live"),
     );
     expect(markup).toContain("Euclid Ranked");
     expect(markup).toContain("Redditor Matches");
@@ -137,7 +155,7 @@ describe("home dashboard structure", () => {
             title: "Continue Ranked game",
             detail: "Your turn against Euclid",
             score: "You 36 · Euclid 28",
-            rules: "8 × 8 · Grid Footprint · first to 150",
+            rules: "first to 150",
             actionLabel: "Continue",
           },
         })}
@@ -150,7 +168,7 @@ describe("home dashboard structure", () => {
     expect(
       openingButtonTag(presenceMarkup, "euclid-home__secondary-button--strong"),
     ).toContain("disabled");
-    expect(openingButtonTag(presenceMarkup, ">Live games<")).not.toContain(
+    expect(openingButtonTag(presenceMarkup, ">Watch live<")).not.toContain(
       "disabled",
     );
     expect(presenceMarkup).toContain("Checking status…");
@@ -196,7 +214,7 @@ describe("home dashboard structure", () => {
         })}
       />,
     );
-    expect(openingButtonTag(reconciliationMarkup, ">Live games<")).toContain(
+    expect(openingButtonTag(reconciliationMarkup, ">Watch live<")).toContain(
       "disabled",
     );
     expect(reconciliationMarkup).toContain(
@@ -232,5 +250,85 @@ describe("home dashboard structure", () => {
       'aria-busy="true"',
     );
     expect(openingButtonTag(markup, ">Leaving…<")).toContain("disabled");
+  });
+});
+
+describe("home challenge entries", () => {
+  it.each([
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true],
+  ])("shows only enabled daily=%s weekly=%s challenges", (daily, weekly) => {
+    const make = (period: "daily" | "weekly", enabled: boolean) => ({
+      period,
+      enabled,
+      status: "open" as const,
+      instanceId: period,
+      opensAt: Date.UTC(2026, 8, 27),
+      endsAt: Date.UTC(2026, 8, 28),
+      showStandings: true,
+    });
+    const markup = renderToStaticMarkup(
+      <HomeScreen
+        {...homeProps({
+          competitions: {
+            daily: make("daily", daily),
+            weekly: make("weekly", weekly),
+          },
+          competitionNow: Date.UTC(2026, 8, 27, 12),
+          onChallenge: () => undefined,
+        })}
+      />,
+    );
+    expect(markup.includes("Open daily challenge")).toBe(daily);
+    expect(markup.includes("Open weekly challenge")).toBe(weekly);
+    if (daily || weekly) expect(markup).toContain("Closes in 12h 00m 00s");
+    const order = [
+      "Play Euclid",
+      "Play a Redditor",
+      ...(daily ? ["Daily Challenge"] : []),
+      ...(weekly ? ["Weekly Challenge"] : []),
+      "Watch live",
+      "Leaderboard",
+      "How to play",
+      "Options",
+    ];
+    for (let index = 1; index < order.length; index++)
+      expect(markup.indexOf(order[index - 1]!)).toBeLessThan(
+        markup.indexOf(order[index]!),
+      );
+    if (daily) expect(markup).toContain("home-challenge--red");
+    if (weekly) expect(markup).toContain("home-challenge--blue");
+  });
+  it("shows a scheduled entry with its GMT start time and locks it during matchmaking", () => {
+    const item = {
+      period: "daily" as const,
+      enabled: true,
+      status: "scheduled" as const,
+      instanceId: null,
+      opensAt: Date.UTC(2026, 8, 28),
+      endsAt: Date.UTC(2026, 8, 29),
+      showStandings: true,
+    };
+    const markup = renderToStaticMarkup(
+      <HomeScreen
+        {...homeProps({
+          competitions: {
+            daily: item,
+            weekly: { ...item, period: "weekly", enabled: false },
+          },
+          competitionNow: Date.UTC(2026, 8, 27, 12),
+          onChallenge: () => undefined,
+          busyAction: "h2h",
+        })}
+      />,
+    );
+    expect(markup).toContain("Opens in 12h 00m 00s");
+    expect(markup).toContain("28 Sept 2026, 00:00 GMT");
+    const index = markup.indexOf("Open daily challenge");
+    expect(markup.slice(markup.lastIndexOf("<button", index), index)).toContain(
+      "disabled",
+    );
   });
 });

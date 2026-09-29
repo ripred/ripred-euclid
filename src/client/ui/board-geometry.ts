@@ -1,11 +1,15 @@
+import {
+  emptyCells,
+  orderAroundCentre,
+  pointIndex,
+  squaresWithCorner,
+} from "../../shared/game/geometry";
+export { pointIndex, squaresWithCorner } from "../../shared/game/geometry";
+export type { GridPoint } from "../../shared/game/geometry";
+import type { GridPoint } from "../../shared/game/geometry";
 /** Geometry shared by every board surface: game, demo, replay and share. */
 
 export type Owner = 1 | 2;
-
-export interface GridPoint {
-  x: number;
-  y: number;
-}
 
 export interface BoardSquareShape {
   key: string;
@@ -57,15 +61,7 @@ const COLUMN_NAMES = "ABCDEFGHIJKLMNOP";
 export const centre = (value: number) => value + 0.5;
 
 /** Corner order around the centroid, so rotated squares draw as polygons. */
-export function orderCorners(corners: readonly GridPoint[]): GridPoint[] {
-  const cx = corners.reduce((sum, p) => sum + p.x, 0) / corners.length;
-  const cy = corners.reduce((sum, p) => sum + p.y, 0) / corners.length;
-  return corners
-    .slice()
-    .sort(
-      (a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx),
-    );
-}
+export const orderCorners = orderAroundCentre;
 
 export const polygonPoints = (corners: readonly GridPoint[]) =>
   orderCorners(corners)
@@ -89,35 +85,10 @@ export function cellsFromPoints(
   height: number,
   points: readonly (GridPoint & { owner: Owner })[],
 ): number[] {
-  const cells = new Array<number>(width * height).fill(0);
-  for (const point of points) cells[point.y * width + point.x] = point.owner;
+  const cells = emptyCells(width, height);
+  for (const point of points)
+    cells[pointIndex(point.x, point.y, width)] = point.owner;
   return cells;
-}
-
-/**
- * Every square with (x0, y0) as a corner, once each. For each candidate
- * adjacent corner A, the square turns a quarter clockwise from (x0, y0)→A.
- * Yields the other three corners in order around the square.
- */
-export function* squaresWithCorner(
-  width: number,
-  height: number,
-  x0: number,
-  y0: number,
-): Generator<[GridPoint, GridPoint, GridPoint]> {
-  const inside = (p: GridPoint) =>
-    p.x >= 0 && p.x < width && p.y >= 0 && p.y < height;
-  for (let row = 0; row < height; row++) {
-    for (let col = 0; col < width; col++) {
-      if (col === x0 && row === y0) continue;
-      const dx = col - x0;
-      const dy = row - y0;
-      const far = { x: col - dy, y: row + dx };
-      const near = { x: x0 - dy, y: y0 + dx };
-      if (!inside(far) || !inside(near)) continue;
-      yield [{ x: col, y: row }, far, near];
-    }
-  }
 }
 
 /** Squares the move at (x, y) denied: the other three corners are `owner`'s. */
@@ -131,9 +102,48 @@ export function blockedSquares(
 ): GridPoint[][] {
   const blocked: GridPoint[][] = [];
   for (const corners of squaresWithCorner(width, height, x, y)) {
-    if (corners.every((p) => cells[p.y * width + p.x] === owner)) {
+    if (corners.every((p) => cells[pointIndex(p.x, p.y, width)] === owner)) {
       blocked.push([{ x, y }, ...corners]);
     }
   }
   return blocked;
+}
+
+/**
+ * Square hints for the piece at `index`: open points that finish one of its
+ * squares next move ("near") or in two moves ("far"). Squares holding an
+ * opponent's piece are already blocked and give no hints.
+ */
+export function squareHints(
+  cells: ArrayLike<number>,
+  width: number,
+  height: number,
+  index: number,
+  owner: Owner,
+): BoardHint[] {
+  if (cells[index] !== owner) return [];
+  const opponent = owner === 1 ? 2 : 1;
+  const near = new Set<number>();
+  const far = new Set<number>();
+  const x = index % width;
+  const y = Math.floor(index / width);
+  for (const corners of squaresWithCorner(width, height, x, y)) {
+    const indices = corners.map((point) => pointIndex(point.x, point.y, width));
+    const values = indices.map((corner) => cells[corner]);
+    if (values.some((value) => value === undefined || value === opponent))
+      continue;
+    const open = indices.filter((_, corner) => values[corner] === 0);
+    if (open.length === 1) open.forEach((point) => near.add(point));
+    else if (open.length === 2) open.forEach((point) => far.add(point));
+  }
+  return [
+    ...[...near].map((point) => ({
+      index: point,
+      owner,
+      strength: "near" as const,
+    })),
+    ...[...far]
+      .filter((point) => !near.has(point))
+      .map((point) => ({ index: point, owner, strength: "far" as const })),
+  ];
 }

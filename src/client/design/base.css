@@ -365,6 +365,12 @@ textarea {
   cursor: pointer;
 }
 
+/* A switch's label can carry a hint line beneath its title. */
+.switch > span {
+  display: grid;
+  gap: 2px;
+}
+
 .switch input {
   position: relative;
   flex: none;
@@ -462,10 +468,18 @@ textarea {
   }
 }
 
+/* Entrances. Uses tune the travel with --rise-from or --pop-from. */
 @keyframes rise-in {
   from {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(var(--rise-from, 14px));
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    scale: var(--pop-from, 0.4);
   }
 }
 

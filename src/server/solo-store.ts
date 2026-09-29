@@ -55,38 +55,50 @@ import {
   writeSoloReceipt,
   writeShareCooldown,
 } from "./request-limits";
+import {
+  MAX_IDENTIFIER_LENGTH,
+  isCanonicalIdentifier,
+  isCount,
+  isRecord,
+  isStringArray,
+} from "../shared/guards";
+import { parseJson as parseStoredJson, uniqueStrings } from "./stored-json";
 
-export const SOLO_STORE_SCHEMA_VERSION = 1 as const;
+/** Version 2 records carry boards without the retired scoring field. */
+export const SOLO_STORE_SCHEMA_VERSION = 2 as const;
 export const SOLO_RATING_SCHEMA_VERSION = 1 as const;
 export const SOLO_RANKED_START_RATING = 1_200;
 export const SOLO_RANKED_AI_RATING = 1_600;
 export const SOLO_RANKED_K_FACTOR = 32;
 
 const DEFAULT_DYNAMIC_ATTEMPTS = 8;
-const MAX_IDENTIFIER_LENGTH = 256;
 const MAX_FAILURE_MESSAGE_LENGTH = 1_000;
 
 const metricSet = (name: string) => `euclid:metric:set:${name}`;
 const metricCount = (name: string) => `euclid:metric:count:${name}`;
 
+/* Games and their command receipts; games saved under v1 are no longer read. */
+const SOLO_GAMES = "euclid:solo:v2";
+
 /**
  * Versioned canonical solo keys. The old `euclid:elo:hva:*`,
  * `euclid:players:hva`, and `euclid:solo:last:*` namespaces are intentionally
  * absent so legacy client-claimed results cannot enter the Ranked table.
+ * Ratings keep their v1 keys and carry over.
  */
 export const SOLO_STORE_KEYS = Object.freeze({
-  game: (gameId: string) => `euclid:solo:v1:game:${gameId}`,
-  activeRanked: (userId: string) => `euclid:solo:v1:ranked:active:${userId}`,
+  game: (gameId: string) => `${SOLO_GAMES}:game:${gameId}`,
+  activeRanked: (userId: string) => `${SOLO_GAMES}:ranked:active:${userId}`,
   start: (userId: string, commandHash: string) =>
-    `euclid:solo:v1:start:${userId}:${commandHash}`,
+    `${SOLO_GAMES}:start:${userId}:${commandHash}`,
   move: (gameId: string, commandHash: string) =>
-    `euclid:solo:v1:move:${gameId}:${commandHash}`,
+    `${SOLO_GAMES}:move:${gameId}:${commandHash}`,
   abandon: (gameId: string, commandHash: string) =>
-    `euclid:solo:v1:abandon:${gameId}:${commandHash}`,
-  result: (gameId: string) => `euclid:solo:v1:result:${gameId}`,
+    `${SOLO_GAMES}:abandon:${gameId}:${commandHash}`,
+  result: (gameId: string) => `${SOLO_GAMES}:result:${gameId}`,
   rankedRating: (userId: string) => `euclid:solo:v1:ranked:r1:elo:${userId}`,
   rankedPlayers: "euclid:solo:v1:ranked:r1:players",
-  share: (gameId: string) => `euclid:solo:v1:share:${gameId}`,
+  share: (gameId: string) => `${SOLO_GAMES}:share:${gameId}`,
   sharedPost: (shareId: string) => `euclid:share:post:${shareId}`,
   profileName: (userId: string) => `euclid:name:${userId}`,
   profileAvatar: (userId: string) => `euclid:avatar:${userId}`,
@@ -255,26 +267,14 @@ type MutationDiscovery = {
   watchKeys: string[];
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function parseJson(raw: string | undefined): unknown {
-  if (!raw) return undefined;
-  try {
-    return JSON.parse(raw) as unknown;
-  } catch {
+  return parseStoredJson(raw, () => {
     throw new SoloStoreError("data_corrupt", "Stored solo JSON is malformed.");
-  }
+  });
 }
 
 function requireIdentifier(value: unknown, field: string): string {
-  if (
-    typeof value !== "string" ||
-    value.trim().length === 0 ||
-    value.trim() !== value ||
-    value.length > MAX_IDENTIFIER_LENGTH
-  ) {
+  if (!isCanonicalIdentifier(value)) {
     throw new SoloStoreError(
       "invalid_identifier",
       `${field} must be a non-empty string no longer than ${MAX_IDENTIFIER_LENGTH} characters.`,
@@ -307,7 +307,7 @@ function serialize(value: unknown): string {
 }
 
 function isoTime(timestamp: number): string {
-  if (!Number.isSafeInteger(timestamp) || timestamp < 0) {
+  if (!isCount(timestamp)) {
     throw new RangeError(
       "The solo store clock must return a non-negative integer.",
     );
@@ -319,17 +319,10 @@ function utcDate(timestamp: number): string {
   return isoTime(timestamp).slice(0, 10);
 }
 
-function uniqueStrings(values: readonly string[]): string[] {
-  return [...new Set(values.filter((value) => value.length > 0))];
-}
-
 function parseStringList(raw: string | undefined, field: string): string[] {
   if (raw === undefined) return [];
   const parsed = parseJson(raw);
-  if (
-    !Array.isArray(parsed) ||
-    parsed.some((value) => typeof value !== "string" || !value)
-  ) {
+  if (!isStringArray(parsed) || parsed.some((value) => !value)) {
     throw new SoloStoreError("data_corrupt", `${field} is malformed.`);
   }
   return uniqueStrings(parsed);
@@ -338,7 +331,7 @@ function parseStringList(raw: string | undefined, field: string): string[] {
 function parseCount(raw: string | undefined, field: string): number {
   if (raw === undefined) return 0;
   const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value < 0) {
+  if (!isCount(value)) {
     throw new SoloStoreError("data_corrupt", `${field} is malformed.`);
   }
   return value;
@@ -449,7 +442,7 @@ function parseRating(raw: string | undefined): SoloRankedRatingRecord {
     field: keyof Omit<SoloRankedRatingRecord, "schemaVersion">,
   ) => {
     const item = value[field];
-    if (typeof item !== "number" || !Number.isSafeInteger(item) || item < 0) {
+    if (!isCount(item)) {
       throw new SoloStoreError(
         "data_corrupt",
         "A Ranked solo rating is malformed.",
@@ -772,8 +765,7 @@ function writeCompletionMetrics(
 
 function describeRules(rules: SoloRules): string {
   const mode = rules.mode === "ranked" ? "Ranked" : "Practice";
-  const scoring = rules.scoring === "bbox" ? "Grid Footprint" : "True Area";
-  return `${mode} · ${rules.W}×${rules.H} · ${scoring} · First to ${rules.winScore} · ${AI_DIFFICULTY_LABELS[rules.difficulty]}`;
+  return `${mode} · First to ${rules.winScore} · ${AI_DIFFICULTY_LABELS[rules.difficulty]}`;
 }
 
 function buildSharePayload(

@@ -1,21 +1,10 @@
 import { readFileSync } from "node:fs";
-import {
-  Children,
-  isValidElement,
-  type MouseEvent,
-  type ReactNode,
-} from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { RankingsShareRow } from "../shared/types/api";
 
 vi.mock("@devvit/web/client", () => ({ requestExpandedMode: vi.fn() }));
-import {
-  PreviewActions,
-  PreviewApp,
-  PreviewLeaderboard,
-  PreviewStatus,
-} from "./preview";
+import { PreviewApp, PreviewLeaderboard, PreviewStatus } from "./preview";
 
 const source = (file: string) =>
   readFileSync(new URL(file, import.meta.url), "utf8");
@@ -47,9 +36,12 @@ describe("inline preview", () => {
           onInteract={() => {}}
         />,
       );
+      // The podium holds the top three; the list continues with the next three.
+      expect(html).toContain('aria-label="Top redditors"');
+      expect(html).toContain('aria-label="Chasing the podium"');
       expect(html).toContain("Player 0");
-      expect(html).toContain("Player 2");
-      expect(html).not.toContain("Player 3");
+      expect(html).toContain("Player 5");
+      expect(html).not.toContain("Player 6");
       expect(html).toContain('aria-label="Leaderboard mode"');
       expect(html.match(/aria-pressed=/g)).toHaveLength(2);
       expect(html).not.toContain("overflow-y:auto");
@@ -77,6 +69,21 @@ describe("inline preview", () => {
     },
   );
 
+  it("keeps open podium steps visible until three players are ranked", () => {
+    const html = renderToStaticMarkup(
+      <PreviewLeaderboard
+        theme="dark"
+        rankings={{ hvh: rows.slice(0, 2), hva: [] }}
+        rankingsLoading={false}
+        rankingsError={null}
+        onInteract={() => {}}
+      />,
+    );
+    expect(html.match(/splash-podium__place--/g)).toHaveLength(3);
+    expect(html.match(/splash-podium__seat/g)).toHaveLength(1);
+    expect(html).toContain("Win rated games to claim the next step.");
+  });
+
   it("makes an initialization failure retryable and escapes error text", () => {
     const html = renderToStaticMarkup(
       <PreviewStatus
@@ -90,85 +97,6 @@ describe("inline preview", () => {
     expect(html).toContain("&lt;script&gt;");
   });
 
-  describe.each(["dark", "light"] as const)(
-    "persistent %s actions",
-    (theme) => {
-      it.each(["intro", "demo", "leaderboard"] as const)(
-        "keeps Play and Watch live available during %s",
-        (surfaceMode) => {
-          const onExpand = vi.fn();
-          const html = renderToStaticMarkup(
-            <PreviewActions
-              theme={theme}
-              surfaceMode={surfaceMode}
-              expansionError={null}
-              onExpand={onExpand}
-            />,
-          );
-          expect(html).toContain('data-entry="game"');
-          expect(html).toContain("Play Euclid");
-          expect(html).toContain('data-entry="watch"');
-          expect(html).toContain("Watch live");
-          expect(html.includes("Full leaderboard")).toBe(
-            surfaceMode === "leaderboard",
-          );
-          expect(onExpand).not.toHaveBeenCalled();
-        },
-      );
-    },
-  );
-
-  it("dispatches each action's original activation event and direct entry", () => {
-    const onExpand = vi.fn();
-    const bar = PreviewActions({
-      theme: "dark",
-      surfaceMode: "leaderboard",
-      expansionError: null,
-      onExpand,
-    });
-    const event = {
-      nativeEvent: new Event("click"),
-    } as MouseEvent<HTMLButtonElement>;
-    const entries: string[] = [];
-    const activateButtons = (children: ReactNode): void => {
-      Children.forEach(children, (child) => {
-        if (
-          !isValidElement<{
-            children?: ReactNode;
-            "data-entry"?: string;
-            onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
-          }>(child)
-        )
-          return;
-        if (child.type === "button") {
-          entries.push(child.props["data-entry"]!);
-          child.props.onClick?.(event);
-        } else {
-          activateButtons(child.props.children);
-        }
-      });
-    };
-
-    activateButtons(bar);
-    expect(entries).toEqual(["game", "watch", "leaderboard"]);
-    expect(onExpand.mock.calls).toEqual(entries.map((entry) => [event, entry]));
-  });
-
-  it("keeps expansion failure feedback beside the available retry actions", () => {
-    const html = renderToStaticMarkup(
-      <PreviewActions
-        theme="dark"
-        surfaceMode="demo"
-        expansionError="Could not open. Please try again."
-        onExpand={() => {}}
-      />,
-    );
-    expect(html).toContain('role="alert"');
-    expect(html).toContain("Could not open. Please try again.");
-    expect(html).toContain("Watch live");
-    expect(html).toContain("Play Euclid");
-  });
-
   it("keeps inline bounds separate from every expanded entry", () => {
     const preview = source("./preview.html");
     expect(preview).toContain('class="euclid-inline"');
@@ -179,6 +107,8 @@ describe("inline preview", () => {
       ["game", "index.html"],
       ["leaderboard", "leaderboard.html"],
       ["watch", "watch.html"],
+      ["solo", "solo.html"],
+      ["reddit", "reddit.html"],
     ] as const) {
       const html = source(`./${file}`);
       expect(html).not.toContain("euclid-inline");
@@ -189,6 +119,8 @@ describe("inline preview", () => {
       expect(source("./vite.config.ts")).toContain(`${entry}: "${file}"`);
     }
     expect(source("./preview.css")).toContain("overflow: clip;");
+    // Taller windows keep the tall post's height instead of stretching it.
+    expect(source("./splash-carousel.css")).toContain("max-height: 512px;");
     expect(source("./preview.tsx")).not.toMatch(
       /onWheel=|onTouchStart=|onScroll=/,
     );

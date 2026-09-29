@@ -1,0 +1,185 @@
+/* Keep the puzzle and its controls within the expanded Reddit frame. */
+.page-shell.competition-screen {
+  overflow: hidden;
+}
+
+.competition-screen > .page-shell__art {
+  display: none;
+}
+
+.page-shell.competition-screen > .page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  height: 100%;
+  min-height: 0;
+  padding: var(--sp-2) var(--sp-3) max(var(--sp-2), env(safe-area-inset-bottom));
+}
+
+.competition-screen .page-header {
+  flex: none;
+  min-height: 40px;
+  padding-right: 32px;
+}
+
+.competition-screen .page-header h1 {
+  font-size: var(--fs-lg);
+}
+
+.competition-toolbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.competition-toolbar > p,
+.competition-screen > .page > .notice {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+.competition-toolbar > p {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.competition-screen .competition-play,
+.competition-screen .competition-idle {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  min-height: 0;
+  padding: var(--sp-3);
+}
+
+.competition-play h2,
+.competition-play p,
+.competition-idle h2,
+.competition-idle p {
+  margin: 0;
+}
+
+.competition-screen .competition-play--active {
+  justify-content: flex-start;
+}
+
+.competition-objective,
+.competition-actions,
+.competition-best {
+  flex: none;
+}
+
+.competition-objective h2 {
+  font-size: clamp(16px, 2.5vw, 22px);
+  line-height: 1.2;
+}
+
+.competition-progress {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 2px var(--sp-3);
+  margin-top: var(--sp-1);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+}
+
+.competition-progress .challenge-timer strong {
+  font-size: var(--fs-lg);
+}
+
+.competition-board-slot {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.competition-actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--sp-2);
+}
+
+.competition-actions .btn {
+  min-width: 0;
+  padding-inline: var(--sp-2);
+  white-space: normal;
+  text-align: center;
+}
+
+.competition-best {
+  text-align: center;
+  font-size: var(--fs-xs);
+}
+
+.competition-details__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.competition-details__header h2 {
+  font-size: var(--fs-lg);
+}
+
+.competition-results {
+  padding: 0;
+  margin: var(--sp-3) 0;
+  list-style: none;
+}
+
+.competition-results li {
+  display: flex;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.competition-results__rank {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+  min-width: 2ch;
+}
+
+.competition-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+/* Landscape phones keep the objective and actions beside the board. */
+@media (max-height: 500px) and (min-width: 560px) {
+  .competition-screen .competition-play--active {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 0.8fr);
+    grid-template-rows: 1fr auto auto;
+    align-items: center;
+    column-gap: var(--sp-4);
+  }
+
+  .competition-board-slot {
+    grid-column: 1;
+    grid-row: 1 / 4;
+    align-self: stretch;
+  }
+
+  .competition-objective,
+  .competition-actions,
+  .competition-best {
+    grid-column: 2;
+  }
+
+  .competition-progress {
+    flex-direction: column;
+    margin-top: var(--sp-3);
+  }
+}

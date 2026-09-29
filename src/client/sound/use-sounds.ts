@@ -15,6 +15,7 @@ import {
   type SoundEmphasis,
   type SoundOwner,
 } from "./engine";
+import { pointIndex } from "../../shared/game/geometry";
 
 export const SoundContext = createContext<GameSounds>(SILENT_SOUNDS);
 
@@ -72,7 +73,7 @@ export function useBoardSounds(
     tapPendingRef.current = false;
     const owners = history
       .slice(seen)
-      .map((point) => cells[point.y * width + point.x])
+      .map((point) => cells[pointIndex(point.x, point.y, width)])
       .filter((owner): owner is SoundOwner => owner === 1 || owner === 2)
       .filter((owner) => {
         if (!skipOwnTap || owner !== localSide) return true;

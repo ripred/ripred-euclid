@@ -121,7 +121,6 @@ describe("H2H replay normalization", () => {
     const legacy = asRecord(playMoves([0, 63]));
     delete legacy.W;
     delete legacy.H;
-    delete legacy.scoring;
     delete legacy.winScore;
     delete legacy.rulesVersion;
     delete legacy.schemaVersion;
@@ -134,7 +133,6 @@ describe("H2H replay normalization", () => {
     expect(normalized).toMatchObject({
       W: 8,
       H: 8,
-      scoring: "bbox",
       winScore: 150,
       rulesVersion: 1,
       schemaVersion: H2H_SCHEMA_VERSION,
@@ -149,10 +147,9 @@ describe("H2H replay normalization", () => {
   it.each([
     ["W", 6],
     ["H", 10],
-    ["scoring", "true"],
     ["winScore", 200],
     ["rulesVersion", 2],
-    ["schemaVersion", 2],
+    ["schemaVersion", 1],
     ["m_stopAt150", false],
     ["m_createRandomizedRangeOrder", false],
   ])("rejects an explicit incompatible %s", (field, value) => {

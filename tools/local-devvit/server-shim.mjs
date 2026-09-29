@@ -10,6 +10,14 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { writeFileSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import { CHALLENGE_RESULTS_KEY } from "../../src/server/challenge-results.ts";
+import { createLocalRedis } from "./redis-store.mjs";
+import { createLocalMaintenance } from "./maintenance.mjs";
+import {
+  MOCK_RANKINGS,
+  MOCK_SPOTLIGHTS,
+  mockAvatarUrl,
+} from "./preview-fixtures.mjs";
 
 const identity = new AsyncLocalStorage();
 const USER_COOKIE = "euclid-local-user";
@@ -32,79 +40,25 @@ function readCookie(header, name) {
 
 const cookieUser = (header) => readCookie(header, USER_COOKIE) || DEFAULT_USER;
 
-/* ---------- Redis: string keys with optimistic WATCH/MULTI/EXEC ---------- */
+/* ---------- Redis: persistent local strings, sorted sets and transactions ---------- */
 
-const store = new Map();
-const versions = new Map();
+export const redis = createLocalRedis({
+  filePath: path.resolve(
+    process.env.EUCLID_LOCAL_STATE ?? ".local/euclid-state.json",
+  ),
+});
 
-function live(key) {
-  const entry = store.get(key);
-  if (entry?.expiresAt !== undefined && entry.expiresAt <= Date.now()) {
-    store.delete(key);
-    return undefined;
-  }
-  return entry;
-}
-
-function write(key, value, expiration) {
-  if (value === null) store.delete(key);
-  else
-    store.set(key, {
-      value,
-      ...(expiration ? { expiresAt: expiration.getTime() } : {}),
+/*
+ * Sample winners sit where finalized results will be stored, so the real
+ * server decides whether to show them: a moderator must switch the daily or
+ * weekly challenge on (sign in as local_moderator to try it).
+ */
+async function seedSampleWinners() {
+  if (process.env.EUCLID_SAMPLE_CHALLENGES === "1")
+    await redis.set(CHALLENGE_RESULTS_KEY, JSON.stringify(MOCK_SPOTLIGHTS), {
+      nx: true,
     });
-  versions.set(key, (versions.get(key) ?? 0) + 1);
 }
-
-export const redis = {
-  async get(key) {
-    return live(key)?.value;
-  },
-  async set(key, value, options) {
-    write(key, value, options?.expiration);
-    return "OK";
-  },
-  async del(...keys) {
-    keys.forEach((key) => write(key, null));
-  },
-  async watch(...keys) {
-    const watched = new Map(keys.map((key) => [key, versions.get(key) ?? 0]));
-    let queue = null;
-    const enqueue = (entry) => {
-      if (!queue) throw new Error("MULTI has not been called");
-      queue.push(entry);
-    };
-    return {
-      async multi() {
-        queue = [];
-      },
-      async set(key, value, options) {
-        enqueue({ key, value, ...(options ? options : {}) });
-      },
-      async del(...delKeys) {
-        delKeys.forEach((key) => enqueue({ key, value: null }));
-      },
-      async exec() {
-        const conflict = [...watched].some(
-          ([key, version]) => (versions.get(key) ?? 0) !== version,
-        );
-        const pending = queue ?? [];
-        queue = null;
-        if (conflict) return null;
-        pending.forEach(({ key, value, expiration }) =>
-          write(key, value, expiration),
-        );
-        return pending.map(() => "OK");
-      },
-      async discard() {
-        queue = null;
-      },
-      async unwatch() {
-        watched.clear();
-      },
-    };
-  },
-};
 
 /* ---------- Reddit and request context ---------- */
 
@@ -113,11 +67,20 @@ let postCounter = 0;
 const posts = new Map();
 
 export const reddit = {
+  getModerators({ username }) {
+    return {
+      all: async () => (username === "local_moderator" ? [{ username }] : []),
+    };
+  },
   async getCurrentUsername() {
     return current().username;
   },
+  async getSnoovatarUrl(username) {
+    return mockAvatarUrl(username);
+  },
   async getCurrentUser() {
-    return { username: current().username, getSnoovatarUrl: async () => "" };
+    const username = current().username;
+    return { username, getSnoovatarUrl: async () => mockAvatarUrl(username) };
   },
   async getCurrentSubreddit() {
     return { name: LOCAL_SUBREDDIT };
@@ -179,8 +142,25 @@ function saveBrandAsset(req, res, file) {
 export const getServerPort = () => Number(process.env.EUCLID_API_PORT ?? 7475);
 
 export function createServer(app) {
-  return http.createServer((req, res) => {
+  void seedSampleWinners().catch((error) =>
+    console.error("[local-devvit] sample winners", error),
+  );
+  const maintenance = createLocalMaintenance();
+  const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
+    if (url.pathname === maintenance.endpoint) {
+      if (!maintenance.authorized(req)) {
+        res.writeHead(403).end("Local maintenance is scheduler-only.");
+        return;
+      }
+      identity.run({}, () => app(req, res));
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/rankings") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(MOCK_RANKINGS));
+      return;
+    }
     if (url.pathname === "/__local/brand-asset" && req.method === "POST") {
       saveBrandAsset(req, res, url.searchParams.get("file") ?? "");
       return;
@@ -223,4 +203,6 @@ export function createServer(app) {
       () => app(req, res),
     );
   });
+  maintenance.attach(server);
+  return server;
 }

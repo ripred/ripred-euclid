@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { H2HLiveGameSummary } from "../shared/types/api";
-import { errorMessage } from "./error-message";
-import { fetchJsonRecord, isRecord } from "./fetch-json";
+import { errorMessage } from "../shared/error-message";
+import { isCount, isRecord } from "../shared/guards";
+import { fetchJsonRecord } from "./fetch-json";
 
 export const LIVE_GAMES_REFRESH_MS = 30_000;
 
@@ -13,10 +14,6 @@ export type LiveGamesState = {
 };
 
 const emptyState: LiveGamesState = { games: [], loading: false, error: "" };
-
-function isCount(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-}
 
 function isLiveGame(value: unknown): value is H2HLiveGameSummary {
   if (!isRecord(value)) return false;
@@ -38,7 +35,6 @@ function isLiveGame(value: unknown): value is H2HLiveGameSummary {
     value.width > 0 &&
     isCount(value.height) &&
     value.height > 0 &&
-    (value.scoring === "bbox" || value.scoring === "true") &&
     isCount(value.winScore) &&
     value.winScore > 0
   );
@@ -51,7 +47,7 @@ export async function fetchLiveGames(
   const payload = await fetchJsonRecord(
     "/api/games/list",
     "Unable to load live games. Try again.",
-    signal,
+    { signal: signal ?? null },
   );
   if (
     !payload ||

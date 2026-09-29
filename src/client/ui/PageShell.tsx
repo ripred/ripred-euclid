@@ -53,7 +53,9 @@ export function PageShell({
           ) : (
             <BrandMark size={34} />
           )}
-          <h1 id={titleId}>{title}</h1>
+          <h1 id={titleId} tabIndex={-1}>
+            {title}
+          </h1>
         </header>
         {children}
       </div>
