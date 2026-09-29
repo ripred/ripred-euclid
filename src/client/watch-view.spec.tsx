@@ -57,7 +57,8 @@ describe("spectator lobby", () => {
     expect(markup).toContain("First_Player vs Second_Player");
     expect(markup).toContain("<dt>First_Player</dt><dd>35</dd>");
     expect(markup).toContain("<dt>Second_Player</dt><dd>12</dd>");
-    expect(markup).toContain("Redditor match · 6 × 8 · First to 75");
+    expect(markup).toContain("Redditor match · First to 75");
+    expect(markup).not.toContain("6 × 8");
     expect(markup).toContain('dateTime="2026-09-06T12:34:56.000Z"');
     expect(markup).toContain("Last activity:");
     expect(markup).toContain("does not join the match");

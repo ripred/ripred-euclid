@@ -99,3 +99,42 @@
     max-width: 160px;
   }
 }
+
+.options__tabs {
+  align-self: start;
+}
+.options__panel {
+  display: grid;
+  gap: var(--sp-5);
+}
+.options__subreddit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 620px;
+  margin: auto;
+  padding: 16px;
+}
+.options__subreddit fieldset {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.options__subreddit legend {
+  margin-bottom: 6px;
+  font-weight: 650;
+}
+.options__subreddit p {
+  margin: 0;
+}
+.options__subreddit fieldset:disabled .switch {
+  opacity: 0.6;
+}
+.options__playground {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+}

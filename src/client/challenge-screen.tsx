@@ -186,7 +186,7 @@ export function ChallengeScreen({ onLeave }: { onLeave: () => void }) {
       }}
     >
       <p className="muted">
-        Private moderator testing · 8×8 board · No ratings or public entries
+        Private moderator testing · No ratings or public entries
       </p>
       <div className="challenge-layout">
         <form
@@ -379,11 +379,7 @@ export function ChallengeScreen({ onLeave }: { onLeave: () => void }) {
             }
             onPlace={place}
             editing={editing}
-            label={
-              editing
-                ? "Blocked spot editor, 8 by 8"
-                : "Challenge board, 8 by 8"
-            }
+            label={editing ? "Blocked spot editor" : "Challenge board"}
           />
           <p className="field__hint">
             Use arrow keys to move and Enter or Space to place. Placements

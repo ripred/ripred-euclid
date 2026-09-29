@@ -6,7 +6,7 @@ Euclid is a turn-based strategy game you play right inside Reddit. Place a dot, 
 
 ![Red and blue squares on Euclid's current board](subreddit/images/euclid_board_banner_desktop.png)
 
-Play against Euclid, challenge another Redditor, or watch a match and see what you would have done differently. Practice lets you try different boards and difficulty levels without putting your rating on the line.
+Play against Euclid, challenge another Redditor, or watch a match and see what you would have done differently. Practice lets you try different targets and difficulty levels without putting your rating on the line.
 
 [Visit r/EuclidTheGame](https://www.reddit.com/r/EuclidTheGame/) · [Run it locally](#try-it-locally) · [Daily and weekly challenges](#daily-and-weekly-challenges)
 
@@ -20,21 +20,23 @@ The Reddit community is the beta home. This README describes the code in this ch
 
 Pieces inside a square or along its edges don't get in the way. The corners are what matter. That also gives you a way to defend: claim the open corner your opponent needs before they get there.
 
-![The teaching game's 8 by 8 board, with completed red and blue squares and scores of 27 and 25](docs/images/euclid-board.svg)
+![The teaching game's board, with completed red and blue squares and scores of 27 and 25](docs/images/euclid-board.svg)
 
 _A position from the built-in teaching game, drawn with the same board renderer used during play._
 
-Every game is played on an 8×8 board with **Grid Footprint** scoring. Imagine an upright box around your square, count the grid points along one side, then square that number. A footprint three points wide scores 9; one four points wide scores 16. Tilted squares use the same rule.
+Every game uses **Grid Footprint** scoring. Imagine an upright box around your square, count the grid points along one side, then square that number. A footprint three points wide scores 9; one four points wide scores 16. Tilted squares use the same rule.
 
-The splash screen walks through a complete teaching sequence, then rotates through standings and game choices. **Play now** takes you straight to those choices, and **Options** sets Euclid's Practice difficulty, square hints, and sound without opening the game. You can pause the rotation, use its arrows, or swipe between panels. Transitions fade through the current light or dark background, and the play, watch, and leaderboard controls stay in place.
+The splash screen walks through a complete teaching sequence, then rotates through the leaderboard and available Daily and Weekly Challenge winners. Its persistent **Open Euclid** button opens the main menu without starting a game. You can pause the rotation, use its arrows, or swipe between panels. Transitions fade through the current light or dark background.
+
+The main menu offers **Play Euclid**, **Play a Redditor**, **Daily Challenge**, and **Weekly Challenge**, followed by **Watch live**, **Leaderboard**, **How to play**, and **Options**. Only enabled challenges appear. Saved-game continuation stays prominent, and matchmaking must be canceled before choosing another activity. **Options** contains Practice/Ranked selection, practice difficulty, winning score, square hints, sound, and version information. Difficulty, hints, and sound survive visits; winning score applies to the current visit. Moderators also have a **Subreddit** tab for challenge visibility, application timing, live standings, and the Challenge playground.
 
 ## Pick a game
 
-| Mode                     | What you'll play                                                                                                        | Rating          |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------- | --------------- |
-| **Ranked vs Euclid**     | An 8×8 board, Grid Footprint scoring, first to 150. You move first; Euclid plays at **Tenderfoot**.                     | Solo Elo        |
-| **Practice vs Euclid**   | An 8×8 board, Grid Footprint scoring, and your choice of target and one of nine difficulty levels. Hints are available. | Unrated         |
-| **Redditor vs Redditor** | An 8×8 board, Grid Footprint scoring, first to 150. Includes matchmaking, chat, rematches, and live spectators.         | Multiplayer Elo |
+| Mode                     | What you'll play                                                              | Rating          |
+| ------------------------ | ----------------------------------------------------------------------------- | --------------- |
+| **Ranked vs Euclid**     | First to 150. You move first; Euclid plays at **Tenderfoot**.                 | Solo Elo        |
+| **Practice vs Euclid**   | Your choice of target and one of nine difficulty levels. Hints are available. | Unrated         |
+| **Redditor vs Redditor** | First to 150. Includes matchmaking, chat, rematches, and live spectators.     | Multiplayer Elo |
 
 **Change difficulty** appears in Practice. Its slider has a tick for each of the nine levels and shows the selected level as you move it. Ranked keeps the same preset for everyone. Reloading resumes a saved solo game; canceling Ranked before your first move is unrated, while leaving after play begins records a loss.
 
@@ -44,13 +46,13 @@ The two leaderboards keep solo and multiplayer results separate. **Watch live** 
 
 ## Daily and weekly challenges
 
-Challenges start with some pieces already on the standard 8×8 board. Your job is to complete a specified number of squares using as few additional pieces as you can. Oblique angles, shared corners, and blocked points make a small puzzle surprisingly tricky.
+Challenges start with some pieces already on the board. Your job is to complete a specified number of squares using as few additional pieces as you can. Oblique angles, shared corners, and blocked points make a small puzzle surprisingly tricky.
 
-![An unsolved example challenge: complete three squares in two moves on an 8 by 8 board with six blocked points](docs/images/challenge-board.svg)
+![An unsolved example challenge: complete three squares in two moves with six blocked points](docs/images/challenge-board.svg)
 
 _A fixed example puzzle. Crossed points are blocked; the solution isn't drawn._
 
-When subreddit moderators enable them, **Daily challenge** and **Weekly challenge** appear in the splash choices and game menu. Everyone plays the same puzzle for that competition. Daily challenges run from **00:00 GMT to the next 00:00 GMT**; weekly challenges run from **Monday 00:00 GMT to the next Monday 00:00 GMT**. The screen keeps the objective, board, timer, and controls within the available height. **Details & standings** shows opening and closing times, standings, and finalized results.
+When subreddit moderators enable them, **Daily challenge** and **Weekly challenge** appear in the main menu. Everyone plays the same puzzle for that competition. Daily challenges run from **00:00 GMT to the next 00:00 GMT**; weekly challenges run from **Monday 00:00 GMT to the next Monday 00:00 GMT**. The screen keeps the objective, board, timer, and controls within the available height. **Details & standings** shows opening and closing times, standings, and finalized results.
 
 Sign in and select **Start challenge** to reveal the board and start the timer. Complete the target number of squares before the deadline. The certified minimum is something to aim for, not a move limit. There's no undo or hint button. **Retry same puzzle** starts a fresh timed attempt and keeps your best completed result. **Abandon Challenge** discards the active attempt and returns to the game menu, keeping any earlier completed best result. Returning later offers a fresh Start. Using Back, reloading, or switching tabs keeps the attempt running.
 

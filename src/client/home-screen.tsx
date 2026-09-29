@@ -1,8 +1,8 @@
+import { CHALLENGE_COPY } from "./splash-scene";
 import type { ChallengePeriod } from "../shared/challenge-spotlights";
 import { CHALLENGE_PERIODS } from "../shared/challenge-spotlights";
 import type { CompetitionAvailability } from "../shared/competitions";
 import {
-  competitionLabel,
   competitionAvailabilityText,
   formatCompetitionDate,
 } from "./competition-display";
@@ -321,10 +321,10 @@ const UTILITIES: readonly {
   icon: IconName;
   action: "onWatchGames" | "onLeaderboard" | "onOptions" | "onRules";
 }[] = [
-  { label: "Live games", icon: "watch", action: "onWatchGames" },
+  { label: "Watch live", icon: "watch", action: "onWatchGames" },
   { label: "Leaderboard", icon: "trophy", action: "onLeaderboard" },
+  { label: "How to play", icon: "help", action: "onRules" },
   { label: "Options", icon: "sliders", action: "onOptions" },
-  { label: "Rules", icon: "help", action: "onRules" },
 ];
 
 /**
@@ -562,10 +562,20 @@ export function HomeScreen(props: HomeScreenProps) {
                 ).map((period) => {
                   const competition = props.competitions![period];
                   return (
-                    <article className="panel home-card" key={period}>
+                    <article
+                      className={`panel home-card home-challenge home-challenge--${CHALLENGE_COPY[period].tone}`}
+                      key={period}
+                    >
+                      <TokenCluster
+                        owner={CHALLENGE_COPY[period].owner}
+                        className="home-card__tokens"
+                      />
                       <div className="home-card__copy">
                         <p className="eyebrow">Subreddit competition</p>
-                        <h2>{competitionLabel(period)}</h2>
+                        <h2>
+                          <Icon name="trophy" size={18} />{" "}
+                          {CHALLENGE_COPY[period].name}
+                        </h2>
                         <p>
                           {competitionAvailabilityText(
                             competition,
@@ -605,6 +615,9 @@ export function HomeScreen(props: HomeScreenProps) {
                   <button
                     type="button"
                     className="home-nav__item"
+                    id={
+                      item.action === "onOptions" ? "home-options" : undefined
+                    }
                     disabled={navigationLocked}
                     aria-describedby={lockDescriptionId}
                     onClick={props[item.action]}

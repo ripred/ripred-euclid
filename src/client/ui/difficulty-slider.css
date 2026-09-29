@@ -1,4 +1,4 @@
-/* The difficulty slider shared by the game setup screen and splash Options. */
+/* The difficulty slider used by Options. */
 
 .difficulty-slider {
   --difficulty-thumb-size: 22px;

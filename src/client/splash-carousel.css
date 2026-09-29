@@ -6,14 +6,6 @@
   max-height: 512px;
   margin-block: auto;
 }
-/* Options take the carousel's place in the same space. */
-.euclid-preview--splash > * {
-  grid-area: 1 / 1;
-}
-/* Slides set their own visibility, so the carousel leaves layout entirely. */
-.splash-carousel[inert] {
-  display: none;
-}
 .splash-carousel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
@@ -129,15 +121,6 @@
 .splash-footer .btn--primary {
   flex: 1;
 }
-.splash-footer__options {
-  gap: 6px;
-}
-/* Phones keep every action on one row; Options shows as its icon. */
-@media (max-width: 520px) {
-  .splash-footer__label {
-    display: none;
-  }
-}
 .splash-slide h2 {
   margin: 0;
   font-size: clamp(18px, 2.7vw, 26px);
@@ -211,8 +194,7 @@
   color: var(--text-2);
   font-size: var(--fs-sm);
 }
-.splash-winner__stats,
-.splash-choices {
+.splash-winner__stats {
   align-self: stretch;
   margin-block: auto;
 }
@@ -279,6 +261,8 @@
   margin-inline: 0;
 }
 .splash-winner__stat {
+  --winner-value-size: var(--fs-2xl);
+  container-type: inline-size;
   display: grid;
   gap: 2px;
   min-width: 0;
@@ -298,13 +282,22 @@
   align-items: center;
   gap: 4px 8px;
   margin: 0;
-  font-size: var(--fs-2xl);
+  font-size: var(--winner-value-size);
   font-stretch: var(--wide);
   font-weight: 900;
   line-height: 1.1;
 }
+.splash-winner__stat dd.num {
+  /* Reserve room for the final value throughout the count-up. */
+  font-size: min(
+    var(--winner-value-size),
+    calc(100cqi / (var(--time-digits) * 0.8))
+  );
+}
 .splash-winner__pieces {
   display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   gap: 3px;
 }
 .splash-winner__record {
@@ -503,112 +496,14 @@
   gap: 6px;
 }
 
-/* Choices: the board shows a square one move from closing. */
-.splash-choices {
-  display: grid;
-  gap: 8px;
-}
-.splash-choice {
-  --choice: var(--line-strong);
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 2px 12px;
-  min-height: 56px;
-  padding: 10px 14px;
-  text-align: left;
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition:
-    border-color var(--dur-fast),
-    background-color var(--dur-fast),
-    transform var(--dur-fast) var(--ease-out);
-}
-.splash-choice > :first-child,
-.splash-choice > .icon:last-child {
-  grid-row: span 2;
-}
-.splash-choice strong {
-  font-size: var(--fs-md);
-  line-height: 1.2;
-}
-.splash-choice span {
-  grid-column: 2;
-  color: var(--text-2);
-  font-size: var(--fs-xs);
-}
-.splash-choice--solo {
-  --choice: var(--red);
-}
-.splash-choice--reddit {
-  --choice: var(--blue);
-}
-.splash-choice--solo,
-.splash-choice--reddit {
-  border-color: color-mix(in srgb, var(--choice) 55%, var(--line));
-  background: linear-gradient(
-    120deg,
-    color-mix(in srgb, var(--choice) 16%, var(--surface-2)),
-    var(--surface-2) 70%
-  );
-  box-shadow: inset 4px 0 0 var(--choice);
-}
-.splash-choice--solo > .icon,
-.splash-choice--reddit > .icon {
-  color: var(--choice);
-  transition: transform var(--dur-fast) var(--ease-out);
-}
-.splash-choice:active:not(:disabled) {
-  transform: scale(0.98);
-}
-.splash-choice:disabled {
-  cursor: default;
-  opacity: 0.55;
-}
-@media (hover: hover) {
-  .splash-choice:not(:disabled):hover {
-    border-color: var(--choice);
-  }
-  .splash-choice:not(:disabled):hover > .icon {
-    transform: translateX(3px);
-  }
-}
-.splash-choices__challenges {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-.splash-choices__challenges .splash-choice {
-  grid-template-columns: auto minmax(0, 1fr);
-  min-height: 0;
-  padding: 6px 10px;
-  gap: 0 8px;
-}
-.splash-choices__challenges strong {
-  font-size: var(--fs-xs);
-}
-.splash-choices__challenges span {
-  font-size: var(--fs-2xs);
-}
-.splash-scene--live .splash-choice {
-  animation: rise-in 420ms calc(700ms + var(--order, 0) * 120ms) var(--ease-out)
-    both;
-}
-
 .splash-sample {
   margin: 0;
   color: var(--text-3);
   font-size: var(--fs-xs);
 }
 
-/* Narrow posts: stats become label-value rows so both numbers keep full size. */
-@media (max-width: 520px) {
-  .splash-scene__title--one-line {
-    font-size: var(--fs-md);
-  }
+/* The side panel gets narrow before the post switches to its phone layout. */
+@media (max-width: 760px) {
   .splash-winner__stats {
     grid-template-columns: minmax(0, 1fr);
     gap: 6px;
@@ -619,30 +514,23 @@
     justify-content: space-between;
     padding: 6px 10px;
   }
-  .splash-winner__stat dd {
-    font-size: var(--fs-lg);
+  .splash-winner__stat dd,
+  .splash-winner__stat dd.num {
+    font-size: clamp(14px, 3vw, var(--fs-lg));
   }
-  .splash-winner__pieces,
-  .splash-standings .standing:nth-child(n + 2),
-  .splash-choice > .icon:last-child {
+  .splash-winner__pieces {
     display: none;
-  }
-  .splash-choice {
-    min-height: 44px;
-    padding: 6px 10px;
   }
 }
-/* The narrowest phones: choice titles take the full card width. */
-@media (max-width: 360px) {
-  .splash-choice {
-    grid-template-columns: minmax(0, 1fr);
+@media (max-width: 520px) {
+  .splash-scene__title--one-line {
+    font-size: var(--fs-md);
   }
-  .splash-choice > :first-child {
+  .splash-standings .standing:nth-child(n + 2) {
     display: none;
   }
-  .splash-choice strong {
-    font-size: var(--fs-sm);
-  }
+}
+@media (max-width: 360px) {
   .preview-caption__title {
     font-size: var(--fs-sm);
   }
@@ -671,7 +559,6 @@
   }
   .preview__brand,
   .preview__progress,
-  .splash-choice span,
   .splash-scene__foot .splash-sample,
   .splash-standings .splash-scene__card > .preview-panel__body {
     display: none;
@@ -698,20 +585,17 @@
 }
 @media (max-height: 500px) {
   .splash-winner__stat {
-    padding: 6px 10px;
+    --winner-value-size: var(--fs-xl);
+    padding: 4px 10px;
   }
-  .splash-winner__stat dd {
-    font-size: var(--fs-xl);
-  }
-  .splash-choices {
-    gap: 6px;
+  .splash-winner__pieces {
+    display: none;
   }
 }
 @media (max-height: 380px) {
   .splash-carousel {
     gap: 4px;
   }
-  .splash-choice span,
   .splash-scene .splash-sample {
     display: none;
   }

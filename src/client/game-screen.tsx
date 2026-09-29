@@ -653,7 +653,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
             height={board.H}
             cellSize={cell}
             controls={boardInput}
-            label={`Board, ${board.W} by ${board.H}. Use arrow keys to move and Enter to place.`}
+            label="Board. Use arrow keys to move and Enter to place."
             describeCell={describeCell}
             onHover={(index) => {
               setPreviewIdx(index);

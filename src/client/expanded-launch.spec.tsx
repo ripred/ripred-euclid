@@ -3,6 +3,11 @@ import { StrictMode, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import {
+  DEFAULT_SUBREDDIT_SETTINGS,
+  type SubredditSettings,
+} from "../shared/subreddit-settings";
+import { byPeriod, CHALLENGE_SETTING } from "../shared/challenge-spotlights";
 import type { ExpandedAction } from "./expanded-entry";
 
 let root: Root, host: HTMLDivElement;
@@ -14,11 +19,14 @@ let initModerator: unknown;
 let initReady: Promise<void>;
 let liveGamesReady: Promise<void>;
 let refreshedPresence: string | undefined;
+let subredditSettings: SubredditSettings;
 
 beforeEach(() => {
   (
     globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true;
+  localStorage.clear();
+  subredditSettings = { ...DEFAULT_SUBREDDIT_SETTINGS };
   requests = [];
   mutations = [];
   initModerator = undefined;
@@ -62,8 +70,29 @@ beforeEach(() => {
           appVersion: "test",
           postId: "post",
           isModerator: initModerator,
+          subredditSettings,
         });
       }
+      if (url === "/api/subreddit-settings") {
+        if (options?.method === "PUT")
+          subredditSettings = JSON.parse(String(options.body)).settings;
+        return reply({ settings: subredditSettings });
+      }
+      if (url === "/api/competitions/availability")
+        return reply({
+          serverNow: Date.now(),
+          competitions: byPeriod((period) => ({
+            period,
+            enabled: subredditSettings[CHALLENGE_SETTING[period]],
+            status: subredditSettings[CHALLENGE_SETTING[period]]
+              ? "open"
+              : "disabled",
+            instanceId: period,
+            opensAt: Date.now(),
+            endsAt: Date.now() + 86400000,
+            showStandings: subredditSettings.showLiveChallengeStandings,
+          })),
+        });
       if (url === "/api/challenge-lab/state") return reply({ snapshot: null });
       if (url === "/api/games/list") {
         await liveGamesReady;
@@ -160,7 +189,7 @@ describe("watch lobby navigation", () => {
       resolvePresence("idle");
       resolveSolo();
     });
-    const watch = button("Live games");
+    const watch = button("Watch live");
     expect(watch).toBeTruthy();
     expect(watch!.disabled).toBe(false);
     await act(async () => watch!.click());
@@ -290,4 +319,118 @@ describe("expanded public competition entry", () => {
       expect(launches()).toEqual([]);
     },
   );
+});
+
+describe("Options in expanded navigation", () => {
+  const button = (label: string) =>
+    Array.from(host.querySelectorAll("button")).find(
+      (b) => b.textContent === label,
+    )!;
+  const click = async (label: string) => {
+    await act(async () => button(label).click());
+  };
+  async function menu() {
+    await mount(null);
+    await act(async () => {
+      resolvePresence("idle");
+      resolveSolo();
+    });
+  }
+  async function input(selector: string, value: string) {
+    await act(async () => {
+      const control = host.querySelector<HTMLInputElement>(selector)!;
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(control, value);
+      control.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+  it("applies Options to the next Practice request and restores menu focus", async () => {
+    await menu();
+    await click("Options");
+    expect(document.activeElement?.id).toBe("setup-title");
+    expect(host.querySelector('[role="tablist"]')).toBeNull();
+    await input("#setup-difficulty", "8");
+    await input("#setup-win-score", "42");
+    for (const control of Array.from(
+      host.querySelectorAll<HTMLInputElement>(".setup .switch input"),
+    ))
+      await act(async () => control.click());
+    await click("Done");
+    expect(document.activeElement?.id).toBe("home-options");
+    expect(host.textContent).toContain("Brutal");
+    expect(
+      host.querySelector('[aria-label="Mute game sounds"]'),
+    ).not.toBeNull();
+    expect(launches()).toEqual([]);
+    expect(JSON.parse(localStorage.getItem("euclid_practice_setup")!)).toEqual({
+      difficulty: "brutal",
+      assist: true,
+    });
+    expect(localStorage.getItem("euclid_sound_on")).toBe("on");
+    await click("Options");
+    expect(
+      host.querySelector<HTMLInputElement>("#setup-win-score")!.value,
+    ).toBe("42");
+    await click("Done");
+    await click("Play Euclid");
+    const call = vi
+      .mocked(fetch)
+      .mock.calls.find(([url]) => url === "/api/solo/start")!;
+    expect(JSON.parse(String(call[1]?.body))).toMatchObject({
+      mode: "practice",
+      rules: { difficulty: "brutal", winScore: 42 },
+    });
+  });
+  it("uses fixed Ranked rules after changing personal Practice options", async () => {
+    await menu();
+    await click("Options");
+    await input("#setup-win-score", "42");
+    await click("Ranked");
+    await click("Done");
+    await click("Play Euclid");
+    const call = vi
+      .mocked(fetch)
+      .mock.calls.find(([url]) => url === "/api/solo/start")!;
+    expect(JSON.parse(String(call[1]?.body))).toMatchObject({ mode: "ranked" });
+    expect(JSON.parse(String(call[1]?.body)).rules).toBeUndefined();
+  });
+  it("refreshes moderator changes on returning home and opens the playground locally", async () => {
+    initModerator = true;
+    await menu();
+    expect(button("Open daily challenge")).toBeUndefined();
+    await click("Options");
+    await click("Subreddit");
+    await act(async () =>
+      host
+        .querySelector<HTMLInputElement>(".options__subreddit input")!
+        .click(),
+    );
+    expect(subredditSettings.dailyChallenges).toBe(true);
+    const reads = requests.filter(
+      (url) => url === "/api/competitions/availability",
+    ).length;
+    await click("Done");
+    expect(
+      requests.filter((url) => url === "/api/competitions/availability"),
+    ).toHaveLength(reads + 1);
+    expect(button("Open daily challenge")).toBeTruthy();
+    await click("Options");
+    await click("Subreddit");
+    await click("Challenge playground");
+    expect(host.querySelector("#challenge-title")).not.toBeNull();
+    expect(requests).toContain("/api/challenge-lab/state");
+    expect(launches()).toEqual([]);
+  });
+  it("keeps Options and all other navigation locked during matchmaking", async () => {
+    await mount(null);
+    await act(async () => {
+      resolvePresence("queued");
+      resolveSolo();
+    });
+    for (const label of ["Options", "Watch live", "Leaderboard", "How to play"])
+      expect(button(label).disabled).toBe(true);
+    expect(button("Cancel search").disabled).toBe(false);
+  });
 });

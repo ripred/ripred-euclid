@@ -1,3 +1,8 @@
+import {
+  DEFAULT_SUBREDDIT_SETTINGS,
+  validateSubredditSettings,
+  type SubredditSettings,
+} from "../shared/subreddit-settings";
 import type { ExpandedAction } from "./expanded-entry";
 import { ChallengeScreen } from "./challenge-screen";
 import { CompetitionScreen } from "./competition-screen";
@@ -295,6 +300,16 @@ export const App = ({
   const appliedThemeRef = useRef<ThemeMode | null>(null);
   const [watchTheme, setWatchTheme] = useState<ThemeMode>("light");
   const [initState, setInitState] = useState<InitResponse | null>(null);
+  const [subredditSettings, setSubredditSettings] = useState<SubredditSettings>(
+    DEFAULT_SUBREDDIT_SETTINGS,
+  );
+  useEffect(() => {
+    if (initState?.type === "init")
+      setSubredditSettings(
+        validateSubredditSettings(initState.subredditSettings) ??
+          DEFAULT_SUBREDDIT_SETTINGS,
+      );
+  }, [initState]);
   const [initError, setInitError] = useState("");
   const [mode, setMode] = useState<Mode>(initialMode);
   const [board, setBoard] = useState<Board | null>(null);
@@ -345,8 +360,7 @@ export const App = ({
     return () => window.clearTimeout(timer);
   }, [activeScoreFeedback]);
 
-  // Practice starts from the setup saved on this device, which the splash's
-  // Options panel also edits; ranked and resumed games use server rules.
+  // Options edit device preferences; ranked and resumed games use server rules.
   const [savedPractice] = useState(readPracticePreferences);
   const [selectedDifficulty, setSelectedDifficulty] = useState<AiDifficulty>(
     savedPractice.difficulty,
@@ -619,14 +633,20 @@ export const App = ({
       window.removeEventListener("keydown", wake);
     };
   }, [sounds, soundOn]);
-  const toggleSound = useCallback(() => {
-    const next = !soundOn;
-    sounds.unlock();
-    sounds.setEnabled(next);
-    saveSoundPreference(next);
-    setSoundOn(next);
-    if (next) sounds.place(1, "mine");
-  }, [sounds, soundOn]);
+  const changeSound = useCallback(
+    (next: boolean) => {
+      sounds.unlock();
+      sounds.setEnabled(next);
+      saveSoundPreference(next);
+      setSoundOn(next);
+      if (next) sounds.place(1, "mine");
+    },
+    [sounds],
+  );
+  const toggleSound = useCallback(
+    () => changeSound(!soundOn),
+    [changeSound, soundOn],
+  );
 
   // Tutorial/onboarding
   const [tutorialCompletedThisSession, setTutorialCompletedThisSession] =
@@ -2678,6 +2698,12 @@ export const App = ({
     initState?.type === "init" && mode === null,
     homeRefreshVersion,
   );
+  const previousScreen = useRef(mode);
+  useEffect(() => {
+    if (previousScreen.current === "options" && mode === null)
+      document.getElementById("home-options")?.focus();
+    previousScreen.current = mode;
+  }, [mode]);
   const challengeNow = useCompetitionClock(challengeAvailability?.serverNow);
 
   let content: React.ReactElement;
@@ -2775,7 +2801,7 @@ export const App = ({
   } else if (mode === "challenge") {
     content =
       initState?.type === "init" && initState.isModerator === true ? (
-        <ChallengeScreen onLeave={() => setMode(null)} />
+        <ChallengeScreen onLeave={returnHome} />
       ) : (
         <HomeStatusScreen
           heading="Moderator access required"
@@ -2794,6 +2820,14 @@ export const App = ({
         onWinScoreChange={setWinScore}
         assistOn={assistOn}
         onAssistChange={setAssistOn}
+        soundOn={soundOn}
+        onSoundChange={changeSound}
+        isModerator={
+          initState?.type === "init" && initState.isModerator === true
+        }
+        settings={subredditSettings}
+        onSettingsChange={setSubredditSettings}
+        onPlayground={() => setMode("challenge")}
         appVersion={initState?.appVersion || "loading"}
         onDone={returnHome}
       />
@@ -3828,9 +3862,12 @@ export const App = ({
       {appReady && ChatOverlay}
       {appReady && RulesOverlay}
       {appReady && TutorialModal}
-      {appReady && !onGameScreen && !globalControlsBlocked && (
-        <SoundToggle floating on={soundOn} onToggle={toggleSound} />
-      )}
+      {appReady &&
+        mode !== "options" &&
+        !onGameScreen &&
+        !globalControlsBlocked && (
+          <SoundToggle floating on={soundOn} onToggle={toggleSound} />
+        )}
     </SoundContext.Provider>
   );
 };

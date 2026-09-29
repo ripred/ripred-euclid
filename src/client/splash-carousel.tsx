@@ -1,42 +1,28 @@
 import "./splash-carousel.css";
 import {
-  useEffect,
   useRef,
   type CSSProperties,
   type MouseEvent,
   type ReactNode,
 } from "react";
 import {
-  CHALLENGE_PERIODS,
-  CHALLENGE_SETTING,
   type ChallengePeriod,
   type ChallengeWinner,
 } from "../shared/challenge-spotlights";
-import type { SubredditSettings } from "../shared/subreddit-settings";
-import type { CompetitionAvailabilityResponse } from "../shared/competitions";
-import {
-  competitionAvailabilityText,
-  formatCompetitionDate,
-} from "./competition-display";
+import { formatCompetitionDate } from "./competition-display";
 import type { ExpandedEntry } from "./expanded-entry";
 import { formatChallengeTime } from "./challenge-time";
 import type { RankingsShareRow } from "../shared/types/api";
-import { BoardDiagram, PieceGlyph } from "./ui/BoardDiagram";
+import { PieceGlyph } from "./ui/BoardDiagram";
 import { boardAspectRatio } from "./ui/board-geometry";
 import { TokenCluster, Wordmark } from "./ui/Brand";
 import { Icon, type IconName } from "./ui/Icon";
 import { PlayerAvatar } from "./ui/PlayerAvatar";
 import { RedditAvatar } from "./ui/RedditAvatar";
-import { staggerStyle } from "./ui/stagger";
 import { useCountUp } from "./ui/use-count-up";
-import {
-  CHALLENGE_COPY,
-  PODIUM_PLACES,
-  SHOWCASE,
-  useSceneCue,
-} from "./splash-scene";
+import { CHALLENGE_COPY, PODIUM_PLACES, useSceneCue } from "./splash-scene";
 
-export type SplashSlideId = "rules" | "leaderboard" | ChallengePeriod | "play";
+export type SplashSlideId = "rules" | "leaderboard" | ChallengePeriod;
 export type ExpandSplash = (
   event: MouseEvent<HTMLButtonElement>,
   entry: ExpandedEntry,
@@ -301,16 +287,31 @@ export function ChallengeWinnerCard({
           <dt>Moves</dt>
           <dd>
             <span className="num">{winner.moves}</span>
-            <span className="splash-winner__pieces" aria-hidden="true">
-              {Array.from({ length: winner.moves }, (_, index) => (
-                <PieceGlyph key={index} owner={owner} size={14} order={index} />
-              ))}
-            </span>
+            {winner.moves <= 4 && (
+              <span className="splash-winner__pieces" aria-hidden="true">
+                {Array.from({ length: winner.moves }, (_, index) => (
+                  <PieceGlyph
+                    key={index}
+                    owner={owner}
+                    size={14}
+                    order={index}
+                  />
+                ))}
+              </span>
+            )}
           </dd>
         </div>
         <div className="splash-winner__stat">
           <dt>Time</dt>
-          <dd className="num" aria-hidden="true">
+          <dd
+            className="num"
+            aria-hidden="true"
+            style={
+              {
+                "--time-digits": formatChallengeTime(winner.elapsedMs).length,
+              } as CSSProperties
+            }
+          >
             {formatChallengeTime(time)}
           </dd>
         </div>
@@ -341,121 +342,6 @@ export function ChallengeWinnerCard({
   );
 }
 
-const SPLASH_CHOICES = [
-  {
-    entry: "solo",
-    owner: 1,
-    title: "Play Euclid",
-    detail: "A game at your pace",
-  },
-  {
-    entry: "reddit",
-    owner: 2,
-    title: "Play Another Redditor",
-    detail: "Find your next opponent",
-  },
-] as const;
-
-export function SplashChoices({
-  settings,
-  availability,
-  now,
-  active,
-  onExpand,
-}: {
-  settings: SubredditSettings;
-  availability: CompetitionAvailabilityResponse | null;
-  now: number;
-  active: boolean;
-  onExpand: ExpandSplash;
-}) {
-  const { live } = useSceneCue(active, 0);
-  // Only challenges this subreddit has switched on are offered.
-  const offered = CHALLENGE_PERIODS.filter(
-    (period) => settings[CHALLENGE_SETTING[period]],
-  );
-  return (
-    <SplashScene
-      tone="red"
-      live={live}
-      decorative
-      className="splash-invite"
-      stage={
-        // Red is one piece from a square: the board invites the viewer's move.
-        <BoardDiagram
-          width={SHOWCASE.width}
-          height={SHOWCASE.height}
-          cells={SHOWCASE.cells}
-          squares={[
-            ...SHOWCASE.squares,
-            {
-              key: "showcase-red",
-              owner: 1,
-              tone: "blocked",
-              corners: [...SHOWCASE.red, SHOWCASE.move],
-            },
-          ]}
-          markers={[
-            { ...SHOWCASE.move, owner: 1, kind: "ghost" },
-            { ...SHOWCASE.move, owner: 1, kind: "pending" },
-          ]}
-        />
-      }
-    >
-      <SceneHead
-        kicker="Your move"
-        title={offered.length ? "Choose a game" : "Two Ways to Play!"}
-      />
-      <div className="splash-choices">
-        {/* Red and blue match the home screen's solo and multiplayer cards. */}
-        {SPLASH_CHOICES.map(({ entry, owner, title, detail }, index) => (
-          <button
-            key={entry}
-            className={`splash-choice splash-choice--${entry}`}
-            style={staggerStyle(index)}
-            onClick={(e) => onExpand(e, entry)}
-          >
-            <PieceGlyph owner={owner} size={24} />
-            <strong>{title}</strong>
-            <span>{detail}</span>
-            <Icon name="arrow" size={18} />
-          </button>
-        ))}
-        {offered.length > 0 && (
-          <div className="splash-choices__challenges">
-            {offered.map((period) => (
-              <button
-                key={period}
-                className="splash-choice splash-choice--challenge"
-                onClick={(event) => onExpand(event, period)}
-              >
-                <Icon name="trophy" size={18} />
-                <strong>{CHALLENGE_COPY[period].name}</strong>
-                <span>
-                  {availability
-                    ? competitionAvailabilityText(
-                        availability.competitions[period],
-                        now,
-                      )
-                    : "View challenge"}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-      <div className="splash-scene__foot">
-        <button
-          className="btn btn--ghost btn--sm"
-          onClick={(e) => onExpand(e, "game")}
-        >
-          Game menu &amp; settings
-        </button>
-      </div>
-    </SplashScene>
-  );
-}
-
 export function SplashCarousel({
   slides,
   activeId,
@@ -464,8 +350,6 @@ export function SplashCarousel({
   onPause,
   onExpand,
   expansionError,
-  optionsOpen,
-  onOpenOptions,
 }: {
   slides: SplashSlide[];
   activeId: SplashSlideId;
@@ -474,21 +358,12 @@ export function SplashCarousel({
   onPause: (paused: boolean) => void;
   onExpand: ExpandSplash;
   expansionError: string | null;
-  optionsOpen: boolean;
-  onOpenOptions: () => void;
 }) {
   const index = Math.max(
     0,
     slides.findIndex((s) => s.id === activeId),
   );
   const pointer = useRef<{ x: number; y: number; id: number } | null>(null);
-  // Closing Options returns focus to the button that opened them.
-  const optionsButton = useRef<HTMLButtonElement>(null);
-  const wasOptionsOpen = useRef(optionsOpen);
-  useEffect(() => {
-    if (wasOptionsOpen.current && !optionsOpen) optionsButton.current?.focus();
-    wasOptionsOpen.current = optionsOpen;
-  }, [optionsOpen]);
   const shift = (offset: number) =>
     onSelect(slides[(index + offset + slides.length) % slides.length]!.id);
   return (
@@ -496,8 +371,6 @@ export function SplashCarousel({
       className="splash-carousel"
       aria-label="Explore Euclid"
       aria-roledescription="carousel"
-      inert={optionsOpen}
-      aria-hidden={optionsOpen || undefined}
     >
       <SplashHeader>
         <span className="splash-header__label">{slides[index]!.title}</span>
@@ -577,28 +450,11 @@ export function SplashCarousel({
         </button>
       </nav>
       <footer className="splash-footer">
-        <button className="btn btn--primary" onClick={() => onSelect("play")}>
-          Play now
-        </button>
         <button
-          ref={optionsButton}
-          className="btn splash-footer__options"
-          aria-label="Options"
-          aria-haspopup="dialog"
-          onClick={onOpenOptions}
+          className="btn btn--primary"
+          onClick={(event) => onExpand(event, "game")}
         >
-          <Icon name="sliders" size={18} />
-          <span className="splash-footer__label">Options</span>
-        </button>
-        <button className="btn" onClick={(e) => onExpand(e, "watch")}>
-          Watch live
-        </button>
-        <button
-          className="btn btn--ghost"
-          aria-label="Full leaderboard"
-          onClick={(e) => onExpand(e, "leaderboard")}
-        >
-          <Icon name="trophy" size={20} />
+          Open Euclid
         </button>
         {expansionError && (
           <p className="preview-actions__error" role="alert">

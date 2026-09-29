@@ -22,7 +22,7 @@ export function ChallengeBoard({
   onPlace,
   editing = false,
   fitToSpace = false,
-  label = "Challenge board, 8 by 8",
+  label = "Challenge board",
 }: {
   puzzle: ChallengePuzzle | null;
   placements?: readonly number[];

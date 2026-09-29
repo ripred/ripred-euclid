@@ -23,7 +23,6 @@ import { blockedSquares, type BoardMarker } from "./ui/board-geometry";
 import { Wordmark } from "./ui/Brand";
 import {
   SplashCarousel,
-  SplashChoices,
   SplashScene,
   SceneHead,
   ChallengeWinnerCard,
@@ -38,7 +37,6 @@ import {
   PODIUM_SIZE,
   useSceneCue,
 } from "./splash-scene";
-import { SplashOptions } from "./splash-options";
 import { useReducedMotion } from "./ui/use-reduced-motion";
 import { fetchJsonRecord } from "./fetch-json";
 import {
@@ -55,10 +53,7 @@ import {
 } from "../shared/challenge-spotlights";
 import { StandingsList } from "./ui/Standings";
 import { buildWatchDemo } from "./watch-demo";
-import {
-  useCompetitionAvailability,
-  useCompetitionClock,
-} from "./use-competition-availability";
+import { useCompetitionAvailability } from "./use-competition-availability";
 
 /* The recorded teaching game, replayed move by move. */
 const DEMO_BOARD = buildWatchDemo();
@@ -311,9 +306,7 @@ export const PreviewApp = () => {
   const reducedMotion = useReducedMotion();
   const [pauseOverride, setPauseOverride] = useState<boolean | null>(null);
   const paused = pauseOverride ?? reducedMotion;
-  // Options hold the rotation without changing the viewer's own pause choice.
-  const [optionsOpen, setOptionsOpen] = useState(false);
-  const canAnimate = isPreviewActive && !paused && !optionsOpen;
+  const canAnimate = isPreviewActive && !paused;
   const [challenges, setChallenges] = useState<ChallengeSpotlights>(
     EMPTY_CHALLENGE_SPOTLIGHTS,
   );
@@ -332,7 +325,6 @@ export const PreviewApp = () => {
     initState?.type === "init",
     subredditSettings,
   );
-  const competitionNow = useCompetitionClock(availability?.serverNow);
   const displaySettings = availability
     ? {
         ...subredditSettings,
@@ -355,7 +347,6 @@ export const PreviewApp = () => {
     "leaderboard",
     ...(visibleChallenges.daily ? ["daily" as const] : []),
     ...(visibleChallenges.weekly ? ["weekly" as const] : []),
-    "play",
   ];
   const selectSlide = (id: SplashSlideId) => {
     setSurfaceMode(id === "rules" ? "intro" : id);
@@ -706,19 +697,6 @@ export const PreviewApp = () => {
         ),
       });
   }
-  slides.push({
-    id: "play",
-    title: "Choose a game",
-    content: (
-      <SplashChoices
-        settings={displaySettings}
-        availability={availability}
-        now={competitionNow}
-        active={activeSlide === "play"}
-        onExpand={openExpanded}
-      />
-    ),
-  });
   return (
     <div
       className="euclid-preview euclid-preview--splash"
@@ -732,21 +710,7 @@ export const PreviewApp = () => {
         onPause={setPauseOverride}
         onExpand={openExpanded}
         expansionError={expansionError}
-        optionsOpen={optionsOpen}
-        onOpenOptions={() => setOptionsOpen(true)}
       />
-      {optionsOpen && (
-        <SplashOptions
-          onClose={() => setOptionsOpen(false)}
-          isModerator={
-            initState.type === "init" && initState.isModerator === true
-          }
-          settings={subredditSettings}
-          onSettingsChange={setSubredditSettings}
-          onPlayground={(event) => openExpanded(event, "challenge")}
-          expansionError={expansionError}
-        />
-      )}
     </div>
   );
 };

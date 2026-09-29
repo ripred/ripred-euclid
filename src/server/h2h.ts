@@ -524,7 +524,7 @@ export function normalizeH2HBoard(source: unknown): H2HBoardSnapshot {
     source.m_board.length !== H2H_RULES.W * H2H_RULES.H ||
     !source.m_board.every((cell) => cell === 0 || cell === 1 || cell === 2)
   ) {
-    return invalidBoard("Board cells must be a valid 8x8 position.");
+    return invalidBoard("Board cells must form a valid position.");
   }
   if (!Array.isArray(source.m_players) || source.m_players.length !== 2) {
     return invalidBoard("A board must contain exactly two players.");

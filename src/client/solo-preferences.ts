@@ -2,10 +2,8 @@ import { isAiDifficulty, type AiDifficulty } from "../shared/game/rules";
 import { isRecord } from "../shared/guards";
 
 /**
- * The practice setup remembered on this device. The splash's Options panel
- * and the game's setup screen read and write the same record, so a change in
- * either is what the next practice game uses. Every game is played on the
- * standard board; the winning score is not kept between visits.
+ * Options and gameplay share this device's practice preferences.
+ * Every game uses the standard board; winning score is session-specific.
  */
 export interface PracticePreferences {
   difficulty: AiDifficulty;

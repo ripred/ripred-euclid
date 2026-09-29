@@ -124,7 +124,7 @@ function LiveMatch({
         ))}
       </dl>
       <p className="watch-page__muted">
-        Redditor match · {game.width} × {game.height} · First to {game.winScore}
+        Redditor match · First to {game.winScore}
       </p>
       <LastActivity timestamp={game.lastSaved} />
       <WatchControls

@@ -555,3 +555,24 @@
     grid-template-areas: "play" "challenges" "navigation" "records";
   }
 }
+
+.home-challenge {
+  position: relative;
+  overflow: hidden;
+  --challenge: var(--red);
+  border-color: color-mix(in srgb, var(--challenge) 42%, var(--line));
+  box-shadow:
+    inset 0 3px 0 var(--challenge),
+    var(--panel-shadow);
+}
+.home-challenge--blue {
+  --challenge: var(--blue);
+}
+.home-challenge .home-card__copy {
+  padding-inline-end: 100px;
+}
+.home-challenge h2 .icon {
+  display: inline-block;
+  vertical-align: -0.12em;
+  color: var(--challenge);
+}
