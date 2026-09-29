@@ -6,7 +6,7 @@ import {
 } from "../shared/game/rules";
 import type { SerializableBoard } from "../shared/types/api";
 
-export const TIDE_RULES_COPY = `Unanchored pieces last ${TIDE_PERSONAL_TURNS} of their owner's turns. Their rings fade as time runs out. Complete a square to anchor its corners permanently. First to ${STANDARD_WIN_SCORE} wins; after ${TIDE_MOVE_LIMIT} moves, the higher score wins. Equal scores draw.`;
+export const TIDE_RULES_COPY = `Unanchored pieces last ${TIDE_PERSONAL_TURNS} of their owner's turns. Their outer rings shrink as turns pass. Complete a square to anchor its corners permanently. First to ${STANDARD_WIN_SCORE} wins; after ${TIDE_MOVE_LIMIT} moves, the higher score wins. Equal scores draw.`;
 
 /** Piece age follows confirmed moves, never elapsed time or a client timer. */
 export function tidePieceState(
@@ -15,8 +15,7 @@ export function tidePieceState(
   ply: number,
 ) {
   if (!tide) return null;
-  if (tide.anchored[index])
-    return { anchored: true, remaining: 0, turns: 0, opacity: 1 };
+  if (tide.anchored[index]) return { anchored: true, remaining: 0, turns: 0 };
   const remaining = Math.max(
     0,
     Math.min(TIDE_STONE_LIFETIME, (tide.expires[index] ?? 0) - ply),
@@ -25,7 +24,6 @@ export function tidePieceState(
     anchored: false,
     remaining,
     turns: Math.floor(remaining / 2),
-    opacity: 0.4 + 0.6 * (remaining / TIDE_STONE_LIFETIME),
   };
 }
 

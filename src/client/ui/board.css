@@ -359,9 +359,6 @@
   stroke-width: 0.05;
   stroke-linecap: round;
 }
-.board__piece[data-turns-left] {
-  transition: opacity 220ms ease;
-}
 .board__life {
   fill: none;
   stroke: #fff;
@@ -369,8 +366,22 @@
   stroke-linecap: round;
   opacity: 0.85;
 }
+
+.board__piece--expired {
+  pointer-events: none;
+  animation: piece-expire var(--piece-expiry-duration) ease-out both;
+}
+@keyframes piece-expire {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .board__piece[data-turns-left] {
-    transition: none;
+  .board__piece--expired {
+    display: none;
+    animation: none;
   }
 }

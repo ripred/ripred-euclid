@@ -9,16 +9,12 @@ import { tidePieceDescription, tidePieceState } from "./tide";
 
 describe("Tide board presentation", () => {
   const tide = { expires: [TIDE_STONE_LIFETIME, 0], anchored: [false, true] };
-  it("fades an unanchored piece by confirmed moves and keeps anchors permanent", () => {
+  it("counts down confirmed turns and keeps anchors permanent", () => {
     expect(tidePieceState(tide, 0, 1)?.turns).toBe(5);
     expect(tidePieceState(tide, 0, 10)?.turns).toBe(1);
     expect(tidePieceState(tide, 0, 11)?.turns).toBe(0);
-    expect(tidePieceState(tide, 0, 11)!.opacity).toBeLessThan(
-      tidePieceState(tide, 0, 1)!.opacity,
-    );
     expect(tidePieceState(tide, 1, 50)).toMatchObject({
       anchored: true,
-      opacity: 1,
     });
     expect(tidePieceDescription(tide, 0, 10)).toBe(
       ", 1 personal turn remaining",
@@ -28,16 +24,28 @@ describe("Tide board presentation", () => {
     );
     expect(tidePieceDescription(tide, 1, 50)).toBe(", anchored permanently");
   });
-  it("renders age rings only on unanchored Tide pieces without lock overlays", () => {
-    const html = renderToStaticMarkup(
-      <BoardDiagram
-        width={2}
-        height={2}
-        cells={[1, 2, 0, 0]}
-        tide={tide}
-        ply={11}
-      />,
-    );
+  it("keeps pieces opaque during their lifetime while shrinking only unanchored Tide rings", () => {
+    const renderAt = (ply: number) =>
+      renderToStaticMarkup(
+        <BoardDiagram
+          width={2}
+          height={2}
+          cells={[1, 2, 0, 0]}
+          tide={tide}
+          ply={ply}
+        />,
+      );
+    const fresh = renderAt(1);
+    const html = renderAt(11);
+    const ringFraction = (markup: string) =>
+      Number(markup.match(/stroke-dasharray="([^ ]+) 1"/)?.[1]);
+    expect(ringFraction(fresh)).toBeCloseTo(11 / 12);
+    expect(ringFraction(html)).toBeCloseTo(1 / 12);
+    for (const markup of [fresh, html]) {
+      const pieces = markup.match(/<g class="board__piece [^>]*>/g) ?? [];
+      expect(pieces).toHaveLength(2);
+      for (const piece of pieces) expect(piece).not.toMatch(/\bopacity(?:=|:)/);
+    }
     expect(html).toContain('data-turns-left="0"');
     expect(html).toContain('data-anchored="true"');
     expect(html.match(/class="board__life"/g)).toHaveLength(1);

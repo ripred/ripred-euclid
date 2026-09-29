@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { useId, type CSSProperties, type ReactNode } from "react";
 import type { SerializableBoard } from "../../shared/types/api";
 import { TIDE_STONE_LIFETIME } from "../../shared/game/rules";
 import { tidePieceState } from "../tide";
@@ -16,6 +16,7 @@ import {
   type Owner,
 } from "./board-geometry";
 import { staggerStyle } from "./stagger";
+import { TIDE_EXPIRY_MS, useTideExpiry } from "./use-tide-expiry";
 import "./board.css";
 
 const POINT_RADIUS = 0.2;
@@ -110,10 +111,7 @@ function PieceShape({
       className={`board__piece board__piece--${owner} ${className}`}
       data-anchored={life?.anchored || undefined}
       data-turns-left={life && !life.anchored ? life.turns : undefined}
-      style={{
-        ...(order === undefined ? {} : staggerStyle(order)),
-        ...(life ? { opacity: life.opacity } : {}),
-      }}
+      style={order === undefined ? undefined : staggerStyle(order)}
     >
       <circle
         className="board__piece-shadow"
@@ -262,6 +260,7 @@ export function BoardDiagram({
   children,
 }: BoardDiagramProps) {
   const ids = useSvgIds();
+  const expired = useTideExpiry(width, height, cells, tide, ply);
   const hintAt = new Map(hints.map((hint) => [hint.index, hint]));
   const radius = Math.min(0.5, Math.max(width, height) * 0.045);
   const indices = Array.from({ length: width * height }, (_, index) => index);
@@ -420,6 +419,28 @@ export function BoardDiagram({
             className={index === arrivingIndex ? "board__piece--arriving" : ""}
           />
         ))}
+
+      {expired.length > 0 && (
+        <g
+          aria-hidden="true"
+          style={
+            {
+              "--piece-expiry-duration": `${TIDE_EXPIRY_MS}ms`,
+            } as CSSProperties
+          }
+        >
+          {expired.map(({ index, owner }) => (
+            <PieceShape
+              key={index}
+              owner={owner}
+              x={centre(index % width)}
+              y={centre(Math.floor(index / width))}
+              ids={ids}
+              className="board__piece--expired"
+            />
+          ))}
+        </g>
+      )}
 
       {blocked.map((square) => (
         <polygon
