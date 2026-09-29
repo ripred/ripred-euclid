@@ -12,6 +12,8 @@ export const CHALLENGE_SETTING: Readonly<
 /** Finalized results only. Active attempts and solution boards stay private. */
 export interface ChallengeWinner {
   username: string;
+  /** A deliberately seeded result, rather than a player-earned award. */
+  preview?: boolean;
   avatar?: string;
   moves: number;
   elapsedMs: number;
@@ -58,6 +60,7 @@ function readWinner(value: unknown): ChallengeWinner | null {
     return null;
   return {
     username: value.username,
+    ...(value.preview === true ? { preview: true } : {}),
     ...(isCount(value.opensAt) ? { opensAt: value.opensAt } : {}),
     ...(isCount(value.endsAt) ? { endsAt: value.endsAt } : {}),
     ...(typeof value.instanceId === "string"

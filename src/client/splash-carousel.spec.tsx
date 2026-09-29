@@ -360,6 +360,25 @@ describe("splash carousel", () => {
     expect(standings.classList.contains("splash-scene--live")).toBe(true);
   });
 
+  it("marks only a seeded weekly winner as a test result", async () => {
+    challenges.preview = false;
+    challenges.weekly = {
+      ...challenges.weekly!,
+      username: "ripred3",
+      preview: true,
+      endsAt: Date.UTC(2026, 8, 28),
+    };
+    await mount();
+    await click("Show Weekly Challenge Winner");
+    const weekly = host.querySelector('[data-slide="weekly"]')!;
+    expect(weekly.textContent).toContain("u/ripred3");
+    expect(weekly.textContent).toContain("Test result · Ended");
+    expect(
+      host.querySelector('[data-slide="daily"]')!.textContent,
+    ).not.toContain("Test result");
+    expect(weekly.textContent).not.toContain("Layout preview");
+  });
+
   it("rotates only teaching and leaderboard when no winners are available", async () => {
     challenges = EMPTY_CHALLENGE_SPOTLIGHTS;
     settings = {

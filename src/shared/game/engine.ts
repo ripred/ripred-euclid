@@ -9,6 +9,7 @@ import type {
 import {
   GAME_STATES,
   PLAY_STYLES,
+  STANDARD_WIN_SCORE,
   playerColorForIndex,
   playerIndexForColor,
   type GameOutcome,
@@ -169,7 +170,10 @@ export class Board {
     const rawH = Math.max(4, Math.min(16, opts.H ?? rawW));
     this.W = rawW - (rawW % 2);
     this.H = rawH - (rawH % 2);
-    this.winScore = Math.max(1, Math.floor(opts.winScore ?? 150));
+    this.winScore = Math.max(
+      1,
+      Math.floor(opts.winScore ?? STANDARD_WIN_SCORE),
+    );
     this.m_players = [p1, p2];
     this.m_last = new Point(-1, -1, -1);
     this.rng = opts.rng ?? Math.random;
@@ -595,7 +599,7 @@ export class Board {
   }
 
   checkGameOver(): 0 | PlayerColor {
-    const target = this.winScore || 150;
+    const target = this.winScore || STANDARD_WIN_SCORE;
     if (this.m_players[0].m_score >= target) return 1;
     if (this.m_players[1].m_score >= target) return 2;
     return 0;

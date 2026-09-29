@@ -1,3 +1,4 @@
+import { useState, type CSSProperties } from "react";
 import { CHALLENGE_COPY } from "./splash-scene";
 import type { ChallengePeriod } from "../shared/challenge-spotlights";
 import { CHALLENGE_PERIODS } from "../shared/challenge-spotlights";
@@ -148,6 +149,50 @@ interface RedditorMatchCardProps {
 const STRONG_BUTTON =
   "btn btn--blue euclid-home__secondary-button euclid-home__secondary-button--strong";
 
+const randomFloatTarget = () =>
+  `translate(${(Math.random() * 10 - 5).toFixed(2)}%, ${(Math.random() * 10 - 5).toFixed(2)}%) rotate(${(Math.random() * 20 - 10).toFixed(2)}deg)`;
+
+const randomFloatPath = () => ({
+  "--float-one": randomFloatTarget(),
+  "--float-two": randomFloatTarget(),
+  "--float-three": randomFloatTarget(),
+});
+
+/** Each menu square keeps its own phase and chooses new destinations every lap. */
+function MenuTokenCluster({
+  owner,
+  position,
+}: {
+  owner: 1 | 2;
+  position: 0 | 1 | 2 | 3;
+}) {
+  const [motion, setMotion] = useState(() => {
+    const duration = 8 + position * 2 + Math.random() * 1.5;
+    const x = (position % 2 === 0 ? -4 : 4) + Math.random() - 0.5;
+    const y = (position < 2 ? -4 : 4) + Math.random() - 0.5;
+    return {
+      "--float-origin": `translate(${x.toFixed(2)}%, ${y.toFixed(2)}%) rotate(${-9 + position * 6}deg)`,
+      "--float-duration": `${duration.toFixed(2)}s`,
+      "--float-delay": `${(-duration * (0.13 + position * 0.19 + Math.random() * 0.05)).toFixed(2)}s`,
+      ...randomFloatPath(),
+    };
+  });
+  return (
+    <div className="home-card__tokens" aria-hidden="true">
+      <div
+        className="home-card__float"
+        style={motion as CSSProperties}
+        onAnimationIteration={(event) => {
+          if (event.animationName === "tokens-float")
+            setMotion((previous) => ({ ...previous, ...randomFloatPath() }));
+        }}
+      >
+        <TokenCluster owner={owner} />
+      </div>
+    </div>
+  );
+}
+
 function RedditorMatchCard({
   h2h,
   actionPending,
@@ -215,7 +260,7 @@ function RedditorMatchCard({
 
   return (
     <article className={cardClassName}>
-      <TokenCluster owner={2} className="home-card__tokens" />
+      <MenuTokenCluster owner={2} position={1} />
       <div className="home-card__copy">
         <p className="eyebrow">Live multiplayer</p>
         <h2>{h2h.title}</h2>
@@ -460,7 +505,7 @@ export function HomeScreen(props: HomeScreenProps) {
             ) : null}
 
             <article className="panel home-card home-solo">
-              <TokenCluster owner={1} className="home-card__tokens" />
+              <MenuTokenCluster owner={1} position={0} />
               <div className="home-solo__head">
                 <div className="home-card__copy">
                   <p className="eyebrow">Solo · against Euclid</p>
@@ -566,9 +611,9 @@ export function HomeScreen(props: HomeScreenProps) {
                       className={`panel home-card home-challenge home-challenge--${CHALLENGE_COPY[period].tone}`}
                       key={period}
                     >
-                      <TokenCluster
+                      <MenuTokenCluster
                         owner={CHALLENGE_COPY[period].owner}
-                        className="home-card__tokens"
+                        position={period === "daily" ? 2 : 3}
                       />
                       <div className="home-card__copy">
                         <p className="eyebrow">Subreddit competition</p>

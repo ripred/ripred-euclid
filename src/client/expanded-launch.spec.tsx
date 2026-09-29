@@ -352,7 +352,7 @@ describe("Options in expanded navigation", () => {
     expect(document.activeElement?.id).toBe("setup-title");
     expect(host.querySelector('[role="tablist"]')).toBeNull();
     await input("#setup-difficulty", "8");
-    await input("#setup-win-score", "42");
+    expect(host.textContent).not.toContain("Winning score");
     for (const control of Array.from(
       host.querySelectorAll<HTMLInputElement>(".setup .switch input"),
     ))
@@ -371,8 +371,8 @@ describe("Options in expanded navigation", () => {
     expect(localStorage.getItem("euclid_sound_on")).toBe("on");
     await click("Options");
     expect(
-      host.querySelector<HTMLInputElement>("#setup-win-score")!.value,
-    ).toBe("42");
+      host.querySelector<HTMLInputElement>("#setup-difficulty")!.value,
+    ).toBe("8");
     await click("Done");
     await click("Play Euclid");
     const call = vi
@@ -380,13 +380,15 @@ describe("Options in expanded navigation", () => {
       .mock.calls.find(([url]) => url === "/api/solo/start")!;
     expect(JSON.parse(String(call[1]?.body))).toMatchObject({
       mode: "practice",
-      rules: { difficulty: "brutal", winScore: 42 },
+    });
+    expect(JSON.parse(String(call[1]?.body)).rules).toEqual({
+      difficulty: "brutal",
     });
   });
   it("uses fixed Ranked rules after changing personal Practice options", async () => {
     await menu();
     await click("Options");
-    await input("#setup-win-score", "42");
+    await input("#setup-difficulty", "8");
     await click("Ranked");
     await click("Done");
     await click("Play Euclid");

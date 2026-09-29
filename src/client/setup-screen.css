@@ -36,17 +36,6 @@
   text-align: center;
 }
 
-.setup-target__row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-3);
-}
-
-.setup-target__row .input {
-  width: 120px;
-}
-
 .setup-ranked {
   display: grid;
   grid-template-columns: 170px minmax(0, 1fr);

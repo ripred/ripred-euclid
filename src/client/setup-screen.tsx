@@ -5,8 +5,6 @@ import {
   AI_DIFFICULTY_LABELS,
   RANKED_SOLO_RULES,
   STANDARD_BOARD,
-  STANDARD_MAX_SCORE,
-  STANDARD_WIN_SCORE,
   type AiDifficulty,
   type SoloMode,
 } from "../shared/game/rules";
@@ -25,8 +23,6 @@ export interface SetupScreenProps {
   onSoloModeChange: (mode: SoloMode) => void;
   difficulty: AiDifficulty;
   onDifficultyChange: (difficulty: AiDifficulty) => void;
-  winScore: number;
-  onWinScoreChange: (score: number) => void;
   assistOn: boolean;
   onAssistChange: (on: boolean) => void;
   soundOn: boolean;
@@ -68,8 +64,6 @@ export function SetupScreen(props: SetupScreenProps) {
     onSoloModeChange,
     difficulty,
     onDifficultyChange,
-    winScore,
-    onWinScoreChange,
     assistOn,
     onAssistChange,
     appVersion,
@@ -201,45 +195,6 @@ export function SetupScreen(props: SetupScreenProps) {
                     onChange={onDifficultyChange}
                   />
 
-                  <div className="field setup-target">
-                    <label className="field__label" htmlFor="setup-win-score">
-                      Winning score
-                    </label>
-                    <div className="setup-target__row">
-                      <input
-                        id="setup-win-score"
-                        className="input num"
-                        type="number"
-                        min={1}
-                        max={STANDARD_MAX_SCORE}
-                        value={winScore}
-                        onChange={(event) =>
-                          onWinScoreChange(
-                            Math.max(
-                              1,
-                              Math.min(
-                                STANDARD_MAX_SCORE,
-                                Number(event.target.value) || 0,
-                              ),
-                            ),
-                          )
-                        }
-                      />
-                      <button
-                        type="button"
-                        className="btn btn--sm"
-                        disabled={winScore === STANDARD_WIN_SCORE}
-                        onClick={() => onWinScoreChange(STANDARD_WIN_SCORE)}
-                      >
-                        Use standard {STANDARD_WIN_SCORE}
-                      </button>
-                    </div>
-                    <p className="field__hint">
-                      Standard games are first to {STANDARD_WIN_SCORE}. The most
-                      one player can score is {STANDARD_MAX_SCORE}.
-                    </p>
-                  </div>
-
                   <Switch
                     {...SQUARE_HINTS_COPY}
                     checked={assistOn}
@@ -258,8 +213,6 @@ export function SetupScreen(props: SetupScreenProps) {
               />
               <p className="field__hint">
                 Difficulty, square hints and sound are saved on this device.
-                Winning score applies to this visit. Ranked always uses the
-                ranked rules.
               </p>
             </section>
             <section

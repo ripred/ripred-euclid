@@ -3,7 +3,7 @@ import { isRecord } from "../shared/guards";
 
 /**
  * Options and gameplay share this device's practice preferences.
- * Every game uses the standard board; winning score is session-specific.
+ * Game rules come from the server; these choices only affect difficulty and hints.
  */
 export interface PracticePreferences {
   difficulty: AiDifficulty;

@@ -30,6 +30,20 @@ const winners: ChallengeSpotlights = {
 };
 
 describe("public challenge spotlights", () => {
+  it("retains a seeded winner label without marking the real daily winner", async () => {
+    const redis = new MemoryRedis();
+    const mixed = {
+      ...winners,
+      preview: false,
+      weekly: { ...winners.weekly!, preview: true },
+    };
+    redis.seed(CHALLENGE_RESULTS_KEY, JSON.stringify(mixed));
+    redis.seed(
+      SUBREDDIT_SETTINGS_KEY,
+      JSON.stringify({ dailyChallenges: true, weeklyChallenges: true }),
+    );
+    expect(await publicChallengeSpotlights(redis)).toEqual(mixed);
+  });
   it.each([
     { dailyChallenges: false, weeklyChallenges: false },
     { dailyChallenges: true, weeklyChallenges: false },

@@ -316,7 +316,6 @@ describe("solo request intents", () => {
       mode: "practice",
       commandId: "practice-start",
       rules: {
-        winScore: 5,
         difficulty: "coffee",
         humanPlayer: 1,
         firstPlayer: 1,

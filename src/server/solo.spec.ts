@@ -4,6 +4,8 @@ import {
   RANKED_SOLO_RULES,
   PLAY_STYLES,
   SOLO_RULES_VERSION,
+  STANDARD_MAX_SCORE,
+  STANDARD_WIN_SCORE,
   validatePracticeRules,
 } from "../shared/game/rules";
 import type { SoloSessionRecord } from "./solo";
@@ -38,7 +40,6 @@ function practice(
     humanPlayer?: 0 | 1;
     firstPlayer?: 0 | 1;
     difficulty?: "doofus" | "beginner" | "coffee";
-    winScore?: number;
   } = {},
 ): ReturnType<typeof createSoloSession> {
   return createSoloSession({
@@ -46,7 +47,6 @@ function practice(
     ownerId: "human-1",
     privateSeed: "private-practice-seed",
     rules: validatePracticeRules({
-      winScore: options.winScore ?? 20,
       difficulty: options.difficulty ?? "doofus",
       humanPlayer: options.humanPlayer ?? 0,
       firstPlayer: options.firstPlayer ?? 0,
@@ -118,7 +118,7 @@ describe("solo request and rules validation", () => {
     const validated = validateSoloStartRequest({
       mode: "practice",
       commandId: "start-2",
-      rules: { winScore: 10, difficulty: "coffee" },
+      rules: { difficulty: "coffee" },
     });
     // Practice is always played on the standard board.
     expect(validated.rules).toMatchObject({
@@ -126,15 +126,27 @@ describe("solo request and rules validation", () => {
       rulesVersion: SOLO_RULES_VERSION,
       W: 8,
       H: 8,
+      winScore: STANDARD_WIN_SCORE,
       difficulty: "coffee",
     });
+    expect(validated.request).toEqual({
+      mode: "practice",
+      commandId: "start-2",
+      rules: { difficulty: "coffee", humanPlayer: 0, firstPlayer: 0 },
+    });
 
-    for (const extra of [{ trustedScore: true }, { W: 4 }, { scoring: "true" }])
+    for (const extra of [
+      { trustedScore: true },
+      { W: 4 },
+      { scoring: "true" },
+      { winScore: STANDARD_WIN_SCORE },
+      { winScore: 10 },
+    ])
       expect(() =>
         validateSoloStartRequest({
           mode: "practice",
           commandId: "start-2",
-          rules: { winScore: 10, difficulty: "coffee", ...extra },
+          rules: { difficulty: "coffee", ...extra },
         }),
       ).toThrow("unknown field");
   });
@@ -146,6 +158,50 @@ describe("solo request and rules validation", () => {
     { mode: "unknown", commandId: "start" },
   ])("rejects malformed starts %#", (request) => {
     expect(() => validateSoloStartRequest(request)).toThrow();
+  });
+
+  it.each([1, 20, STANDARD_MAX_SCORE])(
+    "preserves a saved Practice target of %s through resume and subsequent moves",
+    (winScore) => {
+      const saved = createSoloSession({
+        gameId: "legacy-practice",
+        ownerId: "human-1",
+        privateSeed: "private-practice-seed",
+        rules: { ...validatePracticeRules({ difficulty: "doofus" }), winScore },
+        now: START,
+      }).record;
+      const resumed = normalizeSoloSessionRecord(saved);
+      const moved = makeHumanMove(resumed, 1).record;
+
+      expect(resumed).toEqual(saved);
+      expect(normalizeSoloSessionRecord(moved)).toEqual(moved);
+      expect(publicSoloSnapshot(moved)).toMatchObject({
+        rules: { winScore },
+        board: { winScore, solo: { rules: { winScore } } },
+      });
+    },
+  );
+
+  it.each([
+    undefined,
+    null,
+    0,
+    -1,
+    1.5,
+    Infinity,
+    NaN,
+    STANDARD_MAX_SCORE + 1,
+    "20",
+  ])("rejects an invalid saved Practice target %#", (winScore) => {
+    const saved = practice().record;
+    expect(() =>
+      normalizeSoloSessionRecord({
+        ...saved,
+        rules: { ...saved.rules, winScore },
+      }),
+    ).toThrow(
+      `winScore must be an integer from 1 through ${STANDARD_MAX_SCORE}`,
+    );
   });
 });
 
@@ -443,7 +499,6 @@ describe("abandonment and canonical terminal results", () => {
   it("completes from canonical moves and does not expose an AI win for sharing", () => {
     // Filling points in reading order loses when Euclid moves first.
     let record = practice({
-      winScore: 4,
       difficulty: "beginner",
       humanPlayer: 1,
       firstPlayer: 0,

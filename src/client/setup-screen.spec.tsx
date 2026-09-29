@@ -7,7 +7,7 @@ import {
   type SubredditSettings,
 } from "../shared/subreddit-settings";
 import { SetupScreen } from "./setup-screen";
-import { STANDARD_WIN_SCORE, type SoloMode } from "../shared/game/rules";
+import type { SoloMode } from "../shared/game/rules";
 import {
   readPracticePreferences,
   savePracticePreferences,
@@ -36,7 +36,6 @@ function Harness() {
   const [practice, setPractice] = useState(readPracticePreferences);
   const [sound, setSound] = useState(readSoundPreference);
   const [soloMode, setSoloMode] = useState<SoloMode>("practice");
-  const [winScore, setWinScore] = useState<number>(STANDARD_WIN_SCORE);
   useEffect(() => savePracticePreferences(practice), [practice]);
   useEffect(() => saveSoundPreference(sound), [sound]);
   return (
@@ -49,8 +48,6 @@ function Harness() {
       }
       assistOn={practice.assist}
       onAssistChange={(assist) => setPractice((p) => ({ ...p, assist }))}
-      winScore={winScore}
-      onWinScoreChange={setWinScore}
       soundOn={sound}
       onSoundChange={setSound}
       appVersion="test-version"
@@ -297,9 +294,9 @@ describe("personal Options", () => {
     expect(host.textContent).toContain("test-version");
   });
 
-  it("remembers difficulty, hints and sound across visits but resets winning score", async () => {
+  it("remembers difficulty, hints and sound across visits without configurable scoring rules", async () => {
     await setInput("#setup-difficulty", "8");
-    await setInput("#setup-win-score", "42");
+    expect(host.textContent).not.toContain("Winning score");
     await click(control("Square hints"));
     await click(control("Sound effects"));
     expect(readPracticePreferences()).toEqual({
@@ -307,22 +304,13 @@ describe("personal Options", () => {
       assist: true,
     });
     expect(readSoundPreference()).toBe(true);
-    expect(
-      host.querySelector<HTMLInputElement>("#setup-win-score")!.value,
-    ).toBe("42");
     await click(button("Ranked"));
     expect(host.querySelector("#setup-difficulty")).toBeNull();
-    expect(host.querySelector("#setup-win-score")).toBeNull();
     expect(host.textContent).toContain("Hints are off");
     expect(control("Sound effects")).toBeTruthy();
     await click(button("Practice"));
-    expect(
-      host.querySelector<HTMLInputElement>("#setup-win-score")!.value,
-    ).toBe("42");
     await act(async () => root.render(<Harness key="new-visit" />));
-    expect(
-      host.querySelector<HTMLInputElement>("#setup-win-score")!.value,
-    ).toBe(String(STANDARD_WIN_SCORE));
+    expect(host.textContent).not.toContain("Winning score");
     expect(
       host.querySelector<HTMLInputElement>("#setup-difficulty")!.value,
     ).toBe("8");

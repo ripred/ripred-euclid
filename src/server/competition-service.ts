@@ -843,6 +843,7 @@ export class CompetitionService {
         counts[instance.period]++;
         winner = {
           username: instance.leader.username,
+          ...(instance.preview ? { preview: true } : {}),
           moves: instance.leader.moves,
           elapsedMs: instance.leader.elapsedMs,
           dailyWins: counts.daily,
@@ -857,9 +858,13 @@ export class CompetitionService {
         );
         const prior = spotlights[instance.period];
         if (!prior?.endsAt || prior.endsAt < instance.endsAt) {
-          spotlights.preview = false;
-          spotlights[instance.period] = winner;
-          writes.push(jsonWrite(CHALLENGE_RESULTS_KEY, spotlights));
+          writes.push(
+            jsonWrite(CHALLENGE_RESULTS_KEY, {
+              ...spotlights,
+              preview: false,
+              [instance.period]: winner,
+            }),
+          );
         }
       }
       writes.push(

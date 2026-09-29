@@ -42,6 +42,8 @@ export interface StoredCompetitionResult extends CompetitionResult {
 }
 export interface CompetitionInstance {
   id: string;
+  /** Explicitly marked sample data created for moderator validation. */
+  preview?: boolean;
   period: ChallengePeriod;
   opensAt: number;
   endsAt: number;

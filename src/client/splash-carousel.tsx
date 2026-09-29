@@ -276,9 +276,10 @@ export function ChallengeWinnerCard({
         kicker={`${challenge} Winner`}
         title={name}
         subtitle={
-          winner.endsAt
+          (winner.preview ? "Test result · " : "") +
+          (winner.endsAt
             ? `Ended ${formatCompetitionDate(winner.endsAt)}`
-            : "Completed challenge"
+            : "Completed challenge")
         }
         oneLine
       />

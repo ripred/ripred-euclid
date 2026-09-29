@@ -4,6 +4,7 @@ import {
   PLAY_STYLES,
   RANKED_SOLO_RULES,
   SOLO_RULES_VERSION,
+  STANDARD_MAX_SCORE,
   playStyleForDifficulty,
   playerColorForIndex,
   validatePracticeRules,
@@ -247,13 +248,26 @@ function normalizeStoredRules(value: unknown): RankedSoloRules | PracticeRules {
   }
 
   try {
-    // The stored board fields must match the standard board exactly.
-    const rules = validatePracticeRules({
-      winScore: value.winScore,
-      difficulty: value.difficulty,
-      humanPlayer: value.humanPlayer,
-      firstPlayer: value.firstPlayer,
-    });
+    // Preserve historical targets when resuming or replaying saved Practice games.
+    const winScore = value.winScore;
+    if (
+      typeof winScore !== "number" ||
+      !Number.isInteger(winScore) ||
+      winScore < 1 ||
+      winScore > STANDARD_MAX_SCORE
+    ) {
+      return invalidSession(
+        `winScore must be an integer from 1 through ${STANDARD_MAX_SCORE}.`,
+      );
+    }
+    const rules = {
+      ...validatePracticeRules({
+        difficulty: value.difficulty,
+        humanPlayer: value.humanPlayer,
+        firstPlayer: value.firstPlayer,
+      }),
+      winScore,
+    };
     if (!sameValue(value, rules)) {
       return invalidSession("Stored Practice rules are not canonical.");
     }
@@ -295,7 +309,6 @@ export function validateSoloStartRequest(input: unknown): ValidatedSoloStart {
           mode: "practice",
           commandId,
           rules: {
-            winScore: rules.winScore,
             difficulty: rules.difficulty,
             humanPlayer: rules.humanPlayer,
             firstPlayer: rules.firstPlayer,

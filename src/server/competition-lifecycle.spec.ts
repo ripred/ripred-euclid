@@ -751,46 +751,61 @@ describe("durable settlement recovery", () => {
     return instance;
   }
 
-  it("settles missed periods once, including disabled challenges, without overwriting a newer spotlight", async () => {
-    const { service, redis, lifecycle } = fixture("2026-10-05T12:00:00.000Z");
-    const state = lifecycle();
-    // Deliberately queue the more recent result before the older recovery item.
-    queueInstance(
-      redis,
-      state,
-      "recent",
-      "2026-10-03T00:00:00.000Z",
-      "recent-player",
-    );
-    queueInstance(
-      redis,
-      state,
-      "old",
-      "2026-09-27T00:00:00.000Z",
-      "old-player",
-    );
-    redis.seed(COMPETITION_STATE_KEY, JSON.stringify(state));
-    await service.reconcile();
-    const recent = redis.json<CompetitionSummary>(
-      competitionSummaryKey("recent"),
-    );
-    const old = redis.json<CompetitionSummary>(competitionSummaryKey("old"));
-    expect(recent?.winner?.username).toBe("recent-player");
-    expect(old?.winner?.username).toBe("old-player");
-    expect(
-      redis.json<{ daily: { username: string } }>(CHALLENGE_RESULTS_KEY)?.daily
-        .username,
-    ).toBe("recent-player");
-    const wins = redis.value(competitionWinsKey("recent-player"));
-    expect(wins).toBeDefined();
-    expect(redis.json(competitionWinsKey("recent-player"))).toEqual({
-      daily: 1,
-      weekly: 0,
-    });
-    await service.reconcile();
-    expect(redis.value(competitionWinsKey("recent-player"))).toBe(wins);
-    expect(lifecycle().settlementQueue).toEqual([]);
-  });
+  it.each([false, true])(
+    "settles missed periods once without overwriting a newer spotlight, retaining sample marker %s",
+    async (preview) => {
+      const { service, redis, lifecycle } = fixture("2026-10-05T12:00:00.000Z");
+      const state = lifecycle();
+      // Deliberately queue the more recent result before the older recovery item.
+      const recentInstance = queueInstance(
+        redis,
+        state,
+        "recent",
+        "2026-10-03T00:00:00.000Z",
+        "recent-player",
+      );
+      if (preview) {
+        recentInstance.preview = true;
+        redis.seed(
+          competitionInstanceKey("recent"),
+          JSON.stringify(recentInstance),
+        );
+      }
+      queueInstance(
+        redis,
+        state,
+        "old",
+        "2026-09-27T00:00:00.000Z",
+        "old-player",
+      );
+      redis.seed(COMPETITION_STATE_KEY, JSON.stringify(state));
+      await service.reconcile();
+      const recent = redis.json<CompetitionSummary>(
+        competitionSummaryKey("recent"),
+      );
+      const old = redis.json<CompetitionSummary>(competitionSummaryKey("old"));
+      expect(recent?.winner?.username).toBe("recent-player");
+      expect(recent?.winner?.preview).toBe(preview || undefined);
+      expect(old?.winner?.username).toBe("old-player");
+      expect(
+        redis.json<{ daily: { username: string } }>(CHALLENGE_RESULTS_KEY)
+          ?.daily.username,
+      ).toBe("recent-player");
+      expect(
+        redis.json<{ daily: { preview?: boolean } }>(CHALLENGE_RESULTS_KEY)
+          ?.daily.preview,
+      ).toBe(preview || undefined);
+      const wins = redis.value(competitionWinsKey("recent-player"));
+      expect(wins).toBeDefined();
+      expect(redis.json(competitionWinsKey("recent-player"))).toEqual({
+        daily: 1,
+        weekly: 0,
+      });
+      await service.reconcile();
+      expect(redis.value(competitionWinsKey("recent-player"))).toBe(wins);
+      expect(lifecycle().settlementQueue).toEqual([]);
+    },
+  );
 
   it("does not award a winner for an empty or superseded instance", async () => {
     const { service, redis, lifecycle } = fixture("2026-10-05T12:00:00.000Z");

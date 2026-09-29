@@ -45,7 +45,6 @@ import type {
 import { Board, isBoardValid } from "../shared/game/engine";
 import {
   AI_DIFFICULTY_LABELS,
-  STANDARD_WIN_SCORE,
   type AiDifficulty,
   type PlayerColor,
   type SoloMode,
@@ -376,8 +375,6 @@ export const App = ({
     });
   }, [selectedDifficulty, assistOn]);
 
-  // Practice may play to another target on the standard board.
-  const [winScore, setWinScore] = useState<number>(STANDARD_WIN_SCORE);
   const soloStartIntentKey = useMemo(
     () =>
       createSoloStartIntentKey(
@@ -386,12 +383,11 @@ export const App = ({
           : {
               mode: "practice",
               rules: {
-                winScore,
                 difficulty: selectedDifficulty,
               },
             },
       ),
-    [selectedDifficulty, soloMode, winScore],
+    [selectedDifficulty, soloMode],
   );
 
   const [status, setStatus] = useState<string>("");
@@ -799,7 +795,7 @@ export const App = ({
       soloMode === "ranked"
         ? createRankedSoloStartIntent(commandId)
         : createPracticeSoloStartIntent(
-            { winScore, difficulty: selectedDifficulty },
+            { difficulty: selectedDifficulty },
             commandId,
           );
 
@@ -877,7 +873,6 @@ export const App = ({
     selectedDifficulty,
     soloMode,
     soloStartIntentKey,
-    winScore,
   ]);
 
   const submitSoloMove = useCallback(
@@ -2816,8 +2811,6 @@ export const App = ({
         onSoloModeChange={setSoloMode}
         difficulty={selectedDifficulty}
         onDifficultyChange={setSelectedDifficulty}
-        winScore={winScore}
-        onWinScoreChange={setWinScore}
         assistOn={assistOn}
         onAssistChange={setAssistOn}
         soundOn={soundOn}

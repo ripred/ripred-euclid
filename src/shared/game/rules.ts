@@ -133,10 +133,7 @@ export type RankedSoloRules = SoloRules & {
 
 export type PracticeRules = SoloRules & { readonly mode: "practice" };
 
-export type PracticeRulesInput = Pick<
-  PracticeRules,
-  "winScore" | "difficulty"
-> &
+export type PracticeRulesInput = Pick<PracticeRules, "difficulty"> &
   Partial<Pick<PracticeRules, "humanPlayer" | "firstPlayer">>;
 
 export const RANKED_SOLO_RULES: Readonly<RankedSoloRules> = Object.freeze({
@@ -156,7 +153,6 @@ export const DEFAULT_PRACTICE_RULES: Readonly<PracticeRules> = Object.freeze({
 });
 
 const PRACTICE_RULE_FIELDS = new Set<keyof PracticeRulesInput>([
-  "winScore",
   "difficulty",
   "humanPlayer",
   "firstPlayer",
@@ -171,7 +167,7 @@ function assertPlayerIndex(value: unknown, field: string): PlayerIndex {
 
 /**
  * Validates untrusted Practice configuration and returns the canonical rules
- * stored by the server. Practice is always played on the standard board;
+ * stored by the server. Practice always uses the standard board and target;
  * Ranked configuration never passes through this path.
  */
 export function validatePracticeRules(candidate: unknown): PracticeRules {
@@ -192,18 +188,6 @@ export function validatePracticeRules(candidate: unknown): PracticeRules {
     throw new TypeError("difficulty is not supported.");
   }
 
-  const winScore = candidate.winScore;
-  if (
-    typeof winScore !== "number" ||
-    !Number.isInteger(winScore) ||
-    winScore < 1 ||
-    winScore > STANDARD_MAX_SCORE
-  ) {
-    throw new RangeError(
-      `winScore must be an integer from 1 through ${STANDARD_MAX_SCORE}.`,
-    );
-  }
-
   const humanPlayer = assertPlayerIndex(
     candidate.humanPlayer ?? DEFAULT_PRACTICE_RULES.humanPlayer,
     "humanPlayer",
@@ -217,7 +201,7 @@ export function validatePracticeRules(candidate: unknown): PracticeRules {
     rulesVersion: SOLO_RULES_VERSION,
     mode: "practice",
     ...STANDARD_BOARD,
-    winScore,
+    winScore: STANDARD_WIN_SCORE,
     humanPlayer,
     firstPlayer,
     difficulty,

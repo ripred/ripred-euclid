@@ -512,6 +512,9 @@ export function CompetitionScreen({
               aria-labelledby="competition-final-title"
             >
               <h2 id="competition-final-title">Latest finalized result</h2>
+              {state.latestResult.winner?.preview && (
+                <p className="field__hint">Test result</p>
+              )}
               <p className="field__hint">
                 Period ended {formatCompetitionDate(state.latestResult.endsAt)}
               </p>

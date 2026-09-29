@@ -98,7 +98,6 @@ export function createSoloStartIntentKey(
   const { rules } = configuration;
   return JSON.stringify({
     mode: "practice",
-    winScore: rules.winScore,
     difficulty: rules.difficulty,
     humanPlayer: rules.humanPlayer ?? null,
     firstPlayer: rules.firstPlayer ?? null,
@@ -275,7 +274,6 @@ export function createPracticeSoloStartIntent(
     mode: "practice",
     commandId: requireCommandId(commandId),
     rules: {
-      winScore: rules.winScore,
       difficulty: rules.difficulty,
       ...(rules.humanPlayer === undefined
         ? {}

@@ -56,7 +56,6 @@ function createFixture(options: SoloStoreOptions = {}): {
 }
 
 const PRACTICE_RULES: PracticeRulesInput = {
-  winScore: 1,
   difficulty: "doofus",
   humanPlayer: 0,
   firstPlayer: 0,
@@ -590,7 +589,10 @@ describe("SoloStore start and ownership", () => {
 
     await startPractice(store, "same-start");
     await expect(
-      startPractice(store, "same-start", { ...PRACTICE_RULES, winScore: 2 }),
+      startPractice(store, "same-start", {
+        ...PRACTICE_RULES,
+        difficulty: "beginner",
+      }),
     ).rejects.toMatchObject({ code: "command_conflict" });
 
     const ranked = await startRanked(store, "owned-game");

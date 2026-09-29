@@ -181,8 +181,7 @@
   overflow: hidden;
 }
 
-/* Both play cards carry the same art in the same place: the free corner
-   opposite their copy, fully inside the card. */
+/* Reserve a quiet illustration area; each square moves independently inside it. */
 .home-card__tokens {
   position: absolute;
   right: var(--sp-5);
@@ -190,19 +189,45 @@
   width: 124px;
   height: 124px;
   opacity: 0.9;
-  transform: rotate(-8deg);
-  animation: tokens-float 7s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.home-card__float,
+.home-card__float > .token-cluster {
+  width: 100%;
+  height: 100%;
+}
+
+.home-card__float > .token-cluster {
+  /* Keep the entire square inside its reserved area at the drift extremes. */
+  transform: scale(0.92);
+}
+
+.home-card__float {
+  transform: var(--float-origin);
+  animation: tokens-float var(--float-duration) var(--float-delay) ease-in-out
+    infinite;
 }
 
 @keyframes tokens-float {
+  0%,
+  100% {
+    transform: var(--float-origin);
+  }
   25% {
-    transform: rotate(-10deg) translate(3px, 2px);
+    transform: var(--float-one);
   }
   50% {
-    transform: rotate(-2deg) translate(-2px, 8px);
+    transform: var(--float-two);
   }
   75% {
-    transform: rotate(-6deg) translate(-3px, 3px);
+    transform: var(--float-three);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-card__float {
+    animation: none;
   }
 }
 

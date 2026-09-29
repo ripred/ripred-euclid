@@ -269,7 +269,7 @@ function LessonList({ stepIndex }: { stepIndex: number | null }) {
           <span className="preview-lessons__mark">
             {index < current ? <PieceGlyph owner={1} size={16} /> : index + 1}
           </span>
-          {lesson.label}
+          <span className="preview-lessons__label">{lesson.label}</span>
         </li>
       ))}
     </ol>
