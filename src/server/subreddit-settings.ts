@@ -10,15 +10,18 @@ import { parseJson } from "./stored-json";
 
 export const SUBREDDIT_SETTINGS_KEY = "euclid:subreddit-settings:v1";
 
-/** The saved settings; nothing saved, or anything unreadable, reads as off. */
+/** Stored settings; nothing saved, or anything unreadable, reads as off. */
+export const parseSubredditSettings = (
+  raw: string | null | undefined,
+): SubredditSettings =>
+  validateSubredditSettings(parseJson(raw)) ?? {
+    ...DEFAULT_SUBREDDIT_SETTINGS,
+  };
+
 export async function readSubredditSettings(
   redis: RedisCasClient,
 ): Promise<SubredditSettings> {
-  return (
-    validateSubredditSettings(
-      parseJson(await redis.get(SUBREDDIT_SETTINGS_KEY)),
-    ) ?? { ...DEFAULT_SUBREDDIT_SETTINGS }
-  );
+  return parseSubredditSettings(await redis.get(SUBREDDIT_SETTINGS_KEY));
 }
 
 /**

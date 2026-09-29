@@ -17,11 +17,7 @@ import type {
   CompetitionSummary,
   CompetitionTemplatesResponse,
 } from "../shared/competitions";
-import {
-  DEFAULT_SUBREDDIT_SETTINGS,
-  validateSubredditSettings,
-  type SubredditSettings,
-} from "../shared/subreddit-settings";
+import { type SubredditSettings } from "../shared/subreddit-settings";
 import {
   generateChallenge,
   type CertifiedChallenge,
@@ -47,9 +43,11 @@ import {
 } from "./redis-cas";
 import { parseJson } from "./stored-json";
 import {
+  parseSubredditSettings,
   readSubredditSettings,
   SUBREDDIT_SETTINGS_KEY,
 } from "./subreddit-settings";
+import { isCount, isRecord } from "../shared/guards";
 
 export interface CompetitionServiceOptions {
   now?: () => number;
@@ -77,10 +75,16 @@ const jsonWrite = (
   value: JSON.stringify(value),
   ...(expiration ? { expiration } : {}),
 });
-const settingsFrom = (value: string | undefined) =>
-  validateSubredditSettings(parseJson(value)) ?? {
-    ...DEFAULT_SUBREDDIT_SETTINGS,
-  };
+
+/** A winner's challenge win totals; missing or unreadable counts start at 0. */
+function readWinCounts(
+  raw: string | undefined,
+): Record<ChallengePeriod, number> {
+  const stored = parseJson(raw);
+  return byPeriod((period) =>
+    isRecord(stored) && isCount(stored[period]) ? stored[period] : 0,
+  );
+}
 
 /** Lifecycle and templates share one parameterized daily/weekly implementation. */
 export class CompetitionService {
@@ -151,7 +155,9 @@ export class CompetitionService {
             )
           )
             return { action: "no-change", result: false };
-          const old = settingsFrom(values.get(SUBREDDIT_SETTINGS_KEY));
+          const old = parseSubredditSettings(
+            values.get(SUBREDDIT_SETTINGS_KEY),
+          );
           const now = this.now();
           for (const period of CHALLENGE_PERIODS) {
             const config = state.periods[period];
@@ -259,7 +265,9 @@ export class CompetitionService {
             "Generation failed. Apply again with a new command to retry.",
           );
         const state = readCompetitionState(values.get(COMPETITION_STATE_KEY));
-        const settings = settingsFrom(values.get(SUBREDDIT_SETTINGS_KEY));
+        const settings = parseSubredditSettings(
+          values.get(SUBREDDIT_SETTINGS_KEY),
+        );
         const config = state.periods[period];
         if (config.revision !== request.expectedRevision)
           throw new ChallengeError(
@@ -395,7 +403,9 @@ export class CompetitionService {
         return { action: "no-change", result: undefined };
       const state = readCompetitionState(values.get(COMPETITION_STATE_KEY));
       const config = state.periods[period];
-      const settings = settingsFrom(values.get(SUBREDDIT_SETTINGS_KEY));
+      const settings = parseSubredditSettings(
+        values.get(SUBREDDIT_SETTINGS_KEY),
+      );
       if (
         config.revision !== request.expectedRevision ||
         config.currentId !== previousId ||
@@ -508,7 +518,9 @@ export class CompetitionService {
     await redisMultiCas(this.redis, keys, (values) => {
       const current = readCompetitionState(values.get(COMPETITION_STATE_KEY));
       const config = current.periods[period];
-      const settings = settingsFrom(values.get(SUBREDDIT_SETTINGS_KEY));
+      const settings = parseSubredditSettings(
+        values.get(SUBREDDIT_SETTINGS_KEY),
+      );
       const now = this.now();
       if (config.currentId !== currentId)
         return { action: "no-change", result: undefined };
@@ -596,7 +608,9 @@ export class CompetitionService {
       const claim = await redisMultiCas(this.redis, keys, (values) => {
         const state = readCompetitionState(values.get(COMPETITION_STATE_KEY));
         const config = state.periods[period];
-        const settings = settingsFrom(values.get(SUBREDDIT_SETTINGS_KEY));
+        const settings = parseSubredditSettings(
+          values.get(SUBREDDIT_SETTINGS_KEY),
+        );
         const now = this.now();
         const window = competitionWindow(
           period,
@@ -698,7 +712,9 @@ export class CompetitionService {
         (values) => {
           const state = readCompetitionState(values.get(COMPETITION_STATE_KEY));
           const config = state.periods[period];
-          const settings = settingsFrom(values.get(SUBREDDIT_SETTINGS_KEY));
+          const settings = parseSubredditSettings(
+            values.get(SUBREDDIT_SETTINGS_KEY),
+          );
           const now = this.now();
           const template =
             config.pending && config.pending.effectiveAt <= claim.window.opensAt
@@ -836,10 +852,7 @@ export class CompetitionService {
       writes[0] = jsonWrite(COMPETITION_STATE_KEY, state);
       let winner: ChallengeWinner | null = null;
       if (!instance.superseded && instance.leader && winnerId) {
-        const counts = (parseJson(values.get(competitionWinsKey(winnerId))) as {
-          daily: number;
-          weekly: number;
-        } | null) ?? { daily: 0, weekly: 0 };
+        const counts = readWinCounts(values.get(competitionWinsKey(winnerId)));
         counts[instance.period]++;
         winner = {
           username: instance.leader.username,

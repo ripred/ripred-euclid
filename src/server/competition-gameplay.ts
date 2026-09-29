@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   ChallengeError,
+  MAX_COMMAND_ID_LENGTH,
+  readChallengeSnapshot,
   placeChallengePoint,
   type ChallengeSnapshot,
 } from "../shared/challenge";
@@ -20,11 +22,7 @@ import type {
   CompetitionSummary,
 } from "../shared/competitions";
 import { isCanonicalIdentifier, isCount, isRecord } from "../shared/guards";
-import {
-  DEFAULT_SUBREDDIT_SETTINGS,
-  validateSubredditSettings,
-  type SubredditSettings,
-} from "../shared/subreddit-settings";
+import { type SubredditSettings } from "../shared/subreddit-settings";
 import {
   COMPETITION_DETAILS_TTL,
   COMPETITION_STATE_KEY,
@@ -32,6 +30,7 @@ import {
   competitionSummaryKey,
   competitionWindow,
   readCompetitionInstance,
+  readStoredCompetitionResult,
   readCompetitionState,
   type CompetitionConfig,
   type CompetitionInstance,
@@ -44,7 +43,10 @@ import {
 } from "./competition-redis";
 import { reserveWindowBudget } from "./request-limits";
 import { parseJson } from "./stored-json";
-import { SUBREDDIT_SETTINGS_KEY } from "./subreddit-settings";
+import {
+  SUBREDDIT_SETTINGS_KEY,
+  parseSubredditSettings,
+} from "./subreddit-settings";
 
 export interface CompetitionIdentity {
   userId: string;
@@ -76,14 +78,8 @@ interface GameplayReceipt {
 interface GameplayInput extends CompetitionCommand {
   point?: number;
 }
-const readSettings = (raw: string | null | undefined): SubredditSettings =>
-  validateSubredditSettings(parseJson(raw)) ?? {
-    ...DEFAULT_SUBREDDIT_SETTINGS,
-  };
 const readAttempt = (raw: string | null | undefined) =>
-  (parseJson(raw) as ChallengeSnapshot | undefined) ?? null;
-const readBest = (raw: string | null | undefined) =>
-  (parseJson(raw) as StoredCompetitionResult | undefined) ?? null;
+  readChallengeSnapshot(parseJson(raw));
 const publicResult = (
   best: StoredCompetitionResult | null,
 ): CompetitionResult | null =>
@@ -96,7 +92,7 @@ const publicResult = (
 
 function command(input: unknown): GameplayInput {
   const identifier = (value: unknown) =>
-    isCanonicalIdentifier(value) && value.length <= 128;
+    isCanonicalIdentifier(value) && value.length <= MAX_COMMAND_ID_LENGTH;
   if (
     !isRecord(input) ||
     !identifier(input.commandId) ||
@@ -197,7 +193,7 @@ export class CompetitionGameplay {
       this.redis.get(SUBREDDIT_SETTINGS_KEY),
     ]);
     const state = readCompetitionState(stateRaw),
-      settings = readSettings(settingsRaw);
+      settings = parseSubredditSettings(settingsRaw);
     const instances = byPeriod(() => null as CompetitionInstance | null);
     await Promise.all(
       Object.entries(state.periods).map(async ([period, config]) => {
@@ -242,7 +238,7 @@ export class CompetitionGameplay {
         ])
       : [undefined, undefined, undefined];
     const instance = readCompetitionInstance(instanceRaw),
-      best = readBest(bestRaw);
+      best = readStoredCompetitionResult(bestRaw);
     return this.response(
       period,
       config,
@@ -281,7 +277,7 @@ export class CompetitionGameplay {
       this.redis.get(SUBREDDIT_SETTINGS_KEY),
       this.redis.get(COMPETITION_STATE_KEY),
     ]);
-    const current = readSettings(settingsRaw);
+    const current = parseSubredditSettings(settingsRaw);
     if (
       !current.showLiveChallengeStandings ||
       current[CHALLENGE_SETTING[period]] !== true ||
@@ -365,7 +361,7 @@ export class CompetitionGameplay {
         const now = this.now(),
           config = readCompetitionState(values.get(COMPETITION_STATE_KEY))
             .periods[period],
-          settings = readSettings(values.get(SUBREDDIT_SETTINGS_KEY));
+          settings = parseSubredditSettings(values.get(SUBREDDIT_SETTINGS_KEY));
         const instance = readCompetitionInstance(values.get(instanceKey));
         if (
           action !== "abandon" &&
@@ -392,7 +388,7 @@ export class CompetitionGameplay {
             "unavailable",
             "This challenge has not opened yet.",
           );
-        const best = readBest(values.get(bestKey));
+        const best = readStoredCompetitionResult(values.get(bestKey));
         const previous = readAttempt(values.get(attemptKey));
         const receipt = parseJson(values.get(receiptKey)) as
           | GameplayReceipt
@@ -598,7 +594,9 @@ export class CompetitionGameplay {
           await this.redis.get(competitionSummaryKey(config.latestSummaryId)),
         ) as CompetitionSummary | undefined) ?? null)
       : null;
-    let settings = readSettings(await this.redis.get(SUBREDDIT_SETTINGS_KEY));
+    let settings = parseSubredditSettings(
+      await this.redis.get(SUBREDDIT_SETTINGS_KEY),
+    );
     const info = availability(period, config, instance, settings, this.now());
     let rank: number | undefined;
     if (
@@ -612,7 +610,9 @@ export class CompetitionGameplay {
         best.member,
       );
       // A moderator may hide standings while the rank lookup is in flight.
-      settings = readSettings(await this.redis.get(SUBREDDIT_SETTINGS_KEY));
+      settings = parseSubredditSettings(
+        await this.redis.get(SUBREDDIT_SETTINGS_KEY),
+      );
     }
     const serverNow = this.now(),
       competition = availability(period, config, instance, settings, serverNow);

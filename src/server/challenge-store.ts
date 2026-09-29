@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   ChallengeError,
+  MAX_COMMAND_ID_LENGTH,
   placeChallengePoint,
   type ChallengeCommand,
   type ChallengeSnapshot,
@@ -9,6 +10,7 @@ import {
   generateChallenge,
   type CertifiedChallenge,
 } from "./challenge-generator";
+import { isCount, isRecord } from "../shared/guards";
 import { redisCas, type RedisCasClient } from "./redis-cas";
 import { reserveWindowBudget } from "./request-limits";
 
@@ -22,25 +24,24 @@ interface StoredChallenge {
   fingerprint: string;
 }
 
+/** A non-empty identifier within the command length limit. */
+const isCommandId = (value: unknown): value is string =>
+  typeof value === "string" &&
+  value.length > 0 &&
+  value.length <= MAX_COMMAND_ID_LENGTH;
+
 function command(value: unknown): ChallengeCommand & Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value))
+  if (!isRecord(value))
     throw new ChallengeError("invalid", "A command is required.");
-  const c = value as Record<string, unknown>;
-  if (
-    typeof c.commandId !== "string" ||
-    !c.commandId ||
-    c.commandId.length > 128 ||
-    !Number.isSafeInteger(c.expectedRevision) ||
-    (c.expectedRevision as number) < 0
-  )
+  if (!isCommandId(value.commandId) || !isCount(value.expectedRevision))
     throw new ChallengeError("invalid", "Invalid command or revision.");
-  for (const id of [c.puzzleId, c.attemptId])
-    if (id !== null && (typeof id !== "string" || !id || id.length > 128))
+  for (const id of [value.puzzleId, value.attemptId])
+    if (id !== null && !isCommandId(id))
       throw new ChallengeError(
         "invalid",
         "Invalid puzzle or attempt identifier.",
       );
-  return c as ChallengeCommand & Record<string, unknown>;
+  return value as ChallengeCommand & Record<string, unknown>;
 }
 
 function matches(current: StoredChallenge | null, c: ChallengeCommand) {

@@ -13,6 +13,10 @@ export function isCount(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
+/** A count, or null where a value is not known yet. */
+export const isCountOrNull = (value: unknown): value is number | null =>
+  value === null || isCount(value);
+
 /** The value when it is a count, otherwise null. */
 export const asCount = (value: unknown): number | null =>
   isCount(value) ? value : null;

@@ -5,6 +5,7 @@ import type {
   CompetitionTemplateVersion,
 } from "../shared/competitions";
 import type { CertifiedChallenge } from "./challenge-generator";
+import { isCount, isNonBlankString, isRecord } from "../shared/guards";
 import { parseJson } from "./stored-json";
 
 export const COMPETITION_STATE_KEY = "euclid:competitions:v1";
@@ -73,6 +74,19 @@ export function competitionWindow(
     opensAt,
     endsAt: opensAt + (period === "daily" ? 1 : 7) * 86_400_000,
   };
+}
+/** A player's stored best result, or null when it cannot be read. */
+export function readStoredCompetitionResult(
+  raw: string | null | undefined,
+): StoredCompetitionResult | null {
+  const value = parseJson(raw);
+  return isRecord(value) &&
+    isNonBlankString(value.username) &&
+    isNonBlankString(value.userId) &&
+    typeof value.member === "string" &&
+    [value.moves, value.elapsedMs, value.achievedAt, value.order].every(isCount)
+    ? (value as unknown as StoredCompetitionResult)
+    : null;
 }
 export function readCompetitionState(
   raw: string | null | undefined,

@@ -1,6 +1,7 @@
 import express from "express";
 import { ChallengeError } from "../shared/challenge";
 import { ChallengeStore } from "./challenge-store";
+import { requireModerator, type ModeratorLookup } from "./moderator";
 import { RequestLimitError } from "./request-limits";
 import {
   RedisCasConflictExhaustedError,
@@ -10,29 +11,20 @@ import {
 /** Every endpoint uses trusted request identity and current subreddit membership. */
 export function challengeRouter(
   redis: RedisCasClient,
-  authorize: () => Promise<string | null>,
+  authorize: ModeratorLookup,
 ) {
   const router = express.Router();
   const store = new ChallengeStore(redis);
-  router.use(async (_req, res, next) => {
-    try {
-      const ownerId = await authorize();
-      if (!ownerId)
-        return void res.status(403).json({
-          message: "The challenge playground is for subreddit moderators.",
-        });
-      res.locals.challengeOwner = ownerId;
-      next();
-    } catch {
-      res.status(503).json({
-        message: "Moderator access could not be checked. Please try again.",
-      });
-    }
-  });
+  router.use(
+    requireModerator(
+      authorize,
+      "The challenge playground is for subreddit moderators.",
+    ),
+  );
   router.get("/state", async (_req, res) => {
     try {
       res.json({
-        snapshot: await store.state(res.locals.challengeOwner as string),
+        snapshot: await store.state(res.locals.moderatorId as string),
       });
     } catch {
       res
@@ -45,7 +37,7 @@ export function challengeRouter(
       try {
         res.json({
           snapshot: await store.mutate(
-            res.locals.challengeOwner as string,
+            res.locals.moderatorId as string,
             action,
             req.body,
           ),
