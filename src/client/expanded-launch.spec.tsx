@@ -450,7 +450,7 @@ describe("Options in expanded navigation", () => {
     await click("Options");
     subredditSettings = { ...subredditSettings, tideMode: true };
     await click("Done");
-    expect(host.querySelector('[aria-label="Tide mode"]')).not.toBeNull();
+    expect(host.querySelector('[aria-label="Tide mode"]')).toBeNull();
     expect(host.textContent).toContain("Tide · Practice");
     expect(requests).toContain("/api/user/stats?variant=tide");
     expect(

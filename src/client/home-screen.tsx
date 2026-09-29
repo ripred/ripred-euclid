@@ -19,7 +19,6 @@ import { BoardMacro, BrandMark, TokenCluster, Wordmark } from "./ui/Brand";
 import { Icon, type IconName } from "./ui/Icon";
 import { PieceGlyph } from "./ui/BoardDiagram";
 import "./home-screen.css";
-import { TideRules } from "./tide-rules";
 
 export type HomeBusyAction =
   | "solo"
@@ -439,17 +438,6 @@ export function HomeScreen(props: HomeScreenProps) {
             A minute to learn. A lifetime to master.
           </p>
         </header>
-
-        {props.tideMode && (
-          <section className="panel" aria-label="Tide mode">
-            <h2>Tide is on</h2>
-            <p className="field__hint">
-              All new Practice, Ranked, and Redditor games use Tide. Saved games
-              keep their rules.
-            </p>
-            <TideRules />
-          </section>
-        )}
 
         {(anythingLoading || status || error) && (
           <div className="home-notices">
