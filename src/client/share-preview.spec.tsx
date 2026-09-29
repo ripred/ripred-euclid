@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { Board, Player } from "../shared/game/engine";
 import type {
-  RankingsSharePayload,
+  LegacyRankingsSharePayload,
   ResultSharePayload,
 } from "../shared/types/api";
 import { ResultShareView, SharePreview } from "./share-preview";
@@ -41,8 +41,8 @@ function resultFixture(
 }
 
 function rankingsFixture(
-  overrides: Partial<RankingsSharePayload> = {},
-): RankingsSharePayload {
+  overrides: Partial<LegacyRankingsSharePayload> = {},
+): LegacyRankingsSharePayload {
   return {
     kind: "rankings",
     shareId: "frozen-rankings",

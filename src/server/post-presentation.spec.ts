@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { communityPostStyles } from "./post-presentation";
+import {
+  communityPostStyles,
+  updateGamePostContent,
+} from "./post-presentation";
 
 const mocks = vi.hoisted(() => ({
   context: { subredditId: "t5_euclid" },
@@ -158,4 +161,80 @@ describe("community post images", () => {
       expect(saved).toBeUndefined();
     },
   );
+});
+
+describe("community post body verification", () => {
+  const content = {
+    text: "[Euclid](https://i.redd.it/icon.png)\n\nGame description.",
+  };
+  const makePost = () => {
+    const post = {
+      id: "t3_game" as const,
+      body: "Old body",
+      setTextFallback: vi.fn(async ({ text }: { text: string }) => {
+        post.body = text;
+      }),
+      edit: vi.fn(async ({ text }: { text: string }) => {
+        post.body = text;
+      }),
+    };
+    return post;
+  };
+
+  it.each([
+    "",
+    "\n\n* * *\nThis post contains content not supported on old Reddit. [Click here](https://sh.reddit.com/r/EuclidTheGame/comments/game)",
+  ])(
+    "accepts verified fallback with Reddit suffix %j and avoids rewriting it",
+    async (suffix) => {
+      const post = makePost();
+      post.setTextFallback.mockImplementation(async ({ text }) => {
+        post.body = text + suffix;
+      });
+      await updateGamePostContent(post, content);
+      await updateGamePostContent(post, content);
+      expect(post.setTextFallback).toHaveBeenCalledExactlyOnceWith(content);
+      expect(post.edit).not.toHaveBeenCalled();
+    },
+  );
+
+  it("repairs a successful setter that loses the requested content with one body edit", async () => {
+    const post = makePost();
+    post.setTextFallback.mockImplementation(async () => {
+      post.body = "This post contains content not supported on old Reddit.";
+    });
+    await updateGamePostContent(post, content);
+    await updateGamePostContent(post, content);
+    expect(post.edit).toHaveBeenCalledExactlyOnceWith(content);
+    expect(post.setTextFallback).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry a setter that fails", async () => {
+    const post = makePost();
+    post.setTextFallback.mockRejectedValue(new Error("Setter unavailable"));
+    await expect(updateGamePostContent(post, content)).rejects.toThrow(
+      "Setter unavailable",
+    );
+    expect(post.edit).not.toHaveBeenCalled();
+  });
+
+  it("propagates a failed compatibility edit", async () => {
+    const post = makePost();
+    post.setTextFallback.mockResolvedValue(undefined);
+    post.edit.mockRejectedValue(new Error("Edit unavailable"));
+    await expect(updateGamePostContent(post, content)).rejects.toThrow(
+      "Edit unavailable",
+    );
+    expect(post.edit).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects content still missing after the compatibility edit", async () => {
+    const post = makePost();
+    post.setTextFallback.mockResolvedValue(undefined);
+    post.edit.mockResolvedValue(undefined);
+    await expect(updateGamePostContent(post, content)).rejects.toThrow(
+      "content was not saved",
+    );
+    expect(post.edit).toHaveBeenCalledTimes(1);
+  });
 });

@@ -1,5 +1,6 @@
 import { context, reddit } from "@devvit/web/server";
 import { communityPostStyles } from "../post-presentation";
+import { gamePostContent } from "../community-post-content";
 
 /** Resolve fallible prerequisites before reserving a remote post submission. */
 export const prepareGamePost = async () => {
@@ -8,11 +9,10 @@ export const prepareGamePost = async () => {
     throw new Error("subredditName is required");
   }
 
+  const styles = await communityPostStyles();
   const options = {
-    styles: await communityPostStyles(),
-    textFallback: {
-      text: "Euclid is a strategy game about placing dots and completing squares. Open the post on reddit.com to play.",
-    },
+    styles,
+    textFallback: gamePostContent(styles.shareImageUrl),
     subredditName,
     title: "Euclid",
   };

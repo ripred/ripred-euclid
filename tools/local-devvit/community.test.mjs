@@ -18,6 +18,9 @@ test("local community seeds the game and locked newest-first hubs using shared t
   for (const [kind, title] of Object.entries(RESULT_HUB_TITLES)) {
     const hub = await local.reddit.getPostById(registry[kind]);
     assert.equal(hub.title, title);
+    assert.equal(hub.kind, "image");
+    assert.deepEqual(hub.imageUrls, ["https://i.redd.it/localicon.png"]);
+    assert.equal(hub.url, hub.imageUrls[0]);
     assert.equal(hub.locked, true);
     assert.equal(hub.suggestedCommentSort, "NEW");
   }
@@ -54,6 +57,14 @@ test("locked local hubs accept app comments and deny ordinary users without a wr
     "### Euclid beat alice, 156–132",
   );
   assert.equal(local.posts.size, 3, "sharing a result creates no feed post");
+  assert.equal(local.posts.get(id).numberOfComments, 1);
+  await local.posts.get(id).remove();
+  assert.equal(local.posts.get(id).removed, true);
+  assert.equal(
+    local.comments.has(comment.id),
+    true,
+    "removal preserves comments",
+  );
   const regular = await local.reddit.submitComment({
     id: local.registry.game,
     text: "hello",
@@ -133,4 +144,36 @@ test("local fixture bounds reject excess and invalid writes without growing the 
     /comment limit/,
   );
   assert.equal(local.comments.size, 1);
+});
+
+test("local body edits preserve hub state and custom post data without appending content", async () => {
+  const local = createLocalCommunity();
+  const text = "[Euclid](https://i.redd.it/localicon.png)\n\nPlay Euclid.";
+  const hub = await local.reddit.getPostById(local.registry.ai);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await hub.edit({ text });
+    assert.equal(hub.body, text);
+    assert.equal(hub.text, text);
+    assert.equal(hub.locked, true);
+    assert.equal(hub.suggestedCommentSort, "NEW");
+  }
+  const game = await local.reddit.submitCustomPost({
+    title: "Euclid",
+    textFallback: { text },
+    postData: { game: "unchanged" },
+    styles: { shareImageUrl: "https://i.redd.it/localicon.png" },
+  });
+  assert.equal(game.body, text);
+  await game.setTextFallback({ text });
+  assert.deepEqual(await local.reddit.getPostData(game.id), {
+    game: "unchanged",
+  });
+  assert.deepEqual(game.textFallback, { text });
+  await hub.edit({ text: "Plain text", id: "t3_other", locked: false });
+  assert.equal(hub.body, "Plain text");
+  assert.equal(hub.id, local.registry.ai);
+  assert.equal(hub.locked, true);
+  await assert.rejects(hub.edit({ text: "x".repeat(100_001) }), /size limit/);
+  await assert.rejects(hub.edit({}), /must contain text/);
+  assert.equal(hub.body, "Plain text");
 });

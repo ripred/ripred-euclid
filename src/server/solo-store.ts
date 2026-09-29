@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import type {
-  RankingsShareRow,
+  RankingRow,
   ResultSharePayload,
   SoloAbandonRequest,
   SoloAbandonResponse,
@@ -1443,14 +1443,14 @@ export class SoloStore {
 
   async getRankedRows(
     variant: GameVariant = "standard",
-  ): Promise<RankingsShareRow[]> {
+  ): Promise<RankingRow[]> {
     const playerIds = parseStringList(
       (await this.redis.get(SOLO_STORE_KEYS.rankedPlayersFor(variant))) ??
         undefined,
       "Ranked solo players",
     );
     const rows = await Promise.all(
-      playerIds.map(async (userId): Promise<RankingsShareRow | null> => {
+      playerIds.map(async (userId): Promise<RankingRow | null> => {
         const [ratingRaw, nameRaw, avatarRaw] = await Promise.all([
           this.redis.get(SOLO_STORE_KEYS.rankedRating(userId, variant)),
           this.redis.get(SOLO_STORE_KEYS.profileName(userId)),
@@ -1472,7 +1472,7 @@ export class SoloStore {
       }),
     );
     return rows
-      .filter((row): row is RankingsShareRow => row !== null)
+      .filter((row): row is RankingRow => row !== null)
       .sort(
         (left, right) =>
           right.rating - left.rating ||

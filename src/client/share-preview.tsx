@@ -2,8 +2,8 @@ import { useState, type MouseEventHandler } from "react";
 
 import "./share-preview.css";
 import type {
-  SharedPostPayload,
-  RankingsSharePayload,
+  StoredSharedPostPayload,
+  LegacyRankingsSharePayload,
   ResultSharePayload,
 } from "../shared/types/api";
 
@@ -15,7 +15,7 @@ import { boardAspectRatio } from "./ui/board-geometry";
 import type { ThemeMode } from "./theme";
 import { StandingsList } from "./ui/Standings";
 
-function SharedAt({ share }: { share: SharedPostPayload }) {
+function SharedAt({ share }: { share: StoredSharedPostPayload }) {
   return (
     <p className="share__meta">
       r/{share.subredditName} ·{" "}
@@ -83,7 +83,7 @@ function FinalBoard({ share }: { share: ResultSharePayload }) {
   );
 }
 
-function RankingsSummary({ share }: { share: RankingsSharePayload }) {
+function RankingsSummary({ share }: { share: LegacyRankingsSharePayload }) {
   return (
     <>
       <header className="share__heading">
@@ -140,7 +140,7 @@ export function SharePreview({
   share,
   onExpand,
 }: {
-  share: SharedPostPayload;
+  share: StoredSharedPostPayload;
   theme: ThemeMode;
   onExpand: MouseEventHandler<HTMLButtonElement>;
 }) {

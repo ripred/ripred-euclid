@@ -23,11 +23,10 @@ import type {
   H2HStateResponse,
   InitResponse,
   RatingRecord,
-  RankingsSharePayload,
   ResultSharePayload,
-  ShareBucket,
+  RankingBucket,
   SharePostDescriptor,
-  SharedPostPayload,
+  StoredSharedPostPayload,
   SoloAbandonRequest,
   SoloMoveRequest,
   SoloShareRequest,
@@ -197,9 +196,7 @@ const SHARE_POST = (id: string) => `euclid:share:post:${id}`;
 const SHARE_RATE = (uid: string, kind: string) =>
   `euclid:share:last:${kind}:${uid}`;
 const SHARE_RATE_MS = 10 * 1000;
-const HUMAN_VS_EUCLID_LABEL = "Redditor vs Euclid";
 const HUMAN_VS_HUMAN_LABEL = "Redditor vs Redditor";
-const LEADERBOARD_LABEL = "Leaderboard";
 
 /* ===== Metrics helpers ===== */
 const MSET = (name: string) => `euclid:metric:set:${name}`;
@@ -525,7 +522,7 @@ async function getElo(
 
   return { ...DEFAULT_ELO };
 }
-async function getRankingRows(bucket: ShareBucket, variant: GameVariant) {
+async function getRankingRows(bucket: RankingBucket, variant: GameVariant) {
   if (bucket === "hva") return soloStore.getRankedRows(variant);
 
   const ids = await getPlayers(variant);
@@ -584,11 +581,11 @@ function parseSharePostDescriptor(input: unknown): SharePostDescriptor | null {
 // Standalone posts created by older versions still resolve their snapshots.
 async function loadSharePayload(
   shareId: string,
-): Promise<SharedPostPayload | null> {
+): Promise<StoredSharedPostPayload | null> {
   const raw = await redis.get(SHARE_POST(shareId));
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as SharedPostPayload;
+    const parsed = JSON.parse(raw) as StoredSharedPostPayload;
     return parsed?.shareId === shareId ? parsed : null;
   } catch {
     return null;
@@ -600,7 +597,7 @@ async function getCurrentSubredditName() {
 }
 
 async function publishShareComment(
-  payload: SharedPostPayload,
+  payload: ResultSharePayload,
   idempotencyKey?: string,
 ) {
   return shareComments.publish(
@@ -1212,58 +1209,6 @@ router.get("/api/rankings", async (req, res) => {
 /* =========================
    Share comments to Reddit
    ========================= */
-
-router.post("/api/share/rankings", async (req, res) => {
-  try {
-    const uid = context.userId;
-    if (!uid)
-      return res.status(401).json({ ok: false, message: "userId missing" });
-
-    const { bucket } = (req.body || {}) as { bucket?: ShareBucket };
-    const variant: unknown = req.body?.variant ?? "standard";
-    if (!isGameVariant(variant))
-      return res.status(400).json({ message: "Invalid game mode." });
-    if (bucket !== "hvh" && bucket !== "hva")
-      return res
-        .status(400)
-        .json({ ok: false, message: "invalid rankings bucket" });
-
-    await drainH2HSettlementsBestEffort("share rankings");
-    await enforceShareRateLimit(uid, `rankings:${bucket}`);
-    const rows = await getRankingRows(bucket, variant);
-    if (rows.length === 0)
-      return res.status(409).json({
-        ok: false,
-        message: "No rankings are available to share yet.",
-      });
-
-    const sharedAt = nowISO();
-    const subredditName = await getCurrentSubredditName();
-    const modeLabel = variant === "tide" ? "Tide " : "";
-    const payload: RankingsSharePayload = {
-      shareId: randomUUID(),
-      kind: "rankings",
-      subredditName,
-      sharedAt,
-      bucket,
-      variant,
-      title: `Euclid ${modeLabel}${LEADERBOARD_LABEL}`,
-      subtitle: `${bucket === "hvh" ? HUMAN_VS_HUMAN_LABEL : `${HUMAN_VS_EUCLID_LABEL} • Ranked`} • ${formatShareDate(sharedAt)}`,
-      rows: rows.slice(0, 10),
-      ...(bucket === "hva" ? { solo: rankedSoloSessionMetadata(variant) } : {}),
-    };
-    const shared = await publishShareComment(payload);
-    slog("[SHARE] rankings commented", { uid, bucket, ...shared });
-    return res.json({
-      ok: true,
-      message: `${LEADERBOARD_LABEL} added to ${RESULT_HUB_TITLES[bucket === "hvh" ? "h2h" : "ai"]}.`,
-      status: "posted",
-      ...shared,
-    });
-  } catch (error: unknown) {
-    return sendShareError(res, "rankings", error);
-  }
-});
 
 router.post("/api/share/h2h-result", async (req, res) => {
   try {

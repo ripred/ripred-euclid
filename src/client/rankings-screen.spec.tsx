@@ -19,26 +19,26 @@ const rankings: LoadedRankings = {
   hva: [],
 };
 
-it("renders all 500 sample players on the full leaderboard and disables sharing fictional results", () => {
-  const html = renderToStaticMarkup(
-    <RankingsScreen
-      rankings={rankings}
-      loaded
-      loading={false}
-      error={null}
-      notice=""
-      shareBusy={null}
-      onRetry={() => {}}
-      onShare={() => {}}
-      onBack={() => {}}
-    />,
-  );
-  expect(html.match(/<li /g)).toHaveLength(500);
-  expect(html).toContain("sample_player_499");
-  expect(html).toContain("500 players");
-  expect(html).toContain("Results are fictional");
-  expect(html).not.toContain("Share leaderboard");
-});
+it.each([true, false])(
+  "renders all 500 players with no leaderboard share controls (preview=%s)",
+  (preview) => {
+    const html = renderToStaticMarkup(
+      <RankingsScreen
+        rankings={{ ...rankings, preview }}
+        loaded
+        loading={false}
+        error={null}
+        onRetry={() => {}}
+        onBack={() => {}}
+      />,
+    );
+    expect(html.match(/<li /g)).toHaveLength(500);
+    expect(html).toContain("sample_player_499");
+    expect(html).toContain("500 players");
+    expect(html.includes("Results are fictional")).toBe(preview);
+    expect(html).not.toContain("Share leaderboard");
+  },
+);
 
 it("keeps the splash to the podium and the next three of 500 sample entries", () => {
   const html = renderToStaticMarkup(

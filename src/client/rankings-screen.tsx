@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { ShareBucket } from "../shared/types/api";
+import type { RankingBucket } from "../shared/types/api";
 import type { GameVariant } from "../shared/game/rules";
 import { rankedPresetLabel } from "./format";
 import type { LoadedRankings } from "./rankings-loader";
@@ -10,13 +10,13 @@ import { PageShell } from "./ui/PageShell";
 import { StandingsList } from "./ui/Standings";
 import "./rankings-screen.css";
 
-const BUCKETS: readonly { value: ShareBucket; label: string }[] = [
+const BUCKETS: readonly { value: RankingBucket; label: string }[] = [
   { value: "hvh", label: "Redditor matches" },
   { value: "hva", label: "Ranked vs Euclid" },
 ];
 
 function bucketSubtitle(
-  bucket: ShareBucket,
+  bucket: RankingBucket,
   rankings: Pick<LoadedRankings, "hvaRules">,
 ): string {
   return bucket === "hvh"
@@ -29,10 +29,7 @@ export function RankingsScreen({
   loading,
   loaded,
   error,
-  notice,
-  shareBusy,
   onRetry,
-  onShare,
   onBack,
   variant = "standard",
   onVariantChange,
@@ -41,31 +38,20 @@ export function RankingsScreen({
   loading: boolean;
   loaded: boolean;
   error: string | null;
-  notice: string;
-  shareBusy: string | null;
   onRetry: () => void;
-  onShare: (bucket: ShareBucket) => void;
   onBack: () => void;
   variant?: GameVariant;
   onVariantChange?: (variant: GameVariant) => void;
 }) {
-  const [bucket, setBucket] = useState<ShareBucket>("hvh");
-  const sharePending = shareBusy?.startsWith("rankings:") ?? false;
+  const [bucket, setBucket] = useState<RankingBucket>("hvh");
 
   return (
     <PageShell
       title="Leaderboard"
       titleId="rankings-title"
-      back={{
-        label: sharePending ? "Sharing…" : "Back",
-        onClick: onBack,
-        disabled: sharePending,
-        busy: sharePending,
-      }}
+      back={{ label: "Back", onClick: onBack }}
       className="rankings"
     >
-      {notice ? <p className="notice">{notice}</p> : null}
-
       {onVariantChange && (
         <div
           className="seg rankings__tabs"
@@ -79,7 +65,6 @@ export function RankingsScreen({
               role="radio"
               aria-checked={variant === choice}
               tabIndex={variant === choice ? 0 : -1}
-              disabled={sharePending}
               onClick={() => onVariantChange(choice)}
               onKeyDown={(event) => {
                 if (
@@ -137,26 +122,11 @@ export function RankingsScreen({
         role="tabpanel"
         aria-label="Full leaderboard"
       >
-        <div className="rankings__head">
-          <p className="muted">
-            {variant === "tide" && bucket === "hvh" ? "Tide · " : ""}
-            {bucketSubtitle(bucket, rankings)}
-            {loaded && ` · ${rankings[bucket].length} players`}
-          </p>
-          {loaded && !rankings.preview ? (
-            <button
-              type="button"
-              className="btn btn--sm"
-              disabled={sharePending}
-              onClick={() => onShare(bucket)}
-            >
-              <Icon name="share" size={16} />
-              {shareBusy === `rankings:${bucket}`
-                ? "Sharing…"
-                : "Share leaderboard"}
-            </button>
-          ) : null}
-        </div>
+        <p className="muted rankings__description">
+          {variant === "tide" && bucket === "hvh" ? "Tide · " : ""}
+          {bucketSubtitle(bucket, rankings)}
+          {loaded && ` · ${rankings[bucket].length} players`}
+        </p>
 
         {rankings.preview && (
           <p className="muted">

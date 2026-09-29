@@ -1,10 +1,10 @@
-import type { RankingsResponse, RankingsShareRow } from "../shared/types/api";
+import type { RankingsResponse, RankingRow } from "../shared/types/api";
 import { fetchJsonRecord } from "./fetch-json";
 import type { GameVariant } from "../shared/game/rules";
 
 export type LoadedRankings = RankingsResponse & {
-  hvh: RankingsShareRow[];
-  hva: RankingsShareRow[];
+  hvh: RankingRow[];
+  hva: RankingRow[];
 };
 
 /** Load the live boards without presenting transport failures as empty results. */

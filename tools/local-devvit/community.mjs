@@ -5,6 +5,14 @@ const LOCAL_ICON = "https://i.redd.it/localicon.png";
 const reject = (message, code = "invalid_argument") =>
   Object.assign(new Error(message), { code });
 
+function snapshotBody(content) {
+  if (typeof content?.text !== "string")
+    throw reject("Local post body must contain text.");
+  if (content.text.length > 100_000)
+    throw reject("Local post exceeds the fixture size limit.");
+  return { text: content.text };
+}
+
 /** Process-local Reddit fixtures. No operation in this adapter uses the network. */
 export function createLocalCommunity({
   subredditName = "euclid_local",
@@ -35,16 +43,35 @@ export function createLocalCommunity({
     const permalink = `/r/${subredditName}/comments/${id.slice(3)}/`;
     const post = {
       ...structuredClone(options),
+      body: options.textFallback?.text ?? options.text,
       id,
       permalink,
-      url: `http://localhost${permalink}`,
+      url:
+        options.kind === "image"
+          ? options.imageUrls[0]
+          : `http://localhost${permalink}`,
+      subredditName,
       authorName: options.runAs === "USER" ? currentUsername() : appSlug,
       locked: options.locked ?? false,
+      numberOfComments: 0,
+      removed: false,
       async lock() {
         post.locked = true;
       },
+      async remove() {
+        post.removed = true;
+      },
       async setSuggestedCommentSort(sort) {
         post.suggestedCommentSort = sort;
+      },
+      async edit(content) {
+        const next = snapshotBody(content);
+        post.text = next.text;
+        post.body = next.text;
+      },
+      async setTextFallback(content) {
+        post.textFallback = snapshotBody(content);
+        post.body = post.textFallback.text;
       },
     };
     posts.set(id, post);
@@ -67,7 +94,8 @@ export function createLocalCommunity({
       title,
       locked: true,
       suggestedCommentSort: "NEW",
-      text: `Local result comments. Play Euclid at ${game.permalink}`,
+      kind: "image",
+      imageUrls: [LOCAL_ICON],
     });
     registry[kind] = hub.id;
   }
@@ -131,6 +159,7 @@ export function createLocalCommunity({
           permalink: `${post.permalink}${commentId.slice(3)}/`,
         };
         comments.set(commentId, comment);
+        post.numberOfComments++;
         return structuredClone(comment);
       },
     },

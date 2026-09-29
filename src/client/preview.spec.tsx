@@ -1,14 +1,14 @@
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import type { RankingsShareRow } from "../shared/types/api";
+import type { RankingRow } from "../shared/types/api";
 
 vi.mock("@devvit/web/client", () => ({ requestExpandedMode: vi.fn() }));
 import { PreviewApp, PreviewLeaderboard, PreviewStatus } from "./preview";
 
 const source = (file: string) =>
   readFileSync(new URL(file, import.meta.url), "utf8");
-const rows: RankingsShareRow[] = Array.from({ length: 8 }, (_, index) => ({
+const rows: RankingRow[] = Array.from({ length: 8 }, (_, index) => ({
   userId: `player-${index}`,
   name: `Player ${index}`,
   rating: 1600 - index,

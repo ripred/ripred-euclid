@@ -16,7 +16,7 @@ import {
 } from "./competition-display";
 import type { ExpandedEntry } from "./expanded-entry";
 import { formatChallengeTime } from "./challenge-time";
-import type { RankingsShareRow } from "../shared/types/api";
+import type { RankingRow } from "../shared/types/api";
 import { PieceGlyph } from "./ui/BoardDiagram";
 import { boardAspectRatio } from "./ui/board-geometry";
 import { TokenCluster, Wordmark } from "./ui/Brand";
@@ -163,7 +163,7 @@ function PodiumPlace({
   reduced,
 }: {
   rank: (typeof PODIUM_PLACES)[number];
-  row: RankingsShareRow | undefined;
+  row: RankingRow | undefined;
   cued: boolean;
   reduced: boolean;
 }) {
@@ -207,7 +207,7 @@ export function Podium({
   cued,
   reduced,
 }: {
-  rows: readonly RankingsShareRow[];
+  rows: readonly RankingRow[];
   label: string;
   cued: boolean;
   reduced: boolean;

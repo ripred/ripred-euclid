@@ -32,11 +32,11 @@ import type {
   H2HShareRequest,
   H2HStateResponse,
   ShareChatItem,
-  ShareBucket,
-  SharedPostPayload,
+  StoredSharedPostPayload,
   SoloAbandonResponse,
   SoloMoveResponse,
   SoloSessionSnapshot,
+  SoloShareRequest,
   SoloStartResponse,
   SoloStateResponse,
   UserStatsResponse,
@@ -2151,16 +2151,16 @@ export const App = ({
     }
   };
 
-  const shareGeneratedContent = async ({
+  const shareResult = async ({
     busyKey,
     endpoint,
     payload,
-    isCurrent = () => true,
+    isCurrent,
   }: {
-    busyKey: string;
-    endpoint: string;
-    payload?: Record<string, unknown>;
-    isCurrent?: () => boolean;
+    busyKey: "multiplayer" | "ai";
+    endpoint: "/api/share/h2h-result" | "/api/share/ai-result";
+    payload: H2HShareRequest | SoloShareRequest;
+    isCurrent: () => boolean;
   }): Promise<ShareResponse | null> => {
     if (shareBusyRef.current) return null;
 
@@ -2171,7 +2171,7 @@ export const App = ({
       const r = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload || {}),
+        body: JSON.stringify(payload),
       });
       const j = (await r.json().catch(() => ({}))) as ShareResponse;
       if (!r.ok || !j.ok) throw new Error(j.message || "Share failed.");
@@ -2187,19 +2187,6 @@ export const App = ({
     }
   };
 
-  const shareRankings = async (bucket: ShareBucket) => {
-    const response = await shareGeneratedContent({
-      busyKey: `rankings:${bucket}`,
-      endpoint: "/api/share/rankings",
-      payload: { bucket, variant: rankingsVariant },
-    });
-    if (response)
-      setNotice(
-        getResultSharePresentation(response, bucket === "hvh" ? "h2h" : "ai")
-          .notice,
-      );
-  };
-
   const shareMultiplayerWin = async () => {
     const gameId = gameIdRef.current;
     if (!gameId || h2hMutationRef.current !== null) return;
@@ -2211,7 +2198,7 @@ export const App = ({
       h2hRoundEpochRef.current === roundEpoch &&
       gameRevisionRef.current === terminalRevision;
     const payload: H2HShareRequest = { gameId, terminalRevision };
-    const response = await shareGeneratedContent({
+    const response = await shareResult({
       busyKey: "multiplayer",
       endpoint: "/api/share/h2h-result",
       payload,
@@ -2240,7 +2227,7 @@ export const App = ({
       };
     }
     const isCurrent = () => soloSnapshotRef.current?.gameId === snapshot.gameId;
-    const response = await shareGeneratedContent({
+    const response = await shareResult({
       busyKey: "ai",
       endpoint: "/api/share/ai-result",
       payload: {
@@ -2886,10 +2873,7 @@ export const App = ({
         loading={rankingsLoading}
         loaded={rankingsLoaded}
         error={rankingsError || null}
-        notice={notice}
-        shareBusy={shareBusy}
         onRetry={() => void loadRankings()}
-        onShare={shareRankings}
         onBack={returnHome}
       />
     );
@@ -3919,7 +3903,9 @@ export const App = ({
   );
 };
 
-const SharedPostView: React.FC<{ share: SharedPostPayload }> = ({ share }) => {
+const SharedPostView: React.FC<{ share: StoredSharedPostPayload }> = ({
+  share,
+}) => {
   if (share.kind === "rankings") {
     return (
       <PageShell

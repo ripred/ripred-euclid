@@ -96,8 +96,6 @@ beforeEach(() => {
           hva: [],
         });
       }
-      if (url === "/api/share/rankings")
-        return reply({ ok: true, message: "Shared." });
       if (url === "/api/competitions/availability")
         return reply({
           serverNow: Date.now(),
@@ -457,7 +455,7 @@ describe("Options in expanded navigation", () => {
       requests.filter((url) => url === "/api/competitions/availability").length,
     ).toBeGreaterThan(1);
   });
-  it("switches and shares the selected leaderboard mode with keyboard navigation", async () => {
+  it("switches leaderboard modes with keyboard navigation without sharing controls", async () => {
     await menu();
     await click("Leaderboard");
     expect(host.textContent).toContain("standard leader");
@@ -473,14 +471,12 @@ describe("Options in expanded navigation", () => {
     expect(button("Tide").getAttribute("aria-checked")).toBe("true");
     expect(host.textContent).toContain("tide leader");
     expect(host.textContent).not.toContain("standard leader");
-    await click("Share leaderboard");
-    const share = vi
-      .mocked(fetch)
-      .mock.calls.find(([url]) => url === "/api/share/rankings")!;
-    expect(JSON.parse(String(share[1]?.body))).toEqual({
-      bucket: "hvh",
-      variant: "tide",
-    });
+    expect(host.textContent).not.toContain("Share leaderboard");
+    await click("Ranked vs Euclid");
+    expect(host.textContent).not.toContain("Share leaderboard");
+    expect(requests.some((url) => url.startsWith("/api/share/"))).toBe(false);
+    await click("Back");
+    expect(host.textContent).toContain("Leaderboard");
   });
   it("keeps Options and all other navigation locked during matchmaking", async () => {
     await mount(null);

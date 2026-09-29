@@ -1,8 +1,8 @@
 import { PlayerAvatar } from "./PlayerAvatar";
-import type { RankingsShareRow } from "../../shared/types/api";
+import type { RankingRow } from "../../shared/types/api";
 import "./standings.css";
 
-const formatRecord = (row: RankingsShareRow) =>
+const formatRecord = (row: RankingRow) =>
   `${row.wins}W · ${row.losses}L · ${row.draws}D`;
 
 /** One ranked row, shared by the leaderboard, post previews and snapshots. */
@@ -11,7 +11,7 @@ export function StandingRow({
   rank,
   size = "md",
 }: {
-  row: RankingsShareRow;
+  row: RankingRow;
   rank: number;
   size?: "sm" | "md" | "lg";
 }) {
@@ -52,7 +52,7 @@ export function StandingsList({
   size = "md",
   empty,
 }: {
-  rows: readonly RankingsShareRow[];
+  rows: readonly RankingRow[];
   label: string;
   limit?: number;
   /** Rank of the first row shown, for lists that continue a podium. */

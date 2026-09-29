@@ -126,34 +126,20 @@ const h2h = (extra = {}) =>
   request("h2h-result", { gameId: "game", terminalRevision: 42, ...extra });
 
 describe("shared-result routes", () => {
-  it("shares one ranking snapshot as a comment without storing unused legacy post payloads", async () => {
-    vi.spyOn(SoloStore.prototype, "getRankedRows").mockResolvedValue([
-      {
-        userId: "winner",
-        name: "Winner",
-        rating: 1200,
-        games: 1,
-        wins: 1,
-        losses: 0,
-        draws: 0,
-      },
-    ]);
-    const first = await request("rankings", { bucket: "hva" });
-    expect(first.status).toBe(200);
-    const destination = await first.json();
-    expect(destination).toMatchObject({
-      postId: "t3_hub",
-      commentId: "t1_result",
-    });
-    expect(await (await request("rankings", { bucket: "hva" })).json()).toEqual(
-      destination,
-    );
-    expect(mocks.reddit.submitComment).toHaveBeenCalledTimes(1);
-    expect(
-      [...mocks.values.keys()].some((key) =>
-        key.startsWith("euclid:share:post:"),
-      ),
-    ).toBe(false);
+  it.each([
+    { bucket: "hvh", variant: "standard" },
+    { bucket: "hva", variant: "standard" },
+    { bucket: "hvh", variant: "tide" },
+    { bucket: "hva", variant: "tide" },
+  ])("does not expose leaderboard publishing for %j", async (body) => {
+    const rankings = vi.spyOn(SoloStore.prototype, "getRankedRows");
+    const response = await request("rankings", body);
+    expect(response.status).toBe(404);
+    expect(rankings).not.toHaveBeenCalled();
+    expect(mocks.reddit.submitComment).not.toHaveBeenCalled();
+    expect(mocks.resultHub).not.toHaveBeenCalled();
+    expect(mocks.cooldown).not.toHaveBeenCalled();
+    expect(mocks.values.size).toBe(0);
   });
   it.each([undefined, "stranger", "loser"])(
     "rejects unauthorized caller %s before comment or hub access",

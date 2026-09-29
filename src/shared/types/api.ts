@@ -10,7 +10,7 @@ import type {
 } from "../game/rules";
 import type { SubredditSettings } from "../subreddit-settings";
 
-export type ShareBucket = "hvh" | "hva";
+export type RankingBucket = "hvh" | "hva";
 
 export type SharePoint = {
   x: number;
@@ -461,7 +461,7 @@ export type SoloShareResponse =
       receipt: SoloShareReceipt;
     };
 
-export type RankingsShareRow = {
+export type RankingRow = {
   userId: string;
   name: string;
   avatar?: string;
@@ -472,16 +472,17 @@ export type RankingsShareRow = {
   draws: number;
 };
 
-export type RankingsSharePayload = {
+/** Read-only snapshots from leaderboard posts published by older versions. */
+export type LegacyRankingsSharePayload = {
   variant?: GameVariant;
   kind: "rankings";
   shareId: string;
   subredditName: string;
   sharedAt: string;
-  bucket: ShareBucket;
+  bucket: RankingBucket;
   title: string;
   subtitle: string;
-  rows: RankingsShareRow[];
+  rows: RankingRow[];
   solo?: RankedSoloSessionMetadata;
 };
 
@@ -509,15 +510,18 @@ export type ResultSharePayload = {
 export type RankingsResponse = {
   variant?: GameVariant;
   preview?: boolean;
-  hvh?: RankingsShareRow[];
-  hva?: RankingsShareRow[];
+  hvh?: RankingRow[];
+  hva?: RankingRow[];
   hvaRules?: RankedSoloSessionMetadata;
 };
 
-export type SharedPostPayload = RankingsSharePayload | ResultSharePayload;
+/** Stored post compatibility only; new shares accept ResultSharePayload. */
+export type StoredSharedPostPayload =
+  | LegacyRankingsSharePayload
+  | ResultSharePayload;
 
 export type SharePostDescriptor = {
-  shareType: SharedPostPayload["kind"];
+  shareType: StoredSharedPostPayload["kind"];
   shareId: string;
 };
 
@@ -536,7 +540,7 @@ export type ShareInitResponse = {
   postId: string;
   username: string;
   appVersion: string;
-  share: SharedPostPayload;
+  share: StoredSharedPostPayload;
 };
 
 export type InitResponse = GameInitResponse | ShareInitResponse;

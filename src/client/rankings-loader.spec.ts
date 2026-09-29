@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RANKED_SOLO_RULES, SOLO_RULES_VERSION } from "../shared/game/rules";
-import type { RankingsResponse, RankingsShareRow } from "../shared/types/api";
+import type { RankingsResponse, RankingRow } from "../shared/types/api";
 import { fetchRankings } from "./rankings-loader";
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -20,7 +20,7 @@ function response(payload: unknown, status = 200) {
   });
 }
 
-const row: RankingsShareRow = {
+const row: RankingRow = {
   userId: "ranked-player",
   name: "Ranked player",
   rating: 1234,

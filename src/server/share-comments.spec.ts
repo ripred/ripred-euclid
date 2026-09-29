@@ -1,12 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { Board, Player } from "../shared/game/engine";
-import type {
-  RankingsSharePayload,
-  ResultSharePayload,
-} from "../shared/types/api";
+import type { ResultSharePayload } from "../shared/types/api";
 import {
   buildShareComment,
-  rankingsShareIdempotencyKey,
   ShareCommentPendingError,
   ShareComments,
   type ShareCommentRedis,
@@ -79,41 +75,6 @@ function resultFixture(
   };
 }
 
-function rankingsFixture(
-  overrides: Partial<RankingsSharePayload> = {},
-): RankingsSharePayload {
-  return {
-    kind: "rankings",
-    shareId: "ranks",
-    subredditName: "Euclid",
-    sharedAt: "2026-09-29T12:00:00Z",
-    title: "Euclid Leaderboard",
-    subtitle: "vs Redditors",
-    bucket: "hvh",
-    rows: [
-      {
-        userId: "red-id",
-        name: "Red_1",
-        rating: 1234,
-        games: 8,
-        wins: 5,
-        losses: 2,
-        draws: 1,
-      },
-      {
-        userId: "Blue[2]",
-        name: "",
-        rating: 1000,
-        games: 0,
-        wins: 0,
-        losses: 0,
-        draws: 0,
-      },
-    ],
-    ...overrides,
-  };
-}
-
 describe("share comment body", () => {
   it.each(["ai", "h2h"] as const)(
     "uses one canonical winner-first %s heading with preserved usernames",
@@ -175,79 +136,9 @@ describe("share comment body", () => {
       "### Euclid beat Rip\\_red, 200–55",
     );
   });
-
-  it("formats ranking rows through the same escaped comment path", () => {
-    const payload = rankingsFixture();
-    const body = buildShareComment(payload, target.gamePermalink);
-    expect(body).toContain(
-      "1. Red\\_1 — 1234 (5–2–1)\n2. Blue\\[2\\] — 1000 (0–0–0)",
-    );
-    expect(body).toContain("[Play Euclid]");
-  });
 });
 
 describe("share comment publication", () => {
-  it("keys rankings by the ordered snapshot and UTC day, ignoring publication UUID and time of day", () => {
-    const payload = rankingsFixture();
-    const key = rankingsShareIdempotencyKey(payload);
-    expect(
-      rankingsShareIdempotencyKey({
-        ...payload,
-        shareId: "retry-id",
-        sharedAt: "2026-09-29T23:59:59Z",
-        variant: "standard",
-        rows: payload.rows.map((row) => ({
-          ...row,
-          avatar: "https://i.redd.it/new-avatar.png",
-        })),
-      }),
-    ).toBe(key);
-    for (const changes of [
-      { sharedAt: "2026-09-30T00:00:00Z" },
-      { sharedAt: "2026-09-29T22:00:00-05:00" },
-      { bucket: "hva" as const },
-      { variant: "tide" as const },
-      { rows: payload.rows.map((row) => ({ ...row, rating: row.rating + 1 })) },
-      { rows: [...payload.rows].reverse() },
-    ])
-      expect(rankingsShareIdempotencyKey({ ...payload, ...changes })).not.toBe(
-        key,
-      );
-  });
-
-  it("deduplicates an ambiguous rankings retry without a caller-supplied key", async () => {
-    const redis = new CommentRedis();
-    const reddit = {
-      submitComment: vi
-        .fn()
-        .mockRejectedValueOnce(new Error("Connection lost"))
-        .mockResolvedValue(comment),
-    };
-    const publisher = new ShareComments(redis, reddit);
-    await expect(
-      publisher.publish(rankingsFixture(), target),
-    ).rejects.toBeInstanceOf(ShareCommentPendingError);
-    await expect(
-      publisher.publish(
-        rankingsFixture({
-          shareId: "different-uuid",
-          sharedAt: "2026-09-29T23:00:00Z",
-        }),
-        target,
-      ),
-    ).rejects.toBeInstanceOf(ShareCommentPendingError);
-    expect(reddit.submitComment).toHaveBeenCalledTimes(1);
-    const nextDay = rankingsFixture({ sharedAt: "2026-09-30T00:00:00Z" });
-    const posted = await publisher.publish(nextDay, target);
-    expect(
-      await publisher.publish(
-        { ...nextDay, shareId: "next-day-retry" },
-        target,
-      ),
-    ).toEqual(posted);
-    expect(reddit.submitComment).toHaveBeenCalledTimes(2);
-  });
-
   it.each([
     new Error("failed to reply to comment"),
     Object.assign(new Error("Comment rejected"), { code: "permission_denied" }),
