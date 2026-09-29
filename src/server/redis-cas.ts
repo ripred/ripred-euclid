@@ -17,6 +17,9 @@ export interface RedisCasClient {
   get(key: string): Promise<string | null | undefined>;
 }
 
+/** Default retries for store operations that re-read several keys per attempt. */
+export const DEFAULT_DYNAMIC_ATTEMPTS = 8;
+
 export interface RedisCasOptions {
   /** Total attempts, including the initial attempt. Defaults to 4. */
   maxAttempts?: number;

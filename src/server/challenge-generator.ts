@@ -4,15 +4,31 @@ import {
   CHALLENGE_SIZE,
   CHALLENGE_VERSION,
   ChallengeError,
+  isPointList,
   readChallengeOptions,
+  readChallengePuzzle,
   type ChallengeOptions,
   type ChallengePuzzle,
 } from "../shared/challenge";
+import { isNonBlankString, isRecord } from "../shared/guards";
 
 export interface CertifiedChallenge {
   puzzle: ChallengePuzzle;
   seed: string;
   solutions: number[][];
+}
+
+/** A stored certification, or null when it cannot be read. */
+export function readCertifiedChallenge(
+  value: unknown,
+): CertifiedChallenge | null {
+  return isRecord(value) &&
+    readChallengePuzzle(value.puzzle) !== null &&
+    isNonBlankString(value.seed) &&
+    Array.isArray(value.solutions) &&
+    value.solutions.every(isPointList)
+    ? (value as unknown as CertifiedChallenge)
+    : null;
 }
 
 export const CHALLENGE_SEARCH_LIMITS = {

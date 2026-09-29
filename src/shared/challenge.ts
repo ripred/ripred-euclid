@@ -98,7 +98,7 @@ export class ChallengeError extends Error {
 /** A point on the challenge board, by row-major index. */
 const isBoardPoint = (value: unknown): value is number =>
   isCount(value) && value < CHALLENGE_SIZE ** 2;
-const isPointList = (value: unknown): value is number[] =>
+export const isPointList = (value: unknown): value is number[] =>
   Array.isArray(value) && value.every(isBoardPoint);
 
 /** A stored puzzle definition, or null when it cannot be read. */

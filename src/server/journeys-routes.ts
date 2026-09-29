@@ -7,7 +7,7 @@ import type {
   JourneyReceiptStatus,
   TelemetryJourneyStartResponse,
 } from "@devvit/analytics/shared/reddit";
-import { isCanonicalIdentifier, isRecord } from "../shared/guards";
+import { hasOnlyKeys, isCanonicalIdentifier, isRecord } from "../shared/guards";
 import {
   JOURNEYS_ACTIVITY_HEADER,
   JOURNEY_MILESTONES,
@@ -80,8 +80,6 @@ function suppressed(res: Response) {
 function invalid(res: Response, httpStatus = 400) {
   return reply(res, STATUS.invalid, "Telemetry request rejected.", httpStatus);
 }
-const onlyKeys = (value: Record<string, unknown>, keys: readonly string[]) =>
-  Object.keys(value).every((key) => keys.includes(key));
 const sameActivity = (a: JourneyActivityRef, b: JourneyActivityRef) =>
   journeyActivityKey(a) === journeyActivityKey(b);
 const canPromote = (a: JourneyActivityRef, b: JourneyActivityRef) =>
@@ -187,7 +185,7 @@ export function journeysRouter(options: JourneysRouterOptions): express.Router {
           request.endReason ||
           request.commandId ||
           request.expectedRevision !== undefined ||
-          (body !== undefined && (!isRecord(body) || !onlyKeys(body, [])))
+          (body !== undefined && (!isRecord(body) || !hasOnlyKeys(body, [])))
         )
           return void invalid(res);
         if (!(await store.ready(owner, request.documentId)))
@@ -204,7 +202,7 @@ export function journeysRouter(options: JourneysRouterOptions): express.Router {
       )
         return void invalid(res);
       if (event === "start") {
-        if (body !== undefined && (!isRecord(body) || !onlyKeys(body, [])))
+        if (body !== undefined && (!isRecord(body) || !hasOnlyKeys(body, [])))
           return void invalid(res);
         await store.admit(owner, true);
         const canonical = await options.readCanonical(identity.userId, request);
@@ -303,7 +301,7 @@ export function journeysRouter(options: JourneysRouterOptions): express.Router {
       let claimed: boolean;
       if (event === "progress") {
         if (
-          !onlyKeys(body, [
+          !hasOnlyKeys(body, [
             "journeyId",
             "progress",
             "action",
@@ -333,7 +331,7 @@ export function journeysRouter(options: JourneysRouterOptions): express.Router {
         };
       } else if (event === "interaction") {
         if (
-          !onlyKeys(body, ["journeyId", "action", "actionDetails"]) ||
+          !hasOnlyKeys(body, ["journeyId", "action", "actionDetails"]) ||
           !isJourneyInteraction(body.action, body.actionDetails)
         )
           return void invalid(res);
@@ -360,10 +358,11 @@ export function journeysRouter(options: JourneysRouterOptions): express.Router {
         };
       } else {
         if (
-          !onlyKeys(body, ["journeyId", "complete", "game"]) ||
+          !hasOnlyKeys(body, ["journeyId", "complete", "game"]) ||
           (body.complete !== undefined && typeof body.complete !== "boolean") ||
           (body.game !== undefined &&
-            (!isRecord(body.game) || !onlyKeys(body.game, ["win", "score"]))) ||
+            (!isRecord(body.game) ||
+              !hasOnlyKeys(body.game, ["win", "score"]))) ||
           !validEnd(canonical, request)
         )
           return void invalid(res);

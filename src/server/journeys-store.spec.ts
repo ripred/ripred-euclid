@@ -93,4 +93,27 @@ describe("bounded Journey attempt ledger", () => {
       "Invalid Journey binding",
     );
   });
+
+  it.each([
+    ["unreadable text", "{not json"],
+    ["a list", "[]"],
+    ["a plain value", "7"],
+    ["another version", JSON.stringify({ version: 2, expiresAt: 1 })],
+    ["a missing expiry", JSON.stringify({ version: 1 })],
+  ])(
+    "refuses %s with the same binding error rather than a parse failure",
+    async (_label, raw) => {
+      const redis = new MemoryRedis(),
+        store = new JourneysStore(redis);
+      redis.seed(journeyBindingKey(owner, "segment"), raw);
+      await expect(store.get(owner, "segment")).rejects.toThrow(
+        "Invalid Journey binding.",
+      );
+    },
+  );
+
+  it("reads nothing when no binding is stored", async () => {
+    const store = new JourneysStore(new MemoryRedis());
+    expect(await store.get(owner, "segment")).toBeNull();
+  });
 });

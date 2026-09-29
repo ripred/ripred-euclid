@@ -3,13 +3,16 @@ import {
   ChallengeError,
   MAX_COMMAND_ID_LENGTH,
   placeChallengePoint,
+  readChallengeSnapshot,
   type ChallengeCommand,
   type ChallengeSnapshot,
 } from "../shared/challenge";
 import {
   generateChallenge,
+  readCertifiedChallenge,
   type CertifiedChallenge,
 } from "./challenge-generator";
+import { parseJson } from "./stored-json";
 import { isCount, isRecord } from "../shared/guards";
 import { redisCas, type RedisCasClient } from "./redis-cas";
 import { reserveWindowBudget } from "./request-limits";
@@ -22,6 +25,20 @@ interface StoredChallenge {
   certification: CertifiedChallenge;
   lastCommand: string;
   fingerprint: string;
+}
+
+/** A saved playground session; unreadable sessions count as none. */
+export function readStoredChallenge(
+  raw: string | null | undefined,
+): StoredChallenge | null {
+  const value = parseJson(raw);
+  return isRecord(value) &&
+    readChallengeSnapshot(value.snapshot) !== null &&
+    readCertifiedChallenge(value.certification) !== null &&
+    typeof value.lastCommand === "string" &&
+    typeof value.fingerprint === "string"
+    ? (value as unknown as StoredChallenge)
+    : null;
 }
 
 /** A non-empty identifier within the command length limit. */
@@ -71,10 +88,10 @@ export class ChallengeStore {
   ) {}
 
   async state(userId: string): Promise<ChallengeSnapshot | null> {
-    const raw = await this.redis.get(challengeSessionKey(userId));
-    return raw
-      ? this.withElapsed((JSON.parse(raw) as StoredChallenge).snapshot)
-      : null;
+    const stored = readStoredChallenge(
+      await this.redis.get(challengeSessionKey(userId)),
+    );
+    return stored ? this.withElapsed(stored.snapshot) : null;
   }
 
   private withElapsed(snapshot: ChallengeSnapshot): ChallengeSnapshot {
@@ -97,10 +114,7 @@ export class ChallengeStore {
       .update(JSON.stringify([action, c]))
       .digest("hex");
     const key = challengeSessionKey(userId);
-    const raw = await this.redis.get(key);
-    const previous: StoredChallenge | null = raw
-      ? (JSON.parse(raw) as StoredChallenge)
-      : null;
+    const previous = readStoredChallenge(await this.redis.get(key));
     const duplicate = (current: StoredChallenge | null) => {
       if (current?.lastCommand !== c.commandId) return false;
       if (current.fingerprint !== fingerprint)
@@ -128,9 +142,7 @@ export class ChallengeStore {
     const puzzleId = this.newId(),
       attemptId = this.newId();
     const result = await redisCas(this.redis, key, (stored) => {
-      const current: StoredChallenge | null = stored
-        ? (JSON.parse(stored) as StoredChallenge)
-        : null;
+      const current = readStoredChallenge(stored);
       if (duplicate(current))
         return { action: "no-change", result: current!.snapshot };
       if (action === "abandon" && !current)

@@ -9,6 +9,7 @@ import {
   ChallengeStore,
   CHALLENGE_RETENTION_MS,
   challengeSessionKey,
+  readStoredChallenge,
 } from "./challenge-store";
 import { MemoryRedis } from "./testing/memory-redis";
 
@@ -238,5 +239,63 @@ describe("private playground sessions", () => {
       result.completedSquares.length,
     );
     expect(result.complete).toBe(true);
+  });
+});
+
+describe("stored playground sessions", () => {
+  async function storedSession() {
+    const { redis, store } = fixture();
+    const snapshot = await store.mutate("mod", "generate", {
+      ...command(null),
+      options,
+    });
+    const raw = redis.value(challengeSessionKey("mod"))!;
+    return { redis, store, snapshot, raw, stored: JSON.parse(raw) };
+  }
+
+  it("reads a generated session back unchanged", async () => {
+    const { raw, stored } = await storedSession();
+    expect(readStoredChallenge(raw)).toEqual(stored);
+  });
+
+  it.each([
+    ["nothing stored", () => undefined],
+    ["unreadable text", () => "{not json"],
+    [
+      "a missing snapshot",
+      (s: Record<string, unknown>) => ({ ...s, snapshot: null }),
+    ],
+    [
+      "a certification without solutions",
+      (s: Record<string, unknown>) => ({
+        ...s,
+        certification: { ...(s.certification as object), solutions: [[99]] },
+      }),
+    ],
+    [
+      "a certification with a blank seed",
+      (s: Record<string, unknown>) => ({
+        ...s,
+        certification: { ...(s.certification as object), seed: "" },
+      }),
+    ],
+    [
+      "a missing fingerprint",
+      (s: Record<string, unknown>) => ({ ...s, fingerprint: 7 }),
+    ],
+  ])("treats %s as no session", async (_label, change) => {
+    const { stored } = await storedSession();
+    const value = change(stored);
+    const raw =
+      typeof value === "string" || value === undefined
+        ? value
+        : JSON.stringify(value);
+    expect(readStoredChallenge(raw)).toBeNull();
+  });
+
+  it("reports no session, rather than failing, when the saved one is corrupt", async () => {
+    const { redis, store } = await storedSession();
+    redis.seed(challengeSessionKey("mod"), "{not json");
+    expect(await store.state("mod")).toBeNull();
   });
 });

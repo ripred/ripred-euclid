@@ -65,54 +65,25 @@ Journey can be absent. This is best-effort analytics, not an audit of every game
 
 ## Validation and release gates
 
-- [x] Tests cover lifecycle, canonical outcomes, replay/stale response races,
-      storage failure, idle resume, rematches, queue cancellation/pairing races,
-      challenge retry/back/abandon/replacement, receipt categories, timeouts,
-      payload limits, tampering, and no passive starts.
-- [x] Correctness, security, duplicate code, and hot-path review is clean.
-- [x] Full tests with bounded workers, type checking, lint, production/local
-      builds, dependency checks, local-adapter checks, and Devvit packaging pass.
-- [x] Uploaded version 0.2.37 is installed on `r/ripred_euclid_dev`.
-- [x] Version 0.2.37 is installed on `r/EuclidTheGame`,
-      the user's requested deployment and live-verification target.
-      Version 0.2.36 is the pre-change rollback baseline.
-- [x] Version 0.2.38 was submitted for unlisted review with its source and
-      Journey map. Reddit readback confirms PENDING, UNLISTED, and build READY.
-- [ ] Reddit approves 0.2.38; install that approved version on `r/EuclidTheGame`
-      and recheck real Journey receipts.
-- [ ] Deployed gameplay smoke checks are complete.
-- [ ] Real gameplay produces representative `JOURNEY_RECEIPT_VALID` receipts
-      for Ready, Start, Progress, Interaction, and End, including a queue cancel
-      and a real two-player match/rematch. HTTP 200 alone is insufficient.
-- [ ] Native dashboard evidence appears after aggregation. Screenshots occur
-      only during final deployed verification, with approval before each;
-      Firefox is foregrounded explicitly and the original iTerm2 window restored.
+Automated coverage spans the lifecycle, canonical outcomes, replay and stale
+response races, storage failure, idle resume, rematches, queue cancellation and
+pairing races, challenge retry/back/abandon/replacement, receipt categories,
+timeouts, payload limits, tampering, and the absence of passive starts. Unit
+tests and the local adapter replace the SDK transport, so they cannot confirm
+real ingestion.
 
-Local validation on 2026-09-29: 1,303 tests across 80 suites, 18 dependency checks,
-23 local-adapter checks, and a real local HTTP smoke test passed. The smoke test
-confirmed canonical solo play, disabled telemetry receipts, and the 2 KB request
-limit. Production bundles contain neither local telemetry substitutes nor PostHog.
+Before each release:
 
-Live verification on 2026-09-29: Reddit's installation readback confirms 0.2.37
-on `r/EuclidTheGame`. The existing three community posts were retained and setup
-completed. Firefox loaded the pinned game and its expanded app. The first real
-App.Ready returned `JOURNEY_RECEIPT_DENIED_PLAYTEST`, so ingestion and dashboard
-acceptance remain unverified. Version readback identifies 0.2.37 as PRIVATE (an
-uploaded, unpublished app version). Reddit's telemetry schema describes this
-denial in terms of the app version, not subreddit privacy. The backend predicate
-is not public; publishing an approved unlisted release is the next release-path
-candidate, not a guarantee of Journeys activation. No local playtest process was
-running.
-
-The unlisted submission completed at 2026-09-29 09:04 UTC. Owner-visible review
-request `6d361b64-5a3e-48d1-86b5-ccb9bfaa25d8` is PENDING for version 0.2.38
-(`9feab3da-e9b2-4216-81b8-82d2c3a5bbad`), with build READY and source present.
-The version remains PRIVATE until Reddit approves it. The publication command
-did not replace the installed 0.2.37 build. No public listing was requested.
-
-Committing and pushing the implementation does not establish live acceptance.
-A denied-not-allowlisted receipt leaves activation pending; retain this map and
-diagnostic evidence for Reddit's review.
+- [ ] Tests, type checking, lint, production and local builds, dependency
+      checks, local-adapter checks, and Devvit packaging pass.
+- [ ] The version is installed on the development subreddit and smoke-tested.
+- [ ] An uploaded, unpublished version returns
+      `JOURNEY_RECEIPT_DENIED_PLAYTEST`; only an installed, non-playtest
+      release can establish real ingestion.
+- [ ] Real gameplay produces representative `JOURNEY_RECEIPT_VALID` receipts for
+      Ready, Start, Progress, Interaction, and End, including a queue cancel and
+      a two-player match and rematch. HTTP 200 alone is insufficient.
+- [ ] The native dashboard shows the new data after aggregation.
 
 Reddit's dashboard reports daily app aggregates and offers a 30-day CSV; a
 per-mode funnel UI and an ingestion-latency SLA are not documented. Developer

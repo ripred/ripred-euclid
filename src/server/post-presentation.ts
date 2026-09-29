@@ -1,5 +1,6 @@
 import { context, media, reddit, redis } from "@devvit/web/server";
 import { isRecord } from "../shared/guards";
+import { parseJson } from "./stored-json";
 import type { gamePostContent } from "./community-post-content";
 
 const ICON_KEY = "euclid:community-post-icon:v1";
@@ -38,17 +39,12 @@ const hostedUrl = (value: unknown) => imageUrl(value, ["i.redd.it"]);
 function readStoredIcon(
   raw: string | null | undefined,
 ): StoredIcon | undefined {
-  if (!raw) return undefined;
-  try {
-    const value: unknown = JSON.parse(raw);
-    if (!isRecord(value)) return undefined;
-    const source = sourceUrl(value.source);
-    const shareImageUrl = hostedUrl(value.shareImageUrl);
-    if (source && shareImageUrl) return { source, shareImageUrl };
-  } catch {
-    // Invalid cached data must not prevent refreshing the community icon.
-  }
-  return undefined;
+  // Invalid cached data must not prevent refreshing the community icon.
+  const value = parseJson(raw);
+  if (!isRecord(value)) return undefined;
+  const source = sourceUrl(value.source);
+  const shareImageUrl = hostedUrl(value.shareImageUrl);
+  return source && shareImageUrl ? { source, shareImageUrl } : undefined;
 }
 
 /** Upload once per community icon, then reuse Reddit's hosted image for posts. */

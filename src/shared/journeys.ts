@@ -1,4 +1,9 @@
-import { isCanonicalIdentifier, isCount, isRecord } from "./guards";
+import {
+  hasOnlyKeys,
+  isCanonicalIdentifier,
+  isCount,
+  isRecord,
+} from "./guards";
 import type { CanonicalBoardSnapshot, H2HCanonicalState } from "./types/api";
 
 export const JOURNEYS_ACTIVITY_HEADER = "x-euclid-activity";
@@ -66,8 +71,6 @@ export type JourneyInteraction = keyof typeof JOURNEY_INTERACTIONS;
 export type JourneyInteractionDetail =
   (typeof JOURNEY_INTERACTIONS)[JourneyInteraction][number];
 
-const onlyKeys = (value: Record<string, unknown>, keys: readonly string[]) =>
-  Object.keys(value).every((key) => keys.includes(key));
 const id = (value: unknown): value is string =>
   isCanonicalIdentifier(value) &&
   [...value].every(
@@ -104,13 +107,13 @@ export function parseJourneyActivity(
   if (!isRecord(value)) return null;
   switch (value.kind) {
     case "solo":
-      return onlyKeys(value, ["kind", "gameId"]) && id(value.gameId)
+      return hasOnlyKeys(value, ["kind", "gameId"]) && id(value.gameId)
         ? { kind: "solo", gameId: value.gameId }
         : null;
     case "h2h-queue":
-      return onlyKeys(value, ["kind"]) ? { kind: "h2h-queue" } : null;
+      return hasOnlyKeys(value, ["kind"]) ? { kind: "h2h-queue" } : null;
     case "h2h":
-      return onlyKeys(value, [
+      return hasOnlyKeys(value, [
         "kind",
         "gameId",
         "roundStartRevision",
@@ -131,7 +134,12 @@ export function parseJourneyActivity(
           }
         : null;
     case "competition":
-      return onlyKeys(value, ["kind", "period", "instanceId", "attemptId"]) &&
+      return hasOnlyKeys(value, [
+        "kind",
+        "period",
+        "instanceId",
+        "attemptId",
+      ]) &&
         (value.period === "daily" || value.period === "weekly") &&
         id(value.instanceId) &&
         id(value.attemptId)
@@ -152,7 +160,7 @@ export function parseJourneyRequestContext(
 ): JourneyRequestContext | null {
   if (
     !isRecord(value) ||
-    !onlyKeys(value, [
+    !hasOnlyKeys(value, [
       "documentId",
       "segmentId",
       "activity",

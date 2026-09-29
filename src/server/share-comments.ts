@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { ResultSharePayload } from "../shared/types/api";
 import { isRecord } from "../shared/guards";
+import { parseJson } from "./stored-json";
 import { describeSharedResult } from "../shared/result-sharing";
 import { isDefinitiveRedditRejection } from "./reddit-write-errors";
 
@@ -87,28 +88,25 @@ function readPostedReceipt(
   raw: string | null | undefined,
 ): PublishedShareComment | null {
   if (raw === undefined || raw === null) return null;
-  try {
-    const value: unknown = JSON.parse(raw);
-    if (
-      isRecord(value) &&
-      value.status === "posted" &&
-      typeof value.postId === "string" &&
-      value.postId.startsWith("t3_") &&
-      typeof value.commentId === "string" &&
-      value.commentId.startsWith("t1_") &&
-      typeof value.permalink === "string" &&
-      value.permalink.length > 0 &&
-      value.sharedAs === "APP"
-    )
-      return {
-        postId: value.postId,
-        commentId: value.commentId,
-        permalink: value.permalink,
-        sharedAs: "APP",
-      };
-  } catch {
-    // A corrupt or incomplete receipt cannot authorize another remote write.
-  }
+  const value = parseJson(raw);
+  if (
+    isRecord(value) &&
+    value.status === "posted" &&
+    typeof value.postId === "string" &&
+    value.postId.startsWith("t3_") &&
+    typeof value.commentId === "string" &&
+    value.commentId.startsWith("t1_") &&
+    typeof value.permalink === "string" &&
+    value.permalink.length > 0 &&
+    value.sharedAs === "APP"
+  )
+    return {
+      postId: value.postId,
+      commentId: value.commentId,
+      permalink: value.permalink,
+      sharedAs: "APP",
+    };
+  // A corrupt or incomplete receipt cannot authorize another remote write.
   throw new ShareCommentPendingError();
 }
 

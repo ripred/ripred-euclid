@@ -40,6 +40,7 @@ import {
   deleteRedisCasWrite as deleteWrite,
   redisMultiCas,
   setRedisCasWrite as setWrite,
+  DEFAULT_DYNAMIC_ATTEMPTS,
   type RedisCasClient,
   type RedisCasOptions,
   type RedisCasSnapshot,
@@ -80,7 +81,6 @@ export const SOLO_RANKED_START_RATING = 1_200;
 export const SOLO_RANKED_AI_RATING = 1_600;
 export const SOLO_RANKED_K_FACTOR = 32;
 
-const DEFAULT_DYNAMIC_ATTEMPTS = 8;
 const MAX_FAILURE_MESSAGE_LENGTH = 1_000;
 
 const metricSet = (name: string) => `euclid:metric:set:${name}`;

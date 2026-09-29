@@ -26,6 +26,7 @@ import {
   redisCas,
   redisMultiCas,
   setRedisCasWrite as setWrite,
+  DEFAULT_DYNAMIC_ATTEMPTS,
   type RedisCasClient,
   type RedisCasOptions,
   type RedisCasSnapshot,
@@ -61,7 +62,6 @@ export const H2H_CHAT_RATE_LIMIT_MS = 1_000;
 export const H2H_SETTLEMENT_EVENT_VERSION = 1;
 
 const DEFAULT_MAX_IDLE_MS = 10 * 60 * 1000;
-const DEFAULT_DYNAMIC_ATTEMPTS = 8;
 
 export type H2HStoreOptions = {
   now?: () => number;

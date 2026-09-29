@@ -1,5 +1,6 @@
 import { context, reddit, redis } from "@devvit/web/server";
 import { isRecord } from "../shared/guards";
+import { parseJson } from "./stored-json";
 import { RESULT_HUB_TITLES } from "../shared/result-sharing";
 import type { ResultSharePayload } from "../shared/types/api";
 import { prepareGamePost } from "./core/post";
@@ -57,27 +58,21 @@ function isCommunityPermalink(value: unknown, postId: string): value is string {
 function readCommunityPosts(
   raw: string | null | undefined,
 ): CommunityPosts | null {
-  if (!raw) return null;
-  try {
-    const value: unknown = JSON.parse(raw);
-    if (
-      isRecord(value) &&
-      isPostId(value.game) &&
-      isPostId(value.ai) &&
-      isPostId(value.h2h) &&
-      new Set([value.game, value.ai, value.h2h]).size === 3 &&
-      isCommunityPermalink(value.gamePermalink, value.game)
-    )
-      return {
+  // An incomplete or corrupt configuration is not ready for result writes.
+  const value = parseJson(raw);
+  return isRecord(value) &&
+    isPostId(value.game) &&
+    isPostId(value.ai) &&
+    isPostId(value.h2h) &&
+    new Set([value.game, value.ai, value.h2h]).size === 3 &&
+    isCommunityPermalink(value.gamePermalink, value.game)
+    ? {
         game: value.game,
         gamePermalink: value.gamePermalink,
         ai: value.ai,
         h2h: value.h2h,
-      };
-  } catch {
-    // An incomplete or corrupt configuration is not ready for result writes.
-  }
-  return null;
+      }
+    : null;
 }
 
 export async function resultHub(payload: ResultSharePayload) {

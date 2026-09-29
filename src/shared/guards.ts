@@ -38,6 +38,12 @@ export function isCanonicalIdentifier(value: unknown): value is string {
   );
 }
 
+/** True when every key is one of `keys`; missing keys are allowed. */
+export const hasOnlyKeys = (
+  value: Record<string, unknown>,
+  keys: readonly string[],
+): boolean => Object.keys(value).every((key) => keys.includes(key));
+
 export function isStringArray(value: unknown): value is string[] {
   return (
     Array.isArray(value) && value.every((item) => typeof item === "string")

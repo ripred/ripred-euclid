@@ -7,8 +7,10 @@ import {
   parseJourneyActivity,
   type JourneyActivityRef,
 } from "../shared/journeys";
+import { isRecord } from "../shared/guards";
 import { redisCas, type RedisCasClient } from "./redis-cas";
 import { reserveWindowBudget } from "./request-limits";
+import { parseJson } from "./stored-json";
 
 export const JOURNEY_BINDING_TTL_MS = 24 * 60 * 60_000;
 export const JOURNEY_RECEIPT_STATUSES = new Set<JourneyReceiptStatus>([
@@ -46,25 +48,26 @@ export function journeyBindingKey(owner: JourneyOwner, segmentId: string) {
   return `${PREFIX}:segment:${hash(JSON.stringify([owner.actor, owner.postId, segmentId]))}`;
 }
 
+const invalidBinding = (): never => {
+  throw new Error("Invalid Journey binding.");
+};
+
+/** A stored binding; unreadable or malformed bindings are refused, not reset. */
 function readBinding(
   raw: string | undefined,
   now: number,
 ): JourneyBinding | null {
   if (!raw) return null;
-  const value: unknown = JSON.parse(raw);
+  const value = parseJson(raw, invalidBinding);
   if (
-    !value ||
-    typeof value !== "object" ||
-    !("version" in value) ||
+    !isRecord(value) ||
     value.version !== 1 ||
-    !("expiresAt" in value) ||
     typeof value.expiresAt !== "number" ||
     !Number.isSafeInteger(value.expiresAt)
-  ) {
-    throw new Error("Invalid Journey binding.");
-  }
+  )
+    return invalidBinding();
   if (value.expiresAt <= now) return null;
-  const binding = value as JourneyBinding;
+  const binding = value as unknown as JourneyBinding;
   if (
     !parseJourneyActivity(binding.activity) ||
     !["pending", "active", "ended", "unknown", "denied"].includes(
@@ -83,9 +86,8 @@ function readBinding(
     !Number.isFinite(binding.progress) ||
     binding.progress < 0 ||
     binding.progress > 1
-  ) {
-    throw new Error("Invalid Journey binding.");
-  }
+  )
+    return invalidBinding();
   return binding;
 }
 

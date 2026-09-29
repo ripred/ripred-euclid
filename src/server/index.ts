@@ -66,6 +66,8 @@ import { RedisCasConflictExhaustedError } from "./redis-cas";
 import { SoloDomainError, rankedSoloSessionMetadata } from "./solo";
 import { SoloStore, SoloStoreError } from "./solo-store";
 import { RequestLimitError, reserveShareCooldown } from "./request-limits";
+import { readStoredSharePayload } from "./stored-share";
+import { readRatingRecord } from "./rating-record";
 import { readStringList } from "./stored-json";
 import { errorMessage } from "../shared/error-message";
 
@@ -147,6 +149,8 @@ router.post("/internal/competitions/maintenance", async (_req, res) => {
 
 router.post("/internal/community/setup", async (_req, res) => {
   try {
+    // Deliberately part of setup, not isolated from it: Reddit showed the
+    // community icon on every post only once these legacy posts were gone.
     await deleteLegacyGamePosts();
     res.json({ status: "ok", posts: await setupCommunityPosts() });
   } catch (error) {
@@ -505,30 +509,6 @@ const DEFAULT_ELO: RatingRecord = {
   draws: 0,
 };
 
-function parseEloRecord(raw: string | null | undefined): RatingRecord | null {
-  if (!raw) return null;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return null;
-    const record = parsed as Partial<RatingRecord>;
-    return typeof record.rating === "number" &&
-      typeof record.games === "number" &&
-      typeof record.wins === "number" &&
-      typeof record.losses === "number" &&
-      typeof record.draws === "number"
-      ? {
-          rating: record.rating,
-          games: record.games,
-          wins: record.wins,
-          losses: record.losses,
-          draws: record.draws,
-        }
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 async function getPlayers(variant: GameVariant): Promise<string[]> {
   return readStringList(
     await redis.get(H2H_SETTLEMENT_KEYS.playersForVariant(variant)),
@@ -538,7 +518,7 @@ async function getElo(
   uid: string,
   variant: GameVariant,
 ): Promise<RatingRecord> {
-  const current = parseEloRecord(
+  const current = readRatingRecord(
     await redis.get(H2H_SETTLEMENT_KEYS.elo(uid, variant)),
   );
   if (current) return current;
@@ -605,14 +585,7 @@ function parseSharePostDescriptor(input: unknown): SharePostDescriptor | null {
 async function loadSharePayload(
   shareId: string,
 ): Promise<StoredSharedPostPayload | null> {
-  const raw = await redis.get(SHARE_POST(shareId));
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as StoredSharedPostPayload;
-    return parsed?.shareId === shareId ? parsed : null;
-  } catch {
-    return null;
-  }
+  return readStoredSharePayload(await redis.get(SHARE_POST(shareId)), shareId);
 }
 
 async function getCurrentSubredditName() {
