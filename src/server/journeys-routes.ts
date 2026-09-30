@@ -25,6 +25,7 @@ import {
   type JourneyOwner,
 } from "./journeys-store";
 import type { RedisCasClient } from "./redis-cas";
+import { parseJson } from "./stored-json";
 import { RequestLimitError } from "./request-limits";
 
 const STATUS = {
@@ -160,12 +161,7 @@ export function journeysRouter(options: JourneysRouterOptions): express.Router {
     try {
       const header = req.get(JOURNEYS_ACTIVITY_HEADER);
       if (!header || header.length > 2_048) return void invalid(res);
-      let request: JourneyRequestContext | null;
-      try {
-        request = parseJourneyRequestContext(JSON.parse(header));
-      } catch {
-        request = null;
-      }
+      const request = parseJourneyRequestContext(parseJson(header));
       if (!request) return void invalid(res);
       const identity = options.identity();
       if (!identity.postId) return void invalid(res, 403);

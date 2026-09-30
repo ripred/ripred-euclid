@@ -1,8 +1,8 @@
 import { isStringArray } from "../shared/guards";
 
 /*
- * Reading values the server stored as JSON. A missing value reads as
- * undefined; `malformed` decides what unreadable text means to the caller.
+ * Reading JSON text, usually values the server stored. A missing value reads
+ * as undefined; `malformed` decides what unreadable text means to the caller.
  */
 export function parseJson(
   raw: string | null | undefined,

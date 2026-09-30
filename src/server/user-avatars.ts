@@ -1,4 +1,6 @@
+import { isRecord } from "../shared/guards";
 import { avatarUsername } from "../shared/user-avatar";
+import { parseJson } from "./stored-json";
 
 interface AvatarCache {
   get(key: string): Promise<string | null | undefined>;
@@ -16,6 +18,16 @@ const FRESH_MS = 6 * 60 * 60 * 1000;
 const MISSING_MS = 15 * 60 * 1000;
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** An unreadable cache entry reads as missing, so the next lookup replaces it. */
+function readCachedAvatar(raw: string | null | undefined): CachedAvatar | null {
+  const value = parseJson(raw);
+  return isRecord(value) &&
+    (value.avatar === null || typeof value.avatar === "string") &&
+    typeof value.freshUntil === "number"
+    ? { avatar: value.avatar, freshUntil: value.freshUntil }
+    : null;
+}
+
 /** Shared by current-player profiles and public winner lookups. */
 export class UserAvatars {
   private readonly pending = new Map<string, Promise<string | null>>();
@@ -30,8 +42,7 @@ export class UserAvatars {
     const username = avatarUsername(input);
     if (!username) throw new Error("Invalid Reddit username.");
     const key = `euclid:profile-avatar:v1:${username}`;
-    const raw = await this.cache.get(key);
-    const cached = raw ? (JSON.parse(raw) as CachedAvatar) : null;
+    const cached = readCachedAvatar(await this.cache.get(key));
     if (cached && cached.freshUntil > this.now()) return cached.avatar;
     const pending = this.pending.get(username);
     if (pending) return pending;

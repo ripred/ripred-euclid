@@ -67,6 +67,24 @@ describe("public avatar lookup", () => {
     expect(await avatars.get("new_player")).toBe(second);
   });
 
+  it.each(["{", "[]", '{"avatar":7,"freshUntil":9000000}', '{"avatar":null}'])(
+    "replaces an unreadable cache entry %s with a fresh lookup",
+    async (stored) => {
+      const key = "euclid:profile-avatar:v1:player";
+      const redis = new MemoryRedis(() => 1000);
+      redis.seed(key, stored);
+      const lookup = vi.fn().mockResolvedValue(first);
+      expect(
+        await new UserAvatars(redis, lookup, () => 1000).get("player"),
+      ).toBe(first);
+      expect(lookup).toHaveBeenCalledOnce();
+      expect(redis.json(key)).toEqual({
+        avatar: first,
+        freshUntil: 1000 + SIX_HOURS,
+      });
+    },
+  );
+
   it.each(["[deleted]", "../player", "", "anonymous", "x".repeat(21)])(
     "rejects an invalid handle %s before calling Reddit",
     async (name) => {

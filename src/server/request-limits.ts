@@ -8,6 +8,8 @@ import {
   type RedisCasWrite,
   type RedisCasOptions,
 } from "./redis-cas";
+import { isCount, isRecord } from "../shared/guards";
+import { parseJson } from "./stored-json";
 
 export class RequestLimitError extends Error {
   constructor(
@@ -34,6 +36,27 @@ export const soloWorkBudgetKey = (userId: string): string =>
 export const soloShareCooldownKey = (userId: string): string =>
   `euclid:solo:v1:share-cooldown:${userId}`;
 
+/** A stored budget: a whole reset time and non-negative counters. */
+function readStoredBudget<Counter extends string>(
+  raw: string,
+  counters: readonly Counter[],
+  message: string,
+): Record<Counter | "resetAt", number> {
+  const invalid = (): never => {
+    throw new Error(message);
+  };
+  const stored = parseJson(raw, invalid);
+  if (
+    !isRecord(stored) ||
+    typeof stored.resetAt !== "number" ||
+    !Number.isSafeInteger(stored.resetAt) ||
+    !counters.every((counter) => isCount(stored[counter]))
+  ) {
+    return invalid();
+  }
+  return stored as Record<Counter | "resetAt", number>;
+}
+
 /** Charge an allocation together with its writes; callers must watch key. */
 export function writeWindowBudget(
   snapshot: RedisCasSnapshot,
@@ -47,20 +70,7 @@ export function writeWindowBudget(
   let count = 0;
   let resetAt = now + windowMs;
   if (raw !== undefined) {
-    const stored = JSON.parse(raw) as {
-      count?: unknown;
-      resetAt?: unknown;
-    } | null;
-    if (
-      !stored ||
-      typeof stored.count !== "number" ||
-      !Number.isSafeInteger(stored.count) ||
-      stored.count < 0 ||
-      typeof stored.resetAt !== "number" ||
-      !Number.isSafeInteger(stored.resetAt)
-    ) {
-      throw new Error("Invalid request budget.");
-    }
+    const stored = readStoredBudget(raw, ["count"], "Invalid request budget.");
     if (stored.resetAt > now) {
       count = stored.count;
       resetAt = stored.resetAt;
@@ -154,20 +164,11 @@ export function writeSoloReceipt(
     bytes: 0,
   };
   if (raw !== undefined) {
-    const stored = JSON.parse(raw) as Partial<ReceiptBudget> | null;
-    if (
-      !stored ||
-      typeof stored.resetAt !== "number" ||
-      typeof stored.count !== "number" ||
-      typeof stored.bytes !== "number" ||
-      !Number.isSafeInteger(stored.resetAt) ||
-      !Number.isSafeInteger(stored.count) ||
-      !Number.isSafeInteger(stored.bytes) ||
-      stored.count < 0 ||
-      stored.bytes < 0
-    ) {
-      throw new Error("Invalid solo receipt budget.");
-    }
+    const stored = readStoredBudget(
+      raw,
+      ["count", "bytes"],
+      "Invalid solo receipt budget.",
+    );
     if (stored.resetAt > now) {
       budget = {
         resetAt: stored.resetAt,

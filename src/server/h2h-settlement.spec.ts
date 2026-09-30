@@ -512,3 +512,73 @@ describe("H2H durable settlement", () => {
     expect(redis.commits).toHaveLength(0);
   });
 });
+
+describe("stored settlement data", () => {
+  const terminal = event();
+  const receipt = `Settlement receipt ${JSON.stringify(terminal.eventId)}`;
+
+  it.each([
+    [
+      H2H_SETTLEMENT_KEYS.receipt(terminal.eventId),
+      "{",
+      `${receipt} is not valid JSON.`,
+    ],
+    [
+      H2H_SETTLEMENT_KEYS.receipt(terminal.eventId),
+      "[]",
+      `${receipt} is invalid.`,
+    ],
+    [
+      H2H_SETTLEMENT_KEYS.receipt(terminal.eventId),
+      JSON.stringify({
+        version: 1,
+        eventId: terminal.eventId,
+        fingerprint: "",
+      }),
+      `${receipt} is invalid.`,
+    ],
+    [
+      H2H_SETTLEMENT_KEYS.elo("p1"),
+      "{",
+      "Elo record for p1 is not valid JSON.",
+    ],
+    [
+      H2H_SETTLEMENT_KEYS.elo("p1"),
+      "7",
+      "Elo record for p1 must be an object.",
+    ],
+    [H2H_SETTLEMENT_KEYS.players, "{", "H2H player index is not valid JSON."],
+  ])(
+    "stops at %s holding %s and keeps the event pending",
+    async (key, stored, message) => {
+      const redis = new MemoryRedis();
+      seedOutbox(redis, [terminal]);
+      redis.seed(key, stored);
+      const settled = new H2HSettlementService(redis).settle(terminal);
+
+      await expect(settled).rejects.toBeInstanceOf(H2HSettlementDataError);
+      await expect(settled).rejects.toThrow(message);
+      expect(
+        parseH2HSettlementEvents(
+          redis.value(H2H_STORE_KEYS.pendingSettlements),
+        ),
+      ).toEqual([terminal]);
+      expect(redis.commits).toHaveLength(0);
+    },
+  );
+
+  it("reads a missing outbox as empty and rejects an unreadable one", () => {
+    expect(parseH2HSettlementEvents(undefined)).toEqual([]);
+    expect(parseH2HSettlementEvents("")).toEqual([]);
+    expect(() => parseH2HSettlementEvents("{")).toThrow(
+      new H2HSettlementDataError(
+        "The pending settlement outbox is not valid JSON.",
+      ),
+    );
+    expect(() => parseH2HSettlementEvents("{}")).toThrow(
+      new H2HSettlementDataError(
+        "The pending settlement outbox must be an array.",
+      ),
+    );
+  });
+});

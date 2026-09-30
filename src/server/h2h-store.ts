@@ -171,6 +171,12 @@ export class H2HSettlementDataError extends Error {
   override readonly name = "H2HSettlementDataError";
 }
 
+/** Stored settlement JSON; unreadable text is a settlement data error. */
+export const parseSettlementJson = (raw: string, field: string): unknown =>
+  parseJson(raw, () => {
+    throw new H2HSettlementDataError(`${field} is not valid JSON.`);
+  });
+
 export type H2HChatCommit = {
   item: ShareChatItem;
   state: H2HCanonicalStateSnapshot;
@@ -437,14 +443,7 @@ export function parseH2HSettlementEvents(
   raw: string | null | undefined,
 ): H2HSettlementEvent[] {
   if (!raw) return [];
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    throw new H2HSettlementDataError(
-      "The pending settlement outbox is not valid JSON.",
-    );
-  }
+  const parsed = parseSettlementJson(raw, "The pending settlement outbox");
   if (!Array.isArray(parsed)) {
     throw new H2HSettlementDataError(
       "The pending settlement outbox must be an array.",

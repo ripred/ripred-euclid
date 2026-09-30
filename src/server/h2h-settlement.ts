@@ -4,6 +4,7 @@ import {
   h2hSettlementFingerprint,
   normalizeH2HSettlementEvent,
   parseH2HSettlementEvents,
+  parseSettlementJson,
   serializeH2HSettlementEvents,
   type H2HSettlementEvent,
 } from "./h2h-store";
@@ -16,7 +17,7 @@ import {
   type RedisCasWrite,
 } from "./redis-cas";
 import { asCount, isRecord, isStringArray } from "../shared/guards";
-import { parseJson, uniqueStrings } from "./stored-json";
+import { uniqueStrings } from "./stored-json";
 import type { GameVariant } from "../shared/game/rules";
 
 const ELO_START = 1_200;
@@ -78,9 +79,7 @@ export type H2HSettlementServiceOptions = {
 
 function parseStringSet(raw: string | undefined, field: string): string[] {
   if (raw === undefined) return [];
-  const parsed = parseJson(raw, () => {
-    throw new H2HSettlementDataError(`${field} is not valid JSON.`);
-  });
+  const parsed = parseSettlementJson(raw, field);
   if (!isStringArray(parsed) || parsed.some((value) => !value)) {
     throw new H2HSettlementDataError(`${field} must be a string array.`);
   }
@@ -112,12 +111,7 @@ function incrementCounter(value: number, field: string): number {
 
 function parseElo(raw: string | undefined, field: string): H2HEloRecord | null {
   if (raw === undefined) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    throw new H2HSettlementDataError(`${field} is not valid JSON.`);
-  }
+  const parsed = parseSettlementJson(raw, field);
   if (!isRecord(parsed)) {
     throw new H2HSettlementDataError(`${field} must be an object.`);
   }
@@ -197,29 +191,17 @@ function settlementDate(endedAt: number): string {
 }
 
 function parseReceipt(raw: string, eventId: string): H2HSettlementReceipt {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    throw new H2HSettlementDataError(
-      `Settlement receipt ${JSON.stringify(eventId)} is not valid JSON.`,
-    );
-  }
-  if (!isRecord(parsed)) {
-    throw new H2HSettlementDataError(
-      `Settlement receipt ${JSON.stringify(eventId)} is invalid.`,
-    );
-  }
-  const settledAt = asCount(parsed.settledAt);
+  const field = `Settlement receipt ${JSON.stringify(eventId)}`;
+  const parsed = parseSettlementJson(raw, field);
+  const settledAt = isRecord(parsed) ? asCount(parsed.settledAt) : null;
   if (
+    !isRecord(parsed) ||
     parsed.version !== RECEIPT_VERSION ||
     parsed.eventId !== eventId ||
     typeof parsed.fingerprint !== "string" ||
     settledAt === null
   ) {
-    throw new H2HSettlementDataError(
-      `Settlement receipt ${JSON.stringify(eventId)} is invalid.`,
-    );
+    throw new H2HSettlementDataError(`${field} is invalid.`);
   }
   return {
     version: RECEIPT_VERSION,

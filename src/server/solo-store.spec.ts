@@ -8,7 +8,9 @@ import {
   SOLO_WORK_LIMITS,
   SOLO_PRACTICE_RETENTION_MS,
   soloWorkBudgetKey,
+  writeSoloReceipt,
 } from "./request-limits";
+import type { RedisCasWrite } from "./redis-cas";
 
 import type {
   SoloMoveRequest,
@@ -189,6 +191,9 @@ describe("request allocation protections", () => {
   it("fails closed on corrupt request budgets and charges only committed reservations", async () => {
     const redis = new MemoryRedis(() => 100_000);
     for (const value of [
+      "",
+      "{",
+      "[]",
       "null",
       "{}",
       '{"count":-1,"resetAt":200000}',
@@ -207,6 +212,28 @@ describe("request allocation protections", () => {
     expect(redis.commits.at(-1)?.[0]).toMatchObject({
       expiration: new Date(160_000),
     });
+  });
+
+  it("fails closed on corrupt solo receipt budgets", () => {
+    for (const value of [
+      "{",
+      "null",
+      '{"count":1,"bytes":-1,"resetAt":200000}',
+      '{"count":1,"resetAt":200000}',
+    ]) {
+      const writes = new Map<string, RedisCasWrite>();
+      expect(() =>
+        writeSoloReceipt(
+          new Map([[soloReceiptBudgetKey("owner"), value]]),
+          writes,
+          "owner",
+          "receipt",
+          "{}",
+          100_000,
+        ),
+      ).toThrow("Invalid solo receipt budget.");
+      expect(writes.size).toBe(0);
+    }
   });
 
   it("rejects exhausted work budgets before loading a game, including retries", async () => {
