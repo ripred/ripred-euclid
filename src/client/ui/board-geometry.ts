@@ -17,8 +17,9 @@ export interface BoardSquareShape {
   owner: Owner;
   corners: readonly GridPoint[];
   /**
-   * "fresh" squares were completed by the move being shown; "blocked"
-   * squares were denied by it and draw as a dashed outline.
+   * "fresh" squares were completed by the move being shown. "blocked"
+   * squares draw as a dashed outline: squares a move denied, or squares an
+   * open point would complete in a scoring preview.
    */
   tone: "history" | "fresh" | "blocked";
   /** Optional per-square strength for fading older history. */
@@ -146,27 +147,25 @@ export function squareHints(
     if (target) {
       const points = scoreGridFootprint([{ x, y }, ...corners]);
       for (const point of open) {
-        const values = target.get(point) ?? new Set<number>();
-        values.add(points);
-        target.set(point, values);
+        const squareValues = target.get(point) ?? new Set<number>();
+        squareValues.add(points);
+        target.set(point, squareValues);
       }
     }
   }
-  return [
-    ...[...near].map(([point, points]) => ({
-      index: point,
+  const toHints = (
+    targets: ReadonlyMap<number, ReadonlySet<number>>,
+    strength: BoardHint["strength"],
+  ): BoardHint[] =>
+    [...targets].map(([index, squareValues]) => ({
+      index,
       owner,
-      strength: "near" as const,
-      points: [...points].sort((a, b) => a - b),
-    })),
-    ...[...far]
-      .filter(([point]) => !near.has(point))
-      .map(([point, points]) => ({
-        index: point,
-        owner,
-        strength: "far" as const,
-        points: [...points].sort((a, b) => a - b),
-      })),
+      strength,
+      points: [...squareValues].sort((a, b) => a - b),
+    }));
+  return [
+    ...toHints(near, "near"),
+    ...toHints(far, "far").filter((hint) => !near.has(hint.index)),
   ];
 }
 

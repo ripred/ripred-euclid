@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import type { SerializableBoard } from "../shared/types/api";
+import { formatSquareCount } from "./score-feedback";
 import { buildReplayFrames, frameShapes } from "./share-replay-model";
 import { BoardDiagram, PieceGlyph } from "./ui/BoardDiagram";
 import { boardAspectRatio } from "./ui/board-geometry";
@@ -87,7 +88,7 @@ export function ReplayBoardCard({
   );
   const replayDetail =
     currentFrame.newSquares.length > 0
-      ? `This move completed ${currentFrame.newSquares.length} square${currentFrame.newSquares.length === 1 ? "" : "s"} for ${scored} points.`
+      ? `This move completed ${formatSquareCount(currentFrame.newSquares.length)} for ${scored} points.`
       : currentFrame.moveNumber === 0
         ? isDemo
           ? "Watching a recorded teaching demo, not a live match."

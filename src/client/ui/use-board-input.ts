@@ -20,13 +20,17 @@ interface InputOptions {
   acceptKey?: ((event: KeyboardEvent) => boolean) | undefined;
 }
 
-/** Shared fresh-key, roving-focus, and small-touch-target placement policy. */
+/**
+ * Shared fresh-key, roving-focus, and touch placement policy. Touch taps aim
+ * first on small cells, or whenever `confirmTouch` is set (square hints).
+ */
 export function useBoardInput(options: InputOptions) {
   const {
     width,
     height,
     cellSize,
     enabled,
+    confirmTouch,
     revision,
     gridRef,
     isOpen,
@@ -54,7 +58,7 @@ export function useBoardInput(options: InputOptions) {
     if (!enabled || !isOpen(index)) return;
     if (
       pointerType.current !== "mouse" &&
-      (cellSize < 38 || options.confirmTouch) &&
+      (cellSize < 38 || confirmTouch) &&
       aimIndex !== index
     ) {
       setAim({ index, revision });

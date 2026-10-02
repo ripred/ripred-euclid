@@ -4,6 +4,7 @@ import type {
   CompetitionResult,
 } from "../shared/competitions";
 import { formatChallengeTime } from "./challenge-time";
+import { formatSquareCount } from "./score-feedback";
 
 export const COMPETITION_RANKING_GUIDANCE =
   "Most squares wins, then fewest moves, then shortest time, then first achieved.";
@@ -16,7 +17,7 @@ export function formatCompetitionResult(
   const squares =
     result.squares == null
       ? "squares unavailable"
-      : `${result.squares} ${result.squares === 1 ? "square" : "squares"}`;
+      : formatSquareCount(result.squares);
   return `${squares} · ${moves} · ${formatChallengeTime(result.elapsedMs)}`;
 }
 

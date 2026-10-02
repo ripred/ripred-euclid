@@ -18,6 +18,7 @@ import { TIDE_MOVE_LIMIT } from "../shared/game/rules";
 import { calculateBoardLayout } from "./game-ui";
 import {
   formatScoreFeedback,
+  formatSquareCount,
   selectSquareLines,
   squareSignature,
   type ScoreFeedbackEvent,
@@ -128,8 +129,6 @@ export function ScoreCard({
   const reduced = useReducedMotion();
   const shown = useCountUp(score, { disabled: reduced, maxJump: 400 });
   const progress = target > 0 ? Math.min(1, score / target) : 0;
-  const squareWord =
-    feedback && feedback.completedSquares.length === 1 ? "square" : "squares";
 
   return (
     <div
@@ -168,7 +167,7 @@ export function ScoreCard({
         aria-atomic="true"
       >
         {feedback
-          ? `Move ${feedback.moveCount}: ${label} scored ${feedback.pointsScored} points by completing ${feedback.completedSquares.length} ${squareWord}.`
+          ? `Move ${feedback.moveCount}: ${label} scored ${feedback.pointsScored} points by completing ${formatSquareCount(feedback.completedSquares.length)}.`
           : ""}
       </span>
     </div>
@@ -372,39 +371,28 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   useEffect(() => {
     const grid = gridRef.current;
     if (!assistOn || !isMobile || !grid) return;
-    const handleTouchMove = (e: TouchEvent) => {
+    /** Shows hints for the player's own piece under the touch, if any. */
+    const handleTouchMove = (e: TouchEvent): number | null => {
       const touch = e.touches.item(0);
-      if (!touch) return;
+      if (!touch) return null;
       const rect = grid.getBoundingClientRect();
       const tx = Math.floor((touch.clientX - rect.left) / cell);
       const ty = Math.floor((touch.clientY - rect.top) / cell);
       const idx = pointIndex(tx, ty, board.W);
-      if (
+      const piece =
         tx >= 0 &&
         tx < board.W &&
         idx >= 0 &&
         idx < board.m_board.length &&
         board.m_board[idx] === myColor
-      ) {
-        setHoverIdx(idx);
-      } else {
-        setHoverIdx(null);
-      }
+          ? idx
+          : null;
+      setHoverIdx(piece);
+      return piece;
     };
+    // Pressing your own piece inspects it; elsewhere the page can scroll.
     const handleTouchStart = (e: TouchEvent) => {
-      handleTouchMove(e);
-      const touch = e.touches.item(0);
-      if (touch) {
-        const rect = grid.getBoundingClientRect();
-        const x = Math.floor((touch.clientX - rect.left) / cell);
-        const y = Math.floor((touch.clientY - rect.top) / cell);
-        if (
-          x >= 0 &&
-          x < board.W &&
-          ownerAt(board.m_board, pointIndex(x, y, board.W)) === myColor
-        )
-          e.preventDefault();
-      }
+      if (handleTouchMove(e) !== null) e.preventDefault();
     };
     const handleTouchEnd = () => setHoverIdx(null);
     grid.addEventListener("touchstart", handleTouchStart);
@@ -419,7 +407,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     };
   }, [assistOn, isMobile, cell, board.W, board.m_board, myColor]);
 
-  /* ===== Touch on dense boards: tap to aim, tap the same point to place ===== */
+  /* ===== Touch on dense boards or with hints: tap to aim, tap again to place ===== */
   const tapSound = useBoardSounds({
     history: board.m_history,
     cells: board.m_board,
@@ -470,7 +458,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       : null;
   const previewSummary =
     movePreview && movePreview.squares.length > 0
-      ? `${movePreview.squares.length} ${movePreview.squares.length === 1 ? "square" : "squares"} · +${movePreview.points} points`
+      ? `${formatSquareCount(movePreview.squares.length)} · +${movePreview.points} points`
       : null;
   const boardPrompt = [previewSummary, aimPrompt].filter(Boolean).join(" · ");
 
@@ -805,7 +793,7 @@ export function ResultDialog({
               </dt>
               <dd className="result__score num">{player.score}</dd>
               <dd className="result__stats">
-                {player.squares} {player.squares === 1 ? "square" : "squares"}
+                {formatSquareCount(player.squares)}
                 {player.bestSquare > 0 ? ` · best ${player.bestSquare}` : ""}
               </dd>
             </div>
