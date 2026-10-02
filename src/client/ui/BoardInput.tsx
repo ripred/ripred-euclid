@@ -44,7 +44,10 @@ export function BoardInput({
                 aria-label={describeCell(index)}
                 aria-disabled={!available}
                 className={`game__cell${available ? " game__cell--open" : ""}`}
-                onFocus={() => controls.setFocus(index)}
+                onFocus={() => {
+                  controls.setFocus(index);
+                  onHover?.(index);
+                }}
                 onPointerDown={(e) => {
                   controls.pointerType.current = e.pointerType;
                 }}

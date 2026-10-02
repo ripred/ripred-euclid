@@ -1,3 +1,4 @@
+import { scoreGridFootprint } from "../../shared/scoring";
 import {
   emptyCells,
   orderAroundCentre,
@@ -46,6 +47,8 @@ export interface BoardHint {
   index: number;
   owner: Owner;
   strength: "near" | "far";
+  /** Distinct values of the potential squares behind this hint. */
+  points: readonly number[];
 }
 
 /** The board's drawing extends slightly past its grid for the plinth. */
@@ -128,8 +131,8 @@ export function squareHints(
 ): BoardHint[] {
   if (cells[index] !== owner) return [];
   const opponent = owner === 1 ? 2 : 1;
-  const near = new Set<number>();
-  const far = new Set<number>();
+  const near = new Map<number, Set<number>>();
+  const far = new Map<number, Set<number>>();
   const x = index % width;
   const y = Math.floor(index / width);
   for (const corners of squaresWithCorner(width, height, x, y)) {
@@ -139,17 +142,65 @@ export function squareHints(
       continue;
     if (canComplete && !canComplete([index, ...indices])) continue;
     const open = indices.filter((_, corner) => values[corner] === 0);
-    if (open.length === 1) open.forEach((point) => near.add(point));
-    else if (open.length === 2) open.forEach((point) => far.add(point));
+    const target = open.length === 1 ? near : open.length === 2 ? far : null;
+    if (target) {
+      const points = scoreGridFootprint([{ x, y }, ...corners]);
+      for (const point of open) {
+        const values = target.get(point) ?? new Set<number>();
+        values.add(points);
+        target.set(point, values);
+      }
+    }
   }
   return [
-    ...[...near].map((point) => ({
+    ...[...near].map(([point, points]) => ({
       index: point,
       owner,
       strength: "near" as const,
+      points: [...points].sort((a, b) => a - b),
     })),
     ...[...far]
-      .filter((point) => !near.has(point))
-      .map((point) => ({ index: point, owner, strength: "far" as const })),
+      .filter(([point]) => !near.has(point))
+      .map(([point, points]) => ({
+        index: point,
+        owner,
+        strength: "far" as const,
+        points: [...points].sort((a, b) => a - b),
+      })),
   ];
+}
+
+/** Every square an open point completes, using the same geometry as blocking. */
+export function scoringPreview(
+  cells: ArrayLike<number>,
+  width: number,
+  height: number,
+  index: number,
+  owner: Owner,
+) {
+  const corners =
+    cells[index] === 0
+      ? blockedSquares(
+          cells,
+          width,
+          height,
+          index % width,
+          Math.floor(index / width),
+          owner,
+        )
+      : [];
+  return {
+    squares: corners.map(
+      (points, i): BoardSquareShape => ({
+        key: `preview-${index}-${i}`,
+        owner,
+        corners: points,
+        tone: "blocked",
+      }),
+    ),
+    points: corners.reduce(
+      (total, points) => total + scoreGridFootprint(points),
+      0,
+    ),
+  };
 }

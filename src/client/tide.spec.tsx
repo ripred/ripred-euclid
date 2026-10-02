@@ -121,8 +121,19 @@ it("omits hints whose existing pieces expire before the square can be finished",
     index: 4,
     owner: 1,
     strength: "far",
+    points: [4],
   });
-  expect(hints()).not.toContainEqual({ index: 4, owner: 1, strength: "far" });
+  expect(hints()).not.toContainEqual({
+    index: 4,
+    owner: 1,
+    strength: "far",
+    points: [4],
+  });
   board.tide!.anchored[0] = true;
-  expect(hints()).toContainEqual({ index: 4, owner: 1, strength: "far" });
+  expect(hints()).toContainEqual({
+    index: 4,
+    owner: 1,
+    strength: "far",
+    points: [4],
+  });
 });

@@ -294,7 +294,9 @@
   color: var(--text);
   font-size: var(--fs-sm);
   font-weight: 700;
-  white-space: nowrap;
+  width: max-content;
+  max-width: 100%;
+  text-align: center;
   pointer-events: none;
   transform: translate(-50%, -60%);
 }

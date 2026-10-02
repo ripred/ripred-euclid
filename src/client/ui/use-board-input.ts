@@ -12,6 +12,7 @@ interface InputOptions {
   height: number;
   cellSize: number;
   enabled: boolean;
+  confirmTouch?: boolean;
   revision: number | string;
   gridRef: RefObject<HTMLDivElement | null>;
   isOpen: (index: number) => boolean;
@@ -53,7 +54,7 @@ export function useBoardInput(options: InputOptions) {
     if (!enabled || !isOpen(index)) return;
     if (
       pointerType.current !== "mouse" &&
-      cellSize < 38 &&
+      (cellSize < 38 || options.confirmTouch) &&
       aimIndex !== index
     ) {
       setAim({ index, revision });

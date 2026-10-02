@@ -483,6 +483,33 @@ export function BoardDiagram({
         ),
       )}
 
+      {hints.map((hint) => {
+        const x = centre(hint.index % width);
+        const y = centre(Math.floor(hint.index / width));
+        const lines = Array.from(
+          { length: Math.ceil(hint.points.length / 2) },
+          (_, i) => hint.points.slice(i * 2, i * 2 + 2).join("/"),
+        );
+        return (
+          <text
+            key={`hint-value-${hint.index}`}
+            className="board__hint-value"
+            x={x}
+            y={y}
+          >
+            {lines.map((line, i) => (
+              <tspan
+                key={i}
+                x={x}
+                dy={i === 0 ? -((lines.length - 1) * 0.12) : 0.24}
+              >
+                {line}
+              </tspan>
+            ))}
+          </text>
+        );
+      })}
+
       {children}
     </svg>
   );

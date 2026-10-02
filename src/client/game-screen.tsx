@@ -30,6 +30,7 @@ import {
   pointIndex,
   pointLabel,
   squareHints,
+  scoringPreview,
   tapAgainPrompt,
   type BoardMarker,
   type BoardSquareShape,
@@ -391,8 +392,19 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       }
     };
     const handleTouchStart = (e: TouchEvent) => {
-      e.preventDefault();
       handleTouchMove(e);
+      const touch = e.touches.item(0);
+      if (touch) {
+        const rect = grid.getBoundingClientRect();
+        const x = Math.floor((touch.clientX - rect.left) / cell);
+        const y = Math.floor((touch.clientY - rect.top) / cell);
+        if (
+          x >= 0 &&
+          x < board.W &&
+          ownerAt(board.m_board, pointIndex(x, y, board.W)) === myColor
+        )
+          e.preventDefault();
+      }
     };
     const handleTouchEnd = () => setHoverIdx(null);
     grid.addEventListener("touchstart", handleTouchStart);
@@ -431,6 +443,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     cellSize: cell,
     gridRef,
     enabled: placingSide !== null,
+    confirmTouch: assistOn,
     revision: board.m_history.length,
     isOpen: (index) => ownerAt(board.m_board, index) === 0,
     onPlace: (index) => place(index % board.W, Math.floor(index / board.W)),
@@ -443,6 +456,23 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       : tapAgainPrompt(
           pointLabel(liveAimIdx % board.W, Math.floor(liveAimIdx / board.W)),
         );
+
+  const inspectedIndex = liveAimIdx ?? previewIdx;
+  const movePreview =
+    assistOn && placingSide && inspectedIndex !== null
+      ? scoringPreview(
+          board.m_board,
+          board.W,
+          board.H,
+          inspectedIndex,
+          placingSide,
+        )
+      : null;
+  const previewSummary =
+    movePreview && movePreview.squares.length > 0
+      ? `${movePreview.squares.length} ${movePreview.squares.length === 1 ? "square" : "squares"} · +${movePreview.points} points`
+      : null;
+  const boardPrompt = [previewSummary, aimPrompt].filter(Boolean).join(" · ");
 
   const lastIndex =
     board.m_last.x >= 0
@@ -524,7 +554,11 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     const owner = ownerAt(board.m_board, index);
     const label = pointLabel(index % board.W, Math.floor(index / board.W));
     const state = owner ? ownerName(owner) : "open";
-    return `${label}, ${state}${owner ? tidePieceDescription(board.tide, index, board.m_history.length) : ""}${index === lastIndex ? ", last move" : ""}`;
+    const hint = assistOn ? hints.find((hint) => hint.index === index) : null;
+    const valueLabel = hint
+      ? `, potential square values ${hint.points.join(" and ")} points, ${hint.strength === "near" ? "one move" : "two moves"} to complete`
+      : "";
+    return `${label}, ${state}${valueLabel}${owner ? tidePieceDescription(board.tide, index, board.m_history.length) : ""}${index === lastIndex ? ", last move" : ""}`;
   };
 
   return (
@@ -618,7 +652,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         {/* The highlighted score card shows whose turn it is, so the board
             keeps this row's height; screen readers still hear the status. */}
         <p className="euclid-sr-only" aria-live="polite">
-          {aimPrompt ?? midText}
+          {boardPrompt || midText}
         </p>
 
         <div
@@ -627,9 +661,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({
           style={{ width: bw, height: bh }}
           onMouseLeave={clearHover}
         >
-          {aimPrompt ? (
+          {boardPrompt ? (
             <p className="game__aim" aria-hidden="true">
-              {aimPrompt}
+              {boardPrompt}
             </p>
           ) : null}
           <div
@@ -647,7 +681,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
               cells={board.m_board}
               tide={board.tide}
               ply={board.m_history.length}
-              squares={squares}
+              squares={[...squares, ...(movePreview?.squares ?? [])]}
               footprints={footprints}
               markers={markers}
               hints={assistOn && hoverIdx !== null ? hints : []}
@@ -685,7 +719,11 @@ export const GameScreen: React.FC<GameScreenProps> = ({
               setPreviewIdx(index);
               if (assistOn && myColor != null)
                 setHoverIdx(
-                  ownerAt(board.m_board, index) === myColor ? index : null,
+                  ownerAt(board.m_board, index) === myColor
+                    ? index
+                    : hints.some((hint) => hint.index === index)
+                      ? hoverIdx
+                      : null,
                 );
             }}
           />

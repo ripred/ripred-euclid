@@ -385,3 +385,16 @@
     animation: none;
   }
 }
+
+/* Potential square values stay legible over the porcelain hint points. */
+.board__hint-value {
+  fill: #171717;
+  stroke: #fff;
+  stroke-width: 0.045;
+  paint-order: stroke;
+  font-size: 0.24px;
+  font-weight: 800;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
