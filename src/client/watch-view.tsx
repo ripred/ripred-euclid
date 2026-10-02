@@ -7,7 +7,7 @@ import type {
 import { ReplayBoardCard, type ReplayTheme } from "./share-replay";
 import { PageShell } from "./ui/PageShell";
 import { buildWatchDemo } from "./watch-demo";
-import { rulesSummary } from "./format";
+import { formatCount, rulesSummary } from "./format";
 import "./watch-view.css";
 
 type WatchAction = {
@@ -195,7 +195,7 @@ export function WatchLobby({
       ) : showGames ? (
         <section aria-labelledby="watch-live-count">
           <h2 id="watch-live-count">
-            {games.length} live {games.length === 1 ? "game" : "games"}
+            {formatCount(games.length, "live game")}
           </h2>
           <ul className="watch-matches">
             {games.map((game) => (

@@ -15,10 +15,10 @@ import type { PlayerColor, PlayerIndex } from "../shared/game/rules";
 import { rulesSummary } from "./format";
 import { tidePieceDescription } from "./tide";
 import { TIDE_MOVE_LIMIT } from "../shared/game/rules";
+import { formatCount } from "./format";
 import { calculateBoardLayout } from "./game-ui";
 import {
   formatScoreFeedback,
-  formatSquareCount,
   selectSquareLines,
   squareSignature,
   type ScoreFeedbackEvent,
@@ -167,7 +167,7 @@ export function ScoreCard({
         aria-atomic="true"
       >
         {feedback
-          ? `Move ${feedback.moveCount}: ${label} scored ${feedback.pointsScored} points by completing ${formatSquareCount(feedback.completedSquares.length)}.`
+          ? `Move ${feedback.moveCount}: ${label} scored ${feedback.pointsScored} points by completing ${formatCount(feedback.completedSquares.length, "square")}.`
           : ""}
       </span>
     </div>
@@ -458,7 +458,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       : null;
   const previewSummary =
     movePreview && movePreview.squares.length > 0
-      ? `${formatSquareCount(movePreview.squares.length)} · +${movePreview.points} points`
+      ? `${formatCount(movePreview.squares.length, "square")} · +${movePreview.points} points`
       : null;
   const boardPrompt = [previewSummary, aimPrompt].filter(Boolean).join(" · ");
 
@@ -793,7 +793,7 @@ export function ResultDialog({
               </dt>
               <dd className="result__score num">{player.score}</dd>
               <dd className="result__stats">
-                {formatSquareCount(player.squares)}
+                {formatCount(player.squares, "square")}
                 {player.bestSquare > 0 ? ` · best ${player.bestSquare}` : ""}
               </dd>
             </div>

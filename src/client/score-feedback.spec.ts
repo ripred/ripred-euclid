@@ -11,7 +11,6 @@ import type {
 import {
   didH2HHistoryReset,
   formatScoreFeedback,
-  formatSquareCount,
   gridFootprintBounds,
   normalizeSoloScoreFeedback,
   resolvePendingH2HScoreFeedback,
@@ -472,8 +471,6 @@ describe("score presentation geometry and copy", () => {
   });
 
   it("uses singular and plural square copy", () => {
-    expect(formatSquareCount(1)).toBe("1 square");
-    expect(formatSquareCount(2)).toBe("2 squares");
     expect(
       formatScoreFeedback({
         pointsScored: 8,

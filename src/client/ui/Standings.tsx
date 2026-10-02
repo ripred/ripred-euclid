@@ -1,5 +1,6 @@
 import { PlayerAvatar } from "./PlayerAvatar";
 import type { RankingRow } from "../../shared/types/api";
+import { formatCount } from "../format";
 import "./standings.css";
 
 const formatRecord = (row: RankingRow) =>
@@ -31,7 +32,7 @@ export function StandingRow({
           {name}
         </span>
         <span className="standing__record">
-          {formatRecord(row)} · {row.games} {row.games === 1 ? "game" : "games"}
+          {formatRecord(row)} · {formatCount(row.games, "game")}
         </span>
       </span>
       <span

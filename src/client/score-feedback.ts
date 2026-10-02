@@ -7,6 +7,7 @@ import type {
   SoloEvent,
 } from "../shared/types/api";
 import { clonePoint, cloneSquare, squarePoints } from "../shared/share-squares";
+import { formatCount } from "./format";
 
 export type GridFootprintBounds = {
   /** Grid-space column of the footprint's upper-left occupied spot. */
@@ -145,15 +146,12 @@ export function gridFootprintBounds(square: ShareSquare): GridFootprintBounds {
   };
 }
 
-export function formatSquareCount(squareCount: number): string {
-  return `${squareCount} ${squareCount === 1 ? "square" : "squares"}`;
-}
-
 export function formatScoreFeedback(
   feedback: Pick<ScoreFeedbackEvent, "pointsScored" | "completedSquares">,
 ): string {
-  return `+${feedback.pointsScored} · ${formatSquareCount(
+  return `+${feedback.pointsScored} · ${formatCount(
     feedback.completedSquares.length,
+    "square",
   )}`;
 }
 

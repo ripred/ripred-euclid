@@ -11,7 +11,7 @@ import type {
   SoloSessionSnapshot,
   UserStatsResponse,
 } from "../shared/types/api";
-import { rulesSummary } from "./format";
+import { formatCount, rulesSummary } from "./format";
 
 export type HomeRecordLabel =
   | "Euclid Ranked"
@@ -103,7 +103,11 @@ export function formatCompetitiveRecord(
       record.games === 0
         ? "No rated games yet"
         : `${INTEGER_FORMAT.format(record.wins)}W · ${INTEGER_FORMAT.format(record.losses)}L · ${INTEGER_FORMAT.format(record.draws)}D`,
-    games: `${INTEGER_FORMAT.format(record.games)} rated ${record.games === 1 ? "game" : "games"}`,
+    games: formatCount(
+      record.games,
+      "rated game",
+      INTEGER_FORMAT.format(record.games),
+    ),
     available: true,
   };
 }

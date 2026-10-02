@@ -13,6 +13,16 @@ export const formatDisplayDate = (input: string | number | Date = Date.now()) =>
     year: "numeric",
   });
 
+/**
+ * "1 move", "2 moves": a count and its noun phrase in the matching number.
+ * `shown` replaces the plain number, such as a grouped "1,204".
+ */
+export const formatCount = (
+  count: number,
+  noun: string,
+  shown: string = String(count),
+) => `${shown} ${count === 1 ? noun : `${noun}s`}`;
+
 /** "first to 150": every game shares the standard board and scoring. */
 export const rulesSummary = (rules: {
   winScore: number;

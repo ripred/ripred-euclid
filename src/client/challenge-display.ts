@@ -1,5 +1,6 @@
 import type { ChallengePuzzle } from "../shared/challenge";
+import { formatCount } from "./format";
 
 export function challengeObjective(puzzle: ChallengePuzzle): string {
-  return `Complete ${puzzle.targetSquares} ${puzzle.targetSquares === 1 ? "Square" : "Squares"} In ${puzzle.minimumMoves} ${puzzle.minimumMoves === 1 ? "move" : "moves"}`;
+  return `Complete ${formatCount(puzzle.targetSquares, "Square")} In ${formatCount(puzzle.minimumMoves, "move")}`;
 }
