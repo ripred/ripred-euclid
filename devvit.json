@@ -24,6 +24,11 @@
     "dir": "dist/server",
     "entry": "index.cjs"
   },
+  "permissions": {
+    "reddit": {
+      "asUser": ["SUBMIT_POST"]
+    }
+  },
   "menu": {
     "items": [
       {

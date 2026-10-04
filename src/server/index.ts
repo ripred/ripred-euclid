@@ -595,24 +595,12 @@ async function createCustomSharePost(
     splash: buildShareSplash(payload),
   };
 
-  try {
-    const post = await reddit.submitCustomPost({
-      ...baseOptions,
-      runAs: "USER",
-      userGeneratedContent: { text: fallbackText },
-    });
-    return { post, subredditName, sharedAs: "USER" as const };
-  } catch (userError: unknown) {
-    slog("[SHARE] user-auth custom post failed, falling back to app account", {
-      title,
-      error: errorMessage(userError),
-    });
-    const post = await reddit.submitCustomPost({
-      ...baseOptions,
-      runAs: "APP",
-    });
-    return { post, subredditName, sharedAs: "APP" as const };
-  }
+  const post = await reddit.submitCustomPost({
+    ...baseOptions,
+    runAs: "USER",
+    userGeneratedContent: { text: fallbackText },
+  });
+  return { post, subredditName, sharedAs: "USER" as const };
 }
 
 async function enforceShareRateLimit(uid: string, kind: string) {
@@ -1239,7 +1227,7 @@ router.post("/api/share/rankings", async (req, res) => {
     slog("[SHARE] rankings posted", { uid, bucket, postId: post.id, sharedAs });
     return res.json({
       ok: true,
-      message: `${LEADERBOARD_LABEL} shared to r/${subredditName}${sharedAs === "APP" ? " via the app account." : "."}`,
+      message: `${LEADERBOARD_LABEL} shared to r/${subredditName}.`,
       postId: post.id,
       permalink: post.permalink,
       sharedAs,
@@ -1357,7 +1345,7 @@ router.post("/api/share/h2h-result", async (req, res) => {
     slog("[SHARE] h2h result posted", { uid, gid, postId: post.id, sharedAs });
     return res.json({
       ok: true,
-      message: `Win shared to r/${subredditName}${sharedAs === "APP" ? " via the app account." : "."}`,
+      message: `Win shared to r/${subredditName}.`,
       postId: post.id,
       permalink: post.permalink,
       sharedAs,
@@ -1458,7 +1446,7 @@ router.post("/api/share/ai-result", async (req, res) => {
       ok: true,
       status: "posted",
       replayed: false,
-      message: `Win shared to r/${subredditName}${sharedAs === "APP" ? " via the app account." : "."}`,
+      message: `Win shared to r/${subredditName}.`,
       receipt: {
         gameId: receipt.gameId,
         commandId: receipt.commandId,
