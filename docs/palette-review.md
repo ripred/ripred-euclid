@@ -31,15 +31,22 @@ VITE_COLOR_SCHEME=amber-amethyst npm run build
 
 ## Review deployment
 
-After the checks pass, upload the proposed palette explicitly:
+Use `r/ripred_euclid_dev` as staging. Record the currently installed versions and preserve the existing artwork for both communities before making changes. After the checks pass, upload the proposed palette once and install that version in staging:
 
 ```bash
 VITE_COLOR_SCHEME=amber-amethyst npm run deploy
 npx devvit view ripred-euclid@<uploaded-version>
-npx devvit install <review-subreddit> ripred-euclid@<uploaded-version>
-npx devvit list installs <review-subreddit>
+npx devvit install ripred_euclid_dev ripred-euclid@<uploaded-version>
+npx devvit list installs ripred_euclid_dev
 ```
 
-Installing an app version does not change community appearance. The proposed 300×300 icon, 3168×256 desktop banner and 1592×128 mobile banner are separate moderator uploads. Preserve the previous appearance and app version when comparing, and restore them independently if reverting the proposal.
+Verify the installed staging version, gameplay, layout and palette before promoting the same uploaded version to `r/EuclidTheGame`:
 
-This branch does not publish the app to the directory or merge the proposal. Choosing the theme for a future default release remains a separate decision.
+```bash
+npx devvit install EuclidTheGame ripred-euclid@<uploaded-version>
+npx devvit list installs EuclidTheGame
+```
+
+Installing an app version does not change community appearance. The proposed 300×300 icon, 3168×256 desktop banner and 1592×128 mobile banner are separate moderator uploads. Apply and verify those appearance updates in staging first, then in `r/EuclidTheGame`. Preserve the previous appearance and app version when comparing, and restore them independently if reverting the proposal.
+
+Choosing the theme for a future default release remains a separate decision.
