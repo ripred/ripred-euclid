@@ -14,61 +14,46 @@ export function gamePostContent(imageUrl?: string) {
   };
 }
 
-/**
- * Every current result hub body has this heading. Older hubs, including the
- * first text hubs, never did, so setup can tell them apart.
- */
+/** Retained to recognize existing text hubs before updating them in place. */
 export const RESULT_HUB_HEADING = "About this post";
 
-const HUB_CONTENTS: Record<
+export const RESULT_HUB_DESCRIPTIONS: Record<
   keyof typeof RESULT_HUB_TITLES,
-  { results: string; share: string }
+  string
 > = {
-  ai: {
-    results:
-      "finished games against Euclid, the computer opponent, shared by the Redditors who played them",
-    share: "after a win or loss",
-  },
-  h2h: {
-    results: "finished matches between two Redditors, shared by their winners",
-    share: "after you win a match",
-  },
+  ai: "Finished games against Euclid, the computer opponent, shared by the Redditors who played them. Browse the results in the comments below, newest first.",
+  h2h: "Finished matches between two Redditors, shared by their winners. Browse the results in the comments below, newest first.",
 };
 
-const text = (t: string) => ({ e: "text", t });
+/** Both generations are ordinary text posts; presentation changes must not replace them. */
+export const isResultHubText = (body: string | null | undefined): boolean =>
+  typeof body === "string" &&
+  (body.includes(RESULT_HUB_HEADING) ||
+    Object.values(RESULT_HUB_DESCRIPTIONS).some((description) =>
+      body.includes(description),
+    ));
 
 /**
- * The rich-text body of a result hub. The community icon comes first, so
- * Reddit can use it as the post's thumbnail in collapsed feed views.
+ * An ordinary text post with an inline banner and one short description.
+ * Reddit's rich-text representation preserves the embedded image in the body.
  */
 export function resultHubBody(
   kind: keyof typeof RESULT_HUB_TITLES,
   gamePermalink: string,
-  iconUrl?: string,
+  bannerUrl?: string,
 ) {
-  const { results, share } = HUB_CONTENTS[kind];
   return {
     document: [
-      ...(iconUrl ? [{ e: "img", mediaUrl: iconUrl }] : []),
-      { e: "h", l: 2, c: [{ e: "raw", t: RESULT_HUB_HEADING }] },
+      ...(bannerUrl ? [{ e: "img", mediaUrl: bannerUrl }] : []),
       {
         e: "par",
         c: [
-          text(
-            `${GAME_SUMMARY} This post collects ${results}. Each comment is one result, newest first.`,
-          ),
-        ],
-      },
-      {
-        e: "par",
-        c: [
-          text("The post is locked, so only the Euclid app adds results. "),
+          { e: "text", t: `${RESULT_HUB_DESCRIPTIONS[kind]} ` },
           {
             e: "link",
             t: "Play Euclid",
             u: new URL(gamePermalink, "https://www.reddit.com").href,
           },
-          text(` and choose Share result ${share} to add yours.`),
         ],
       },
     ],

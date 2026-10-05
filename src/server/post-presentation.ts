@@ -4,7 +4,12 @@ import { parseJson } from "./stored-json";
 import type { gamePostContent } from "./community-post-content";
 
 const ICON_KEY = "euclid:community-post-icon:v1";
-type StoredIcon = { source: string; shareImageUrl: string };
+const BANNER_KEY = "euclid:community-post-banner:v1";
+const COMMUNITY_IMAGES = {
+  icon: { key: ICON_KEY, field: "icon" },
+  banner: { key: BANNER_KEY, field: "bannerBackgroundImage" },
+} as const;
+type StoredImage = { source: string; shareImageUrl: string };
 
 function imageUrl(
   value: unknown,
@@ -36,10 +41,10 @@ const sourceUrl = (value: unknown) =>
   ]);
 const hostedUrl = (value: unknown) => imageUrl(value, ["i.redd.it"]);
 
-function readStoredIcon(
+function readStoredImage(
   raw: string | null | undefined,
-): StoredIcon | undefined {
-  // Invalid cached data must not prevent refreshing the community icon.
+): StoredImage | undefined {
+  // Invalid cached data must not prevent refreshing the community image.
   const value = parseJson(raw);
   if (!isRecord(value)) return undefined;
   const source = sourceUrl(value.source);
@@ -47,30 +52,45 @@ function readStoredIcon(
   return source && shareImageUrl ? { source, shareImageUrl } : undefined;
 }
 
-/** Upload once per community icon, then reuse Reddit's hosted image for posts. */
-export async function communityPostStyles(refresh = false) {
-  const raw = await redis.get(ICON_KEY);
-  const stored = readStoredIcon(raw);
-  if (stored && !refresh) return { shareImageUrl: stored.shareImageUrl };
+async function communityImage(
+  kind: keyof typeof COMMUNITY_IMAGES,
+  refresh: boolean,
+): Promise<string | undefined> {
+  const { key, field } = COMMUNITY_IMAGES[kind];
+  const raw = await redis.get(key);
+  const stored = readStoredImage(raw);
+  if (stored && !refresh) return stored.shareImageUrl;
   const subreddit = await reddit.getSubredditStyles(context.subredditId);
-  if (!subreddit.icon) {
-    if (raw) await redis.del(ICON_KEY);
-    return {};
+  if (!subreddit[field]) {
+    if (raw) await redis.del(key);
+    return undefined;
   }
-  const source = sourceUrl(subreddit.icon);
+  const source = sourceUrl(subreddit[field]);
   if (!source)
-    throw new Error("The community icon must use a Reddit image URL.");
-  if (stored && stored.source === source)
-    return { shareImageUrl: stored.shareImageUrl };
+    throw new Error(`The community ${kind} must use a Reddit image URL.`);
+  if (stored && stored.source === source) return stored.shareImageUrl;
   const { mediaUrl } = await media.upload({ url: source, type: "image" });
   const shareImageUrl = hostedUrl(mediaUrl);
   if (!shareImageUrl)
     throw new Error(
-      "The uploaded community icon has no valid Reddit image URL.",
+      `The uploaded community ${kind} has no valid Reddit image URL.`,
     );
-  const icon: StoredIcon = { source, shareImageUrl };
-  await redis.set(ICON_KEY, JSON.stringify(icon));
-  return { shareImageUrl };
+  const image: StoredImage = { source, shareImageUrl };
+  await redis.set(key, JSON.stringify(image));
+  return shareImageUrl;
+}
+
+/** Upload once per community icon, then reuse Reddit's hosted image for posts. */
+export async function communityPostStyles(refresh = false) {
+  const shareImageUrl = await communityImage("icon", refresh);
+  return shareImageUrl ? { shareImageUrl } : {};
+}
+
+/** Result hubs use the community banner without falling back to the icon. */
+export async function communityBannerImage(
+  refresh = false,
+): Promise<string | undefined> {
+  return communityImage("banner", refresh);
 }
 
 /** Reconcile only on setup; the SDK preserves custom post data when updating
