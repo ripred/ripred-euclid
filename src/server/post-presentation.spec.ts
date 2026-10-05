@@ -223,7 +223,7 @@ describe("community result-hub banner", () => {
       JSON.stringify({ source, shareImageUrl: firstBannerUpload }),
     );
     mocks.reddit.getSubredditStyles.mockResolvedValue({
-      bannerBackgroundImage: source.replace("&", "&amp;"),
+      bannerBackgroundImage: source.replaceAll("&", "&amp;"),
     });
     expect(await communityBannerImage(true)).toBe(firstBannerUpload);
     expect(mocks.media.upload).not.toHaveBeenCalled();
@@ -237,7 +237,7 @@ describe("community result-hub banner", () => {
     const uploaded = "https://i.redd.it/new-banner.png";
     mocks.reddit.getSubredditStyles.mockResolvedValue({
       icon: firstSource,
-      bannerBackgroundImage: source.replace("&", "&amp;"),
+      bannerBackgroundImage: source.replaceAll("&", "&amp;"),
     });
     mocks.media.upload.mockResolvedValue({ mediaUrl: uploaded });
     expect(await communityBannerImage()).toBe(firstBannerUpload);
