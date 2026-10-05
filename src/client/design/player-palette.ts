@@ -1,4 +1,6 @@
-export type ColorScheme = "red-blue" | "amber-amethyst";
+import { parseColorScheme, type ColorScheme } from "./color-scheme";
+
+export { parseColorScheme, type ColorScheme } from "./color-scheme";
 
 interface PlayerTone {
   name: string;
@@ -114,12 +116,6 @@ const PALETTES: Record<ColorScheme, PlayerPalette> = {
   },
 };
 
-export function parseColorScheme(value: string | undefined): ColorScheme {
-  if (value === undefined || value === "red-blue") return "red-blue";
-  if (value === "amber-amethyst") return value;
-  throw new Error("VITE_COLOR_SCHEME must be red-blue or amber-amethyst");
-}
-
 export const paletteForScheme = (scheme: ColorScheme): PlayerPalette =>
   PALETTES[scheme];
 
@@ -137,7 +133,7 @@ export function playerName(owner: 1 | 2, titleCase = false): string {
 export function paletteVariables(
   palette: PlayerPalette,
 ): Record<string, string> {
-  return Object.fromEntries(
+  const playerVariables = Object.fromEntries(
     palette.players.flatMap((tone, index) => {
       const slot = index === 0 ? "red" : "blue";
       return Object.entries({
@@ -160,6 +156,29 @@ export function paletteVariables(
       });
     }),
   );
+  const purpleAccent = palette.scheme === "amber-amethyst";
+  const accent = palette.players[purpleAccent ? 1 : 0];
+  return {
+    ...playerVariables,
+    "--accent": accent.fill,
+    "--accent-pressed": accent.pressed,
+    "--accent-line": accent.line,
+    "--accent-gradient-end": purpleAccent
+      ? accent.line
+      : palette.players[1].fill,
+    "--accent-token": purpleAccent ? "var(--token-blue)" : "var(--token-red)",
+    "--action-highlight": purpleAccent ? accent.line : "var(--attention)",
+    "--accent-text-dark": accent.textDark,
+    "--accent-text-light": accent.textLight,
+    "--accent-on-color": accent.onColor,
+    "--accent-button-top": accent.buttonTop,
+    "--accent-button-bottom": accent.buttonBottom,
+    "--accent-button-lip": accent.buttonLip,
+    "--control-accent-dark": purpleAccent ? accent.textDark : accent.fill,
+    "--control-on-accent-dark": purpleAccent ? accent.fill : accent.onColor,
+    "--control-accent-light": accent.fill,
+    "--control-on-accent-light": accent.onColor,
+  };
 }
 
 export function initializePlayerPalette(root: HTMLElement) {

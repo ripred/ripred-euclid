@@ -118,7 +118,7 @@ html.euclid-inline,
 .preview__progress-bar span {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, var(--red), var(--blue));
+  background: linear-gradient(90deg, var(--accent), var(--accent-gradient-end));
   transform-origin: left;
   transition: transform 240ms var(--ease-out);
 }
@@ -200,8 +200,8 @@ html.euclid-inline,
 }
 
 .preview-lessons [data-state="current"] .preview-lessons__mark {
-  box-shadow: inset 0 0 0 2px var(--red);
-  color: var(--red-text);
+  box-shadow: inset 0 0 0 2px var(--control-accent);
+  color: var(--accent-text);
 }
 
 /* Leave enough room for the lesson labels beside the board. */
@@ -237,7 +237,7 @@ html.euclid-inline,
 }
 
 .preview-steps__pip--done {
-  background: linear-gradient(90deg, var(--red), var(--red-line));
+  background: linear-gradient(90deg, var(--accent), var(--accent-line));
 }
 
 .preview-caption__copy {

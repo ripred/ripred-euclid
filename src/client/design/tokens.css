@@ -77,6 +77,22 @@
   --text-3: #8a8a91;
   --red-text: var(--red-text-dark, #ff7d6c);
   --blue-text: var(--blue-text-dark, #93a1ff);
+  /* App actions are independent of the players' board colours. */
+  --accent: var(--red);
+  --accent-pressed: var(--red-pressed);
+  --accent-line: var(--red-line);
+  --accent-gradient-end: var(--blue);
+  --accent-token: var(--token-red);
+  --action-highlight: var(--attention);
+  --accent-text: var(--accent-text-dark, var(--red-text));
+  --accent-on-color: var(--red-on-color, var(--on-color));
+  --accent-button-top: var(--button-red-top, #f75b43);
+  --accent-button-bottom: var(--button-red-bottom, #de341c);
+  --accent-button-lip: var(--button-red-lip, #8e1a0b);
+  --control-accent: var(--control-accent-dark, var(--accent));
+  --control-on-accent: var(--control-on-accent-dark, var(--accent-on-color));
+  --focus-ring: var(--accent-text);
+  --board-focus-ring: var(--text);
   --attention: #f5b82e;
   --attention-soft: rgb(245 184 46 / 0.14);
   --live: #3ddc97;
@@ -150,6 +166,9 @@
   --text-3: #787873;
   --red-text: var(--red-text-light, #c4260f);
   --blue-text: var(--blue-text-light, #1f3fe0);
+  --accent-text: var(--accent-text-light, var(--red-text));
+  --control-accent: var(--control-accent-light, var(--accent));
+  --control-on-accent: var(--control-on-accent-light, var(--accent-on-color));
   --attention: #9a6700;
   --attention-soft: rgb(245 184 46 / 0.2);
   --live: #0f8a57;

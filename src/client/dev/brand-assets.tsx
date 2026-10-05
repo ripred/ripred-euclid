@@ -8,7 +8,6 @@ import { createRoot } from "react-dom/client";
 
 import {
   BRAND_ASSETS,
-  PROPOSED_BRAND_ASSETS,
   brandAssetsForScheme,
   brandAssetSvg,
   type BrandAssetName,
@@ -19,10 +18,13 @@ import "./brand-assets.css";
 const svgUrl = (name: BrandAssetName, scheme: ColorScheme) =>
   `data:image/svg+xml;charset=utf-8,${encodeURIComponent(brandAssetSvg(name, scheme))}`;
 
-async function exportImage(name: BrandAssetName): Promise<void> {
-  const { width, height, file } = PROPOSED_BRAND_ASSETS[name];
+async function exportImage(
+  name: BrandAssetName,
+  scheme: ColorScheme,
+): Promise<void> {
+  const { width, height, file } = brandAssetsForScheme(scheme)[name];
   const source = new Image(width, height);
-  source.src = svgUrl(name, "amber-amethyst");
+  source.src = svgUrl(name, scheme);
   await source.decode();
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -73,15 +75,17 @@ const PREVIEWS = Object.fromEntries(
 export function Gallery() {
   const [status, setStatus] = useState("");
   const [exporting, setExporting] = useState(false);
-  const exportProposal = async () => {
+  const exportArtwork = async (scheme: ColorScheme) => {
     if (exporting) return;
     setExporting(true);
-    setStatus("Exporting proposal...");
+    setStatus(`Exporting ${SCHEME_LABELS[scheme].toLowerCase()} artwork...`);
     try {
-      for (const name of Object.keys(PROPOSED_BRAND_ASSETS) as BrandAssetName[])
-        await exportImage(name);
+      for (const name of Object.keys(BRAND_ASSETS) as BrandAssetName[])
+        await exportImage(name, scheme);
       setStatus(
-        "Saved all four proposal images. Current artwork is unchanged.",
+        scheme === "amber-amethyst"
+          ? "Saved all four proposal images. Current artwork is unchanged."
+          : "Saved all four current images. Proposal artwork is unchanged.",
       );
     } catch (error) {
       setStatus(`Export failed: ${String(error)}`);
@@ -109,13 +113,18 @@ export function Gallery() {
         <button
           type="button"
           disabled={exporting}
-          onClick={() => void exportProposal()}
+          onClick={() => void exportArtwork("red-blue")}
+        >
+          Export current
+        </button>
+        <button
+          type="button"
+          disabled={exporting}
+          onClick={() => void exportArtwork("amber-amethyst")}
         >
           {exporting ? "Exporting proposal..." : "Export proposal"}
         </button>
-        <p>
-          Four exact-size images, saved to separate amber/amethyst filenames.
-        </p>
+        <p>Four exact-size images per palette, saved to separate filenames.</p>
         <output aria-live="polite">{status}</output>
       </div>
       {(Object.keys(BRAND_ASSETS) as BrandAssetName[]).map((name) => (

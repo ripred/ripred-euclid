@@ -155,14 +155,14 @@
   justify-self: start;
 }
 
-/* The solo card is the lead action: a red-lit table edge. */
+/* The solo card is the lead action, lit by the interface accent. */
 .home-solo {
   padding: var(--sp-6);
-  border-color: color-mix(in srgb, var(--red) 40%, var(--line));
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
   background:
     radial-gradient(
       120% 140% at 100% 0%,
-      color-mix(in srgb, var(--red) 22%, transparent),
+      color-mix(in srgb, var(--accent) 22%, transparent),
       transparent 55%
     ),
     linear-gradient(180deg, var(--surface-top), var(--surface));
@@ -295,7 +295,7 @@
 .home-continue {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  border-color: color-mix(in srgb, var(--attention) 50%, var(--line));
+  border-color: color-mix(in srgb, var(--action-highlight) 50%, var(--line));
 }
 
 .home-continue .btn {
@@ -561,7 +561,7 @@
 .home-challenge {
   position: relative;
   overflow: hidden;
-  --challenge: var(--red);
+  --challenge: var(--accent);
   border-color: color-mix(in srgb, var(--challenge) 42%, var(--line));
   box-shadow:
     inset 0 3px 0 var(--challenge),
