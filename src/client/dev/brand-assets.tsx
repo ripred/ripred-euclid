@@ -94,10 +94,10 @@ export function Gallery() {
       <header className="asset-gallery__header">
         <div>
           <p className="asset-gallery__eyebrow">Euclid / artwork comparison</p>
-          <h1>One square, then a bigger one.</h1>
+          <h1>The same board. A different palette.</h1>
           <p className="asset-gallery__intro">
-            The current artwork and a quieter proposal, rendered with the same
-            game pieces.
+            Matching banner geometry in both palettes, with a separate icon and
+            splash proposal. All artwork uses the game's own pieces.
           </p>
         </div>
         <nav aria-label="Local previews">

@@ -16,7 +16,11 @@ import {
   paletteVariables,
   type ColorScheme,
 } from "../design/player-palette";
-import { PROPOSED_BRAND_SCENES, PROPOSED_SCENE_FRAMES } from "./brand-scenes";
+import {
+  PROPOSED_BRAND_SCENES,
+  PROPOSED_SCENE_FRAMES,
+  type BrandSceneName,
+} from "./brand-scenes";
 
 export const BRAND_ASSETS = {
   icon: {
@@ -76,27 +80,24 @@ const STYLES = [
     .brand-proposal-grid .board__grooves { opacity: 0.28; }
   `);
 
-function proposalBoard(name: BrandAssetName) {
+function proposalBoard(name: BrandSceneName) {
   const scene = PROPOSED_BRAND_SCENES[name];
   const frame = PROPOSED_SCENE_FRAMES[name];
-  const wide = name === "banner-desktop" || name === "banner-mobile";
   return (
-    <g mask={wide ? "url(#quiet-edges)" : undefined}>
-      <svg {...frame}>
-        {name === "icon" ? (
-          <MarkDiagram scheme="amber-amethyst" />
-        ) : (
-          <BoardDiagram
-            width={scene.width}
-            height={scene.height}
-            cells={scene.cells}
-            squares={scene.squares}
-            className="brand-proposal-grid"
-            fit="contain"
-          />
-        )}
-      </svg>
-    </g>
+    <svg {...frame}>
+      {name === "icon" ? (
+        <MarkDiagram scheme="amber-amethyst" />
+      ) : (
+        <BoardDiagram
+          width={scene.width}
+          height={scene.height}
+          cells={scene.cells}
+          squares={scene.squares}
+          className="brand-proposal-grid"
+          fit="contain"
+        />
+      )}
+    </svg>
   );
 }
 
@@ -123,29 +124,9 @@ function artElement(name: BrandAssetName, scheme: ColorScheme) {
           <stop offset="0%" stopColor="#0a0a0c" stopOpacity="0.72" />
           <stop offset="100%" stopColor="#0a0a0c" stopOpacity="0.28" />
         </radialGradient>
-        {proposed ? (
-          <>
-            <linearGradient id="edge-fade">
-              <stop offset="0%" stopColor="#000" />
-              <stop offset="19%" stopColor="#fff" />
-              <stop offset="81%" stopColor="#fff" />
-              <stop offset="100%" stopColor="#000" />
-            </linearGradient>
-            <mask
-              id="quiet-edges"
-              maskUnits="userSpaceOnUse"
-              x={0}
-              y={0}
-              width={width}
-              height={height}
-            >
-              <rect width={width} height={height} fill="url(#edge-fade)" />
-            </mask>
-          </>
-        ) : null}
       </defs>
       <rect width={width} height={height} fill="url(#stage)" />
-      {proposed ? (
+      {proposed && (name === "icon" || name === "splash") ? (
         proposalBoard(name)
       ) : name === "icon" ? (
         <svg

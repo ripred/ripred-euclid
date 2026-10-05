@@ -2,7 +2,7 @@
 
 This is an opt-in visual proposal. Red and blue remain the default build, and both palettes retain the same player indices, game rules, scores and saved data.
 
-The proposed palette uses warm amber (`#FBB80F`) and deep amethyst (`#5E3478`). Lighter square edges, darker hint rings and separate light/dark text colors keep the pieces and controls readable against the existing graphite board. The community mark uses a complete tilted square with an open center. The banners show a few complete squares instead of repeating a cropped board pattern.
+The proposed palette uses warm amber (`#FBB80F`) and deep amethyst (`#5E3478`). Lighter square edges, darker hint rings and separate light/dark text colors keep the pieces and controls readable against the existing graphite board. The community mark uses a complete tilted square with an open center. Both banners reuse the original red/blue banner geometry: identical piece and square sizes, counts, positions, dimensions and crop, with only the palette changed. The icon and entry splash retain their separate proposed compositions.
 
 ## Compare the artwork
 

@@ -6,11 +6,7 @@ import {
 } from "../ui/board-geometry";
 import { AMBER_MARK_CELLS, AMBER_MARK_SQUARES } from "../ui/brand-boards";
 
-export type BrandSceneName =
-  | "icon"
-  | "banner-desktop"
-  | "banner-mobile"
-  | "splash";
+export type BrandSceneName = "icon" | "splash";
 type Point = readonly [x: number, y: number];
 type Motif = { key: string; owner: Owner; corners: readonly Point[] };
 type LoosePiece = readonly [x: number, y: number, owner: Owner];
@@ -56,80 +52,6 @@ export const PROPOSED_BRAND_SCENES: Record<BrandSceneName, BrandScene> = {
     cells: AMBER_MARK_CELLS,
     squares: AMBER_MARK_SQUARES,
   },
-  "banner-desktop": createScene(
-    50,
-    4,
-    [
-      {
-        key: "small",
-        owner: 1,
-        corners: [
-          [16, 1],
-          [17, 1],
-          [17, 2],
-          [16, 2],
-        ],
-      },
-      {
-        key: "larger",
-        owner: 2,
-        corners: [
-          [21, 0],
-          [23, 0],
-          [23, 2],
-          [21, 2],
-        ],
-      },
-      {
-        key: "tilted",
-        owner: 1,
-        corners: [
-          [28, 1],
-          [30, 0],
-          [31, 2],
-          [29, 3],
-        ],
-      },
-    ],
-    [
-      [35, 0, 1],
-      [37, 0, 1],
-      [35, 2, 1],
-      [37, 2, 2],
-    ],
-  ),
-  "banner-mobile": createScene(36, 3, [
-    {
-      key: "small",
-      owner: 1,
-      corners: [
-        [11, 0],
-        [12, 0],
-        [12, 1],
-        [11, 1],
-      ],
-    },
-    {
-      key: "diamond",
-      owner: 2,
-      corners: [
-        [18, 0],
-        [19, 1],
-        [18, 2],
-        [17, 1],
-      ],
-    },
-    {
-      key: "larger",
-      owner: 1,
-      corners: [
-        [24, 0],
-        [26, 0],
-        [26, 2],
-        [24, 2],
-      ],
-    },
-  ]),
   splash: createScene(
     8,
     8,
@@ -170,7 +92,5 @@ export const PROPOSED_SCENE_FRAMES: Record<
   { x: number; y: number; width: number; height: number }
 > = {
   icon: { x: 50, y: 50, width: 200, height: 200 },
-  "banner-desktop": { x: 60, y: 8, width: 3048, height: 240 },
-  "banner-mobile": { x: 32, y: 4, width: 1528, height: 120 },
   splash: { x: 355, y: 270, width: 490, height: 490 },
 };
