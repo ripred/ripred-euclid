@@ -93,6 +93,7 @@
 .player {
   --tone: var(--red);
   --tone-line: var(--red-line);
+  --tone-text: var(--red-on-color, #fff);
   position: relative;
   display: grid;
   gap: var(--sp-2);
@@ -111,6 +112,7 @@
 .player--2 {
   --tone: var(--blue);
   --tone-line: var(--blue-line);
+  --tone-text: var(--blue-on-color, #fff);
 }
 
 .player--active {
@@ -129,7 +131,7 @@
   padding: 1px var(--sp-2);
   border-radius: var(--radius-pill);
   background: var(--tone);
-  color: #fff;
+  color: var(--tone-text);
   content: "To move";
   font-size: var(--fs-xs);
   font-weight: 800;
@@ -212,7 +214,7 @@
   padding: 2px var(--sp-2);
   border-radius: var(--radius-pill);
   background: var(--tone);
-  color: #fff;
+  color: var(--tone-text);
   font-size: var(--fs-sm);
   font-weight: 800;
   white-space: nowrap;
@@ -316,6 +318,7 @@
 
 .score-pop {
   --tone: var(--red);
+  --tone-text: var(--red-on-color, #fff);
   position: absolute;
   z-index: 3;
   display: grid;
@@ -327,7 +330,7 @@
     inset 0 1px 0 rgb(255 255 255 / 0.25),
     0 3px 0 rgb(0 0 0 / 0.35),
     0 10px 24px rgb(0 0 0 / 0.35);
-  color: #fff;
+  color: var(--tone-text);
   transform: translate(-50%, -100%);
   animation: pop-rise 2.2s var(--ease-spring) both;
   pointer-events: none;
@@ -335,6 +338,7 @@
 
 .score-pop--2 {
   --tone: var(--blue);
+  --tone-text: var(--blue-on-color, #fff);
 }
 
 .score-pop strong {

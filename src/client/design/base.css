@@ -116,17 +116,17 @@ textarea {
 }
 
 .btn--primary {
-  --top: #f75b43;
-  --bottom: #de341c;
-  --lip: #8e1a0b;
-  --btn-text: #fff;
+  --top: var(--button-red-top, #f75b43);
+  --bottom: var(--button-red-bottom, #de341c);
+  --lip: var(--button-red-lip, #8e1a0b);
+  --btn-text: var(--red-on-color, #fff);
 }
 
 .btn--blue {
-  --top: #4d6bff;
-  --bottom: #2345e6;
-  --lip: #0f1d7c;
-  --btn-text: #fff;
+  --top: var(--button-blue-top, #4d6bff);
+  --bottom: var(--button-blue-bottom, #2345e6);
+  --lip: var(--button-blue-lip, #0f1d7c);
+  --btn-text: var(--blue-on-color, #fff);
 }
 
 .btn--outline,
@@ -403,7 +403,7 @@ textarea {
 }
 
 .switch input:checked::after {
-  background: var(--on-color);
+  background: var(--red-on-color, var(--on-color));
   transform: translateX(18px);
 }
 

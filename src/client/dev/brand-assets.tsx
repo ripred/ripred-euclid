@@ -1,30 +1,41 @@
 /**
  * Development-only preview and export of the brand art in dev/brand-art.tsx.
- * Open /dev/brand-assets.html while `npm run dev:local` is running; "Export
- * images" draws each image at its exact size and the local server saves it.
+ * Open /dev/brand-assets.html while `npm run dev:local` is running. Proposal
+ * exports use separate filenames and leave the current artwork intact.
  */
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 
-import { BRAND_ASSETS, brandAssetSvg, type BrandAssetName } from "./brand-art";
+import {
+  BRAND_ASSETS,
+  PROPOSED_BRAND_ASSETS,
+  brandAssetsForScheme,
+  brandAssetSvg,
+  type BrandAssetName,
+} from "./brand-art";
+import type { ColorScheme } from "../design/player-palette";
+import "./brand-assets.css";
 
-const svgUrl = (name: BrandAssetName) =>
-  `data:image/svg+xml;charset=utf-8,${encodeURIComponent(brandAssetSvg(name))}`;
+const svgUrl = (name: BrandAssetName, scheme: ColorScheme) =>
+  `data:image/svg+xml;charset=utf-8,${encodeURIComponent(brandAssetSvg(name, scheme))}`;
 
 async function exportImage(name: BrandAssetName): Promise<void> {
-  const { width, height, file } = BRAND_ASSETS[name];
+  const { width, height, file } = PROPOSED_BRAND_ASSETS[name];
   const source = new Image(width, height);
-  source.src = svgUrl(name);
+  source.src = svgUrl(name, "amber-amethyst");
   await source.decode();
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
-  canvas.getContext("2d")!.drawImage(source, 0, 0, width, height);
-  // Photographic art ships as JPEG; flat art keeps PNG's crisp edges.
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("The image canvas is unavailable.");
+  context.drawImage(source, 0, 0, width, height);
+  // Keep the splash format compatible with the current entry screen.
   const jpeg = file.endsWith(".jpg");
   const image = await new Promise<Blob>((resolve, reject) =>
     canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject()),
+      (blob) =>
+        blob ? resolve(blob) : reject(new Error("Image encoding failed.")),
       jpeg ? "image/jpeg" : "image/png",
       0.86,
     ),
@@ -36,43 +47,116 @@ async function exportImage(name: BrandAssetName): Promise<void> {
   if (!response.ok) throw new Error(await response.text());
 }
 
+const ASSET_LABELS: Record<BrandAssetName, string> = {
+  icon: "Community icon",
+  "banner-desktop": "Desktop banner",
+  "banner-mobile": "Mobile banner",
+  splash: "Entry splash",
+};
+const SCHEMES = ["red-blue", "amber-amethyst"] as const;
+const SCHEME_LABELS: Record<ColorScheme, string> = {
+  "red-blue": "Current red / blue",
+  "amber-amethyst": "Proposed amber / amethyst",
+};
+const PREVIEWS = Object.fromEntries(
+  SCHEMES.map((scheme) => [
+    scheme,
+    Object.fromEntries(
+      (Object.keys(BRAND_ASSETS) as BrandAssetName[]).map((name) => [
+        name,
+        svgUrl(name, scheme),
+      ]),
+    ) as Record<BrandAssetName, string>,
+  ]),
+) as Record<ColorScheme, Record<BrandAssetName, string>>;
+
 export function Gallery() {
   const [status, setStatus] = useState("");
-  const exportAll = async () => {
-    setStatus("Exporting…");
+  const [exporting, setExporting] = useState(false);
+  const exportProposal = async () => {
+    if (exporting) return;
+    setExporting(true);
+    setStatus("Exporting proposal...");
     try {
-      for (const name of Object.keys(BRAND_ASSETS) as BrandAssetName[])
+      for (const name of Object.keys(PROPOSED_BRAND_ASSETS) as BrandAssetName[])
         await exportImage(name);
-      setStatus("Exported every image.");
+      setStatus(
+        "Saved all four proposal images. Current artwork is unchanged.",
+      );
     } catch (error) {
       setStatus(`Export failed: ${String(error)}`);
+    } finally {
+      setExporting(false);
     }
   };
   return (
-    <main
-      style={{ display: "grid", gap: 24, padding: 24, background: "#0b0b0c" }}
-    >
-      <p style={{ margin: 0, color: "#b6b6ba", font: "13px system-ui" }}>
-        <button type="button" onClick={() => void exportAll()}>
-          Export images
-        </button>{" "}
-        <output>{status}</output>
-      </p>
-      {(Object.keys(BRAND_ASSETS) as BrandAssetName[]).map((name) => (
-        <figure
-          key={name}
-          style={{ margin: 0, color: "#b6b6ba", font: "13px system-ui" }}
+    <main className="asset-gallery">
+      <header className="asset-gallery__header">
+        <div>
+          <p className="asset-gallery__eyebrow">Euclid / artwork comparison</p>
+          <h1>One square, then a bigger one.</h1>
+          <p className="asset-gallery__intro">
+            The current artwork and a quieter proposal, rendered with the same
+            game pieces.
+          </p>
+        </div>
+        <nav aria-label="Local previews">
+          <a href="/preview.html">Game preview</a>
+          <a href="/index.html">App entry</a>
+        </nav>
+      </header>
+      <div className="asset-gallery__export">
+        <button
+          type="button"
+          disabled={exporting}
+          onClick={() => void exportProposal()}
         >
-          <img
-            alt={name}
-            style={{ maxWidth: "100%", height: "auto", display: "block" }}
-            src={svgUrl(name)}
-          />
-          <figcaption>
-            {name} · {BRAND_ASSETS[name].width}×{BRAND_ASSETS[name].height} ·{" "}
-            {BRAND_ASSETS[name].file}
-          </figcaption>
-        </figure>
+          {exporting ? "Exporting proposal..." : "Export proposal"}
+        </button>
+        <p>
+          Four exact-size images, saved to separate amber/amethyst filenames.
+        </p>
+        <output aria-live="polite">{status}</output>
+      </div>
+      {(Object.keys(BRAND_ASSETS) as BrandAssetName[]).map((name) => (
+        <section
+          className="asset-comparison"
+          key={name}
+          aria-labelledby={`heading-${name}`}
+        >
+          <div className="asset-comparison__heading">
+            <h2 id={`heading-${name}`}>{ASSET_LABELS[name]}</h2>
+            <p>
+              {BRAND_ASSETS[name].width} × {BRAND_ASSETS[name].height}
+            </p>
+          </div>
+          <div className="asset-comparison__pair">
+            {SCHEMES.map((scheme) => (
+              <figure className="asset-card" key={scheme} data-scheme={scheme}>
+                <figcaption className="asset-card__label">
+                  {SCHEME_LABELS[scheme]}
+                </figcaption>
+                <div className={`asset-card__frame asset-card__frame--${name}`}>
+                  <img
+                    src={PREVIEWS[scheme][name]}
+                    alt={`${ASSET_LABELS[name]}: ${SCHEME_LABELS[scheme]}`}
+                    width={BRAND_ASSETS[name].width}
+                    height={BRAND_ASSETS[name].height}
+                  />
+                </div>
+                <div className="asset-card__details">
+                  <code>{brandAssetsForScheme(scheme)[name].file}</code>
+                  <a
+                    href={PREVIEWS[scheme][name]}
+                    download={`euclid-${scheme}-${name}.svg`}
+                  >
+                    SVG source
+                  </a>
+                </div>
+              </figure>
+            ))}
+          </div>
+        </section>
       ))}
     </main>
   );

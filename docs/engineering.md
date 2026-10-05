@@ -236,6 +236,7 @@ npx devvit view ripred-euclid@<version>
 - `src/client/public/splash.jpg` is the splash background referenced by server-created share posts.
 - Brand art is rendered from the game's own components in `src/client/dev/brand-art.tsx`. With `npm run dev:local` running, open `/dev/brand-assets.html` to preview it; **Export images** writes `subreddit/images/euclid_board_icon_300.png`, `euclid_board_banner_desktop.png` (3168×256), `euclid_board_banner_mobile.png` (1592×128), and `src/client/public/splash.jpg` (1200×900).
 - `subreddit/images/` contains curated branding candidates and moderator upload assets. These are not runtime imports; keep purpose-named files needed for final selection or a distinct Reddit upload role.
+- `VITE_COLOR_SCHEME=amber-amethyst` opts into the proposed player palette; `red-blue` remains the default. `src/client/design/player-palette.ts` keeps names, piece shades, square edges, hint rings and control foregrounds together without changing player indices. The development asset gallery compares both palettes and exports the proposal to separate filenames. See [palette review](palette-review.md) for preview, export and deployment commands.
 
 ## Real-surface verification
 

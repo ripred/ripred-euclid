@@ -10,6 +10,7 @@ import { Dialog } from "./ui/Dialog";
 import "./how-to-play.css";
 import type { GameVariant } from "../shared/game/rules";
 import { TideRules } from "./tide-rules";
+import { playerName } from "./design/player-palette";
 
 interface LessonSquare {
   owner: Owner;
@@ -84,9 +85,8 @@ const LESSONS: Lesson[] = [
   },
   {
     title: "Block your opponent",
-    body: "Claim the fourth corner before your opponent can finish a square. The marked red piece stops blue here; blocking alone scores no points.",
-    diagramDescription:
-      "Blue has three corners of a square. The marked red piece occupies its fourth corner, blocking blue from completing it.",
+    body: `Claim the fourth corner before your opponent can finish a square. The marked ${playerName(1)} piece stops ${playerName(2)} here; blocking alone scores no points.`,
+    diagramDescription: `${playerName(2, true)} has three corners of a square. The marked ${playerName(1)} piece occupies its fourth corner, blocking ${playerName(2)} from completing it.`,
     // Three earlier red moves make this a legal alternating-turn position.
     pieces: [
       { x: 0, y: 0, owner: 1 },

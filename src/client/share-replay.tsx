@@ -6,13 +6,14 @@ import { buildReplayFrames, frameShapes } from "./share-replay-model";
 import { BoardDiagram, PieceGlyph } from "./ui/BoardDiagram";
 import { boardAspectRatio } from "./ui/board-geometry";
 import { useReducedMotion } from "./ui/use-reduced-motion";
+import { playerName } from "./design/player-palette";
 import "./share-replay.css";
 
 export type ReplayTheme = "dark" | "light";
 
 export function ScoreChips({
   scores,
-  labels = ["Red", "Blue"],
+  labels = [playerName(1, true), playerName(2, true)],
 }: {
   scores: readonly [number, number];
   labels?: readonly [string, string];

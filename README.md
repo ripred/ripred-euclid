@@ -124,7 +124,7 @@ After changing board artwork or the teaching sequence, regenerate them with:
 node tools/render-readme-images.mjs
 ```
 
-The community icon, desktop/mobile banners, and share background have a separate preview and export page at `/dev/brand-assets.html` while the local server is running. Both sets of artwork use the shared board renderer and design tokens.
+The community icon, desktop/mobile banners, and share background have a separate preview and export page at `/dev/brand-assets.html` while the local server is running. Both sets of artwork use the shared board renderer and design tokens. An opt-in [amber and amethyst proposal](docs/palette-review.md) includes matching player colors and separate community artwork; red and blue remain the default.
 
 ## License
 

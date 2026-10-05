@@ -1,24 +1,39 @@
 import { BoardDiagram } from "./BoardDiagram";
 import { cellsFromPoints } from "./board-geometry";
-import { MACRO_H, MARK_CELLS, MARK_SQUARES, tiledMacro } from "./brand-boards";
+import { PLAYER_PALETTE, type ColorScheme } from "../design/player-palette";
+import {
+  AMBER_MARK_CELLS,
+  AMBER_MARK_SQUARES,
+  MACRO_H,
+  MARK_CELLS,
+  MARK_SQUARES,
+  tiledMacro,
+} from "./brand-boards";
 import "./brand.css";
 
 /** The logo board alone, as SVG, for the app and for exported art. */
-export function MarkDiagram() {
+export function MarkDiagram({ scheme = "red-blue" }: { scheme?: ColorScheme }) {
+  const proposed = scheme === "amber-amethyst";
   return (
     <BoardDiagram
       width={3}
       height={3}
-      cells={MARK_CELLS}
-      squares={MARK_SQUARES}
+      cells={proposed ? AMBER_MARK_CELLS : MARK_CELLS}
+      squares={proposed ? AMBER_MARK_SQUARES : MARK_SQUARES}
     />
   );
 }
 
-export function BrandMark({ size = 40 }: { size?: number }) {
+export function BrandMark({
+  size = 40,
+  scheme = PLAYER_PALETTE.scheme,
+}: {
+  size?: number;
+  scheme?: ColorScheme;
+}) {
   return (
     <span className="brand-mark" style={{ width: size, height: size }}>
-      <MarkDiagram />
+      <MarkDiagram scheme={scheme} />
     </span>
   );
 }
