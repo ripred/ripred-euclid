@@ -4,6 +4,9 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { expandedInitialMode, expandedInitialAction } from "./expanded-entry";
+import { initializePlayerPalette } from "./design/player-palette";
+
+initializePlayerPalette(document.documentElement);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

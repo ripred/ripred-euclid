@@ -150,13 +150,16 @@ interface RedditorMatchCardProps {
 const STRONG_BUTTON =
   "btn btn--blue euclid-home__secondary-button euclid-home__secondary-button--strong";
 
-const randomFloatTarget = () =>
-  `translate(${(Math.random() * 10 - 5).toFixed(2)}%, ${(Math.random() * 10 - 5).toFixed(2)}%) rotate(${(Math.random() * 20 - 10).toFixed(2)}deg)`;
+// Spread the tilted source square across a quarter-turn; further turns repeat its silhouette.
+const MENU_SQUARE_ANGLES = [-27, -4, 18, 41] as const;
 
-const randomFloatPath = () => ({
-  "--float-one": randomFloatTarget(),
-  "--float-two": randomFloatTarget(),
-  "--float-three": randomFloatTarget(),
+const randomFloatTarget = (angle: number) =>
+  `translate(${(Math.random() * 10 - 5).toFixed(2)}%, ${(Math.random() * 10 - 5).toFixed(2)}%) rotate(${(angle + Math.random() * 8 - 4).toFixed(2)}deg)`;
+
+const randomFloatPath = (angle: number) => ({
+  "--float-one": randomFloatTarget(angle),
+  "--float-two": randomFloatTarget(angle),
+  "--float-three": randomFloatTarget(angle),
 });
 
 /** Each menu square keeps its own phase and chooses new destinations every lap. */
@@ -167,15 +170,16 @@ function MenuTokenCluster({
   owner: 1 | 2;
   position: 0 | 1 | 2 | 3;
 }) {
+  const angle = MENU_SQUARE_ANGLES[position];
   const [motion, setMotion] = useState(() => {
     const duration = 8 + position * 2 + Math.random() * 1.5;
     const x = (position % 2 === 0 ? -4 : 4) + Math.random() - 0.5;
     const y = (position < 2 ? -4 : 4) + Math.random() - 0.5;
     return {
-      "--float-origin": `translate(${x.toFixed(2)}%, ${y.toFixed(2)}%) rotate(${-9 + position * 6}deg)`,
+      "--float-origin": `translate(${x.toFixed(2)}%, ${y.toFixed(2)}%) rotate(${angle}deg)`,
       "--float-duration": `${duration.toFixed(2)}s`,
       "--float-delay": `${(-duration * (0.13 + position * 0.19 + Math.random() * 0.05)).toFixed(2)}s`,
-      ...randomFloatPath(),
+      ...randomFloatPath(angle),
     };
   });
   return (
@@ -185,7 +189,10 @@ function MenuTokenCluster({
         style={motion as CSSProperties}
         onAnimationIteration={(event) => {
           if (event.animationName === "tokens-float")
-            setMotion((previous) => ({ ...previous, ...randomFloatPath() }));
+            setMotion((previous) => ({
+              ...previous,
+              ...randomFloatPath(angle),
+            }));
         }}
       >
         <TokenCluster owner={owner} />

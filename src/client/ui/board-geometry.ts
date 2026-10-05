@@ -1,4 +1,5 @@
 import { scoreGridFootprint } from "../../shared/scoring";
+import { playerName } from "../design/player-palette";
 import {
   emptyCells,
   orderAroundCentre,
@@ -77,7 +78,7 @@ export function ownerAt(cells: ArrayLike<number>, index: number): Owner | 0 {
   return value === 1 || value === 2 ? value : 0;
 }
 
-export const ownerName = (owner: Owner) => (owner === 1 ? "red" : "blue");
+export const ownerName = playerName;
 
 /** Touch placement asks for a second tap on the aimed point. */
 export const tapAgainPrompt = (point: string, action = "place") =>

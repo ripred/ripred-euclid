@@ -1,0 +1,227 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+  background: #111112;
+  color: #f5f5f4;
+}
+
+body {
+  margin: 0;
+}
+* {
+  box-sizing: border-box;
+}
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+a {
+  color: #d2afe4;
+  text-underline-offset: 3px;
+}
+button,
+a:focus-visible {
+  outline-offset: 4px;
+}
+
+.asset-gallery {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+}
+.asset-gallery__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 28px;
+}
+.asset-gallery__eyebrow {
+  margin: 0 0 8px;
+  color: #c3c3c9;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.asset-gallery h1 {
+  margin: 0;
+  font-size: clamp(24px, 3.1vw, 36px);
+  letter-spacing: -0.045em;
+  line-height: 1.15;
+}
+.asset-gallery__intro {
+  max-width: 650px;
+  margin: 12px 0 0;
+  color: #b6b6ba;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.asset-gallery nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-top: 8px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.asset-gallery__export {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  margin: 24px 0 30px;
+  padding: 18px;
+  border: 1px solid #34343a;
+  border-radius: 12px;
+  background: #1b1b1d;
+}
+.asset-gallery__export button {
+  padding: 12px 18px;
+  border: 0;
+  border-radius: 7px;
+  background: #fbb80f;
+  color: #281c04;
+  font:
+    700 14px system-ui,
+    sans-serif;
+  cursor: pointer;
+}
+.asset-gallery__export button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.asset-gallery__export p {
+  margin: 0;
+  color: #c3c3c9;
+  font-size: 13px;
+}
+.asset-gallery__export output {
+  flex-basis: 100%;
+  color: #f5f5f4;
+  font-size: 13px;
+}
+.asset-gallery__export output:empty {
+  display: none;
+}
+.asset-comparison + .asset-comparison {
+  margin-top: 28px;
+}
+.asset-comparison__heading {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+.asset-comparison__heading h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+}
+.asset-comparison__heading p {
+  margin: 0;
+  color: #96969e;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.asset-comparison__pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.asset-card {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #34343a;
+  border-radius: 12px;
+  background: #19191c;
+}
+.asset-card[data-scheme="amber-amethyst"] {
+  border-color: #625140;
+}
+.asset-card__label {
+  padding: 12px 16px;
+  color: #c3c3c9;
+  font-size: 12px;
+}
+.asset-card[data-scheme="amber-amethyst"] .asset-card__label {
+  color: #ffd05a;
+}
+.asset-card__frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 112px;
+  padding: 10px;
+  background: #0a0a0c;
+  border-top: 1px solid #28282d;
+  border-bottom: 1px solid #28282d;
+}
+.asset-card__frame img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.asset-card__frame--icon {
+  height: 176px;
+}
+.asset-card__frame--splash {
+  height: 240px;
+}
+.asset-card__details {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+}
+.asset-card__details code {
+  min-width: 0;
+  color: #96969e;
+  overflow-wrap: anywhere;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.asset-card__details a {
+  flex: none;
+  font-size: 11px;
+}
+
+@media (max-width: 680px) {
+  .asset-gallery {
+    padding: 24px 14px 48px;
+  }
+  .asset-gallery__header {
+    display: block;
+  }
+  .asset-gallery nav {
+    margin-top: 12px;
+  }
+  .asset-comparison__pair {
+    gap: 8px;
+  }
+  .asset-card__label,
+  .asset-card__details {
+    padding: 10px;
+  }
+  .asset-card__details {
+    display: block;
+  }
+  .asset-card__details a {
+    display: inline-block;
+    margin-top: 8px;
+  }
+  .asset-card__frame {
+    height: 90px;
+    padding: 5px;
+  }
+  .asset-card__frame--icon {
+    height: 132px;
+  }
+  .asset-card__frame--splash {
+    height: 172px;
+  }
+}

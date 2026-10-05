@@ -7,12 +7,14 @@ import { prepareGamePost } from "./core/post";
 import { COMMUNITY_POSTS_KEY } from "./community-post-keys";
 import { ensurePostHighlighted } from "./post-highlights";
 import {
+  communityBannerImage,
   communityPostStyles,
   updateGamePostContent,
 } from "./post-presentation";
 import {
   gamePostContent,
-  RESULT_HUB_HEADING,
+  isResultHubText,
+  RESULT_HUB_DESCRIPTIONS,
   resultHubBody,
 } from "./community-post-content";
 import { isDefinitiveRedditRejection } from "./reddit-write-errors";
@@ -40,7 +42,7 @@ function isImagePost(post: Post) {
 
 /** A current result hub: a text post whose body explains what it holds. */
 const isTextHub = (post: Post) =>
-  !isImagePost(post) && post.body?.includes(RESULT_HUB_HEADING) === true;
+  !isImagePost(post) && isResultHubText(post.body);
 
 /** The body this app last wrote to a hub. Reddit's own rendering of rich
  * text cannot be compared with what was sent. */
@@ -209,9 +211,10 @@ export async function setupCommunityPosts() {
   const retired = new Map<HubKind, Set<Post["id"]>>();
   let stylesPromise: ReturnType<typeof communityPostStyles> | undefined;
   const getStyles = () => (stylesPromise ??= communityPostStyles(true));
-  // Hubs work without the icon; presentation reports its failure below.
-  const iconUrl = await getStyles().then(
-    (styles) => styles.shareImageUrl,
+  // Keep existing bodies intact during banner outages; report failures after routing is ready.
+  const bannerImage = communityBannerImage(true);
+  const bannerUrl = await bannerImage.then(
+    (url) => url,
     () => undefined,
   );
   for (const kind of ["ai", "h2h"] as const) {
@@ -234,7 +237,7 @@ export async function setupCommunityPosts() {
           .at(-1);
     if (hub) await validatePost(hub, title, hub.id);
     if (hub && !saved) await redis.set(key, hub.id);
-    const richtext = resultHubBody(kind, game.permalink, iconUrl);
+    const richtext = resultHubBody(kind, game.permalink, bannerUrl);
     const body = JSON.stringify(richtext);
     const bodyKey = `${key}:body`;
     const old = new Set<Post["id"]>();
@@ -255,9 +258,19 @@ export async function setupCommunityPosts() {
       );
     }
     const written = readWrittenBody(await redis.get(bodyKey));
-    // Without the icon, preserve the existing body regardless of cache state.
-    if (iconUrl && !(written?.postId === hub.id && written.body === body)) {
+    // Without the banner, preserve the existing body regardless of cache state.
+    if (bannerUrl && !(written?.postId === hub.id && written.body === body)) {
       await hub.edit({ richtext });
+      const updated = await validatePost(
+        await reddit.getPostById(hub.id),
+        title,
+        hub.id,
+        false,
+      );
+      if (!updated.body?.includes(RESULT_HUB_DESCRIPTIONS[kind]))
+        throw new Error(
+          `The result post description was not saved on ${hub.id}`,
+        );
       await redis.set(bodyKey, JSON.stringify({ postId: hub.id, body }));
     }
     // Old canonical IDs remain cleanup pointers if removal failed after routing
@@ -311,6 +324,7 @@ export async function setupCommunityPosts() {
 
   // Presentation runs only after the hubs are usable. Its failure must not
   // disable result sharing or create replacement posts.
+  await bannerImage;
   const styles = await getStyles();
   // Result hubs are text posts. Custom game/result posts also support styles.
   // Read back the stored URL without assuming highlight rendering.

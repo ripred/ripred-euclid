@@ -1,10 +1,20 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import tailwind from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import { parseColorScheme } from "./design/color-scheme";
+
+const validateColorScheme: Plugin = {
+  name: "validate-color-scheme",
+  configResolved(config) {
+    parseColorScheme(
+      loadEnv(config.mode, config.envDir, "VITE_").VITE_COLOR_SCHEME,
+    );
+  },
+};
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwind()],
+  plugins: [validateColorScheme, react(), tailwind()],
   build: {
     emptyOutDir: true,
     outDir: "../../dist/client",

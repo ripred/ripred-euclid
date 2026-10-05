@@ -3,6 +3,7 @@ import { RESULT_HUB_TITLES } from "../../src/shared/result-sharing.ts";
 import { resultHubBody } from "../../src/server/community-post-content.ts";
 
 const LOCAL_ICON = "https://i.redd.it/localicon.png";
+const LOCAL_BANNER = "https://i.redd.it/localbanner.png";
 const reject = (message, code = "invalid_argument") =>
   Object.assign(new Error(message), { code });
 
@@ -102,7 +103,7 @@ export function createLocalCommunity({
       title,
       locked: true,
       suggestedCommentSort: "NEW",
-      richtext: resultHubBody(kind, game.permalink, LOCAL_ICON),
+      richtext: resultHubBody(kind, game.permalink, LOCAL_BANNER),
     });
     registry[kind] = hub.id;
   }
@@ -142,7 +143,7 @@ export function createLocalCommunity({
         getPost(id).styles = structuredClone(styles);
       },
       async getSubredditStyles() {
-        return { icon: LOCAL_ICON };
+        return { icon: LOCAL_ICON, bannerBackgroundImage: LOCAL_BANNER };
       },
       async submitComment({ id, text, runAs = "USER" }) {
         const post = getPost(id);
@@ -171,9 +172,11 @@ export function createLocalCommunity({
       },
     },
     media: {
-      async upload() {
-        // Deliberately ignore remote sources: the URL is synthetic and no upload occurs.
-        return { mediaId: "local_icon", mediaUrl: LOCAL_ICON };
+      async upload({ url } = {}) {
+        // Sources are never fetched; known fixture assets stay distinguishable.
+        return url === LOCAL_BANNER
+          ? { mediaId: "local_banner", mediaUrl: LOCAL_BANNER }
+          : { mediaId: "local_icon", mediaUrl: LOCAL_ICON };
       },
     },
   };

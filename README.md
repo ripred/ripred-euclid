@@ -112,7 +112,7 @@ git diff --check
 
 `npm run check` applies formatting and lint fixes, so use the individual commands above when you only want to inspect a worktree. Tests live beside the source in `*.spec.ts` and `*.spec.tsx` files.
 
-The package version is **0.2.11** and Devvit is pinned to **0.14.6**. `npm run dev` starts the Reddit playtest workflow for `r/ripred_euclid_dev`; `npm run dev:local` is the standalone workflow above. Building, pushing to GitHub, uploading to Devvit, and installing on a subreddit are separate steps. The [deployment commands](docs/engineering.md#devvit-operation) cover the Reddit side.
+The package version is **0.2.49** and Devvit is pinned to **0.14.6**. `npm run dev` starts the Reddit playtest workflow for `r/ripred_euclid_dev`; `npm run dev:local` is the standalone workflow above. Building, pushing to GitHub, uploading to Devvit, and installing on a subreddit are separate steps. The [deployment commands](docs/engineering.md#devvit-operation) cover the Reddit side.
 
 ### Keeping the pictures current
 
@@ -124,7 +124,7 @@ After changing board artwork or the teaching sequence, regenerate them with:
 node tools/render-readme-images.mjs
 ```
 
-The community icon, desktop/mobile banners, and share background have a separate preview and export page at `/dev/brand-assets.html` while the local server is running. Both sets of artwork use the shared board renderer and design tokens.
+The community icon, desktop/mobile banners, and share background have a separate preview and export page at `/dev/brand-assets.html` while the local server is running. Both sets of artwork use the shared board renderer and design tokens. An opt-in [amber and amethyst proposal](docs/palette-review.md) includes matching player colors and separate community artwork; red and blue remain the default.
 
 ## License
 

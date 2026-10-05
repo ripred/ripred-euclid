@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { COMMUNITY_POSTS_KEY } from "../../src/server/community-post-keys.ts";
 import { RESULT_HUB_TITLES } from "../../src/shared/result-sharing.ts";
-import { resultHubBody } from "../../src/server/community-post-content.ts";
+import {
+  isResultHubText,
+  resultHubBody,
+} from "../../src/server/community-post-content.ts";
 import { createLocalCommunity } from "./community.mjs";
 import { createLocalRedis } from "./redis-store.mjs";
 
@@ -24,10 +27,10 @@ test("local community seeds the game and locked newest-first hubs using shared t
       resultHubBody(
         kind,
         registry.gamePermalink,
-        "https://i.redd.it/localicon.png",
+        "https://i.redd.it/localbanner.png",
       ),
     );
-    assert.match(hub.body, /About this post/);
+    assert.equal(isResultHubText(hub.body), true);
     assert.equal(hub.url, `http://localhost${hub.permalink}`);
     assert.equal(hub.locked, true);
     assert.equal(hub.suggestedCommentSort, "NEW");
@@ -87,6 +90,14 @@ test("local post styles and media are synthetic even when given an external imag
   const local = createLocalCommunity();
   const styles = await local.reddit.getSubredditStyles("t5_local");
   assert.equal(styles.icon, "https://i.redd.it/localicon.png");
+  assert.equal(
+    styles.bannerBackgroundImage,
+    "https://i.redd.it/localbanner.png",
+  );
+  const banner = await local.media.upload({
+    url: styles.bannerBackgroundImage,
+  });
+  assert.equal(banner.mediaUrl, "https://i.redd.it/localbanner.png");
   const image = await local.media.upload({
     url: "https://example.com/icon.png",
     type: "image",

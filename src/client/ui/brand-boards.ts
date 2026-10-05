@@ -22,6 +22,26 @@ export const MARK_SQUARES: BoardSquareShape[] = [
   },
 ];
 
+/* A tilted square leaves its centre open, with the second player alongside. */
+export const AMBER_MARK_CORNERS = [
+  { x: 1, y: 0 },
+  { x: 2, y: 1 },
+  { x: 1, y: 2 },
+  { x: 0, y: 1 },
+];
+export const AMBER_MARK_CELLS = cellsFromPoints(3, 3, [
+  ...AMBER_MARK_CORNERS.map((point) => ({ ...point, owner: 1 as const })),
+  { x: 2, y: 2, owner: 2 },
+]);
+export const AMBER_MARK_SQUARES: BoardSquareShape[] = [
+  {
+    key: "amber-mark",
+    owner: 1,
+    tone: "history",
+    corners: AMBER_MARK_CORNERS,
+  },
+];
+
 /* A cropped close-up of a board in play, in the spirit of the community banner. */
 const MACRO_W = 14;
 export const MACRO_H = 5;

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  communityBannerImage,
   communityPostStyles,
   updateGamePostContent,
 } from "./post-presentation";
@@ -13,20 +14,23 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@devvit/web/server", () => mocks);
 
 const ICON_KEY = "euclid:community-post-icon:v1";
+const BANNER_KEY = "euclid:community-post-banner:v1";
 const firstSource = "https://styles.redditmedia.com/first.png";
 const firstUpload = "https://i.redd.it/first.png";
-let saved: string | undefined;
+const firstBannerSource = "https://styles.redditmedia.com/banner.png";
+const firstBannerUpload = "https://i.redd.it/banner.png";
+const saved = new Map<string, string>();
 
 beforeEach(() => {
   vi.resetAllMocks();
-  saved = undefined;
-  mocks.redis.get.mockImplementation(async () => saved);
-  mocks.redis.set.mockImplementation(async (_key, value: string) => {
-    saved = value;
+  saved.clear();
+  mocks.redis.get.mockImplementation(async (key: string) => saved.get(key));
+  mocks.redis.set.mockImplementation(async (key: string, value: string) => {
+    saved.set(key, value);
     return "OK";
   });
-  mocks.redis.del.mockImplementation(async () => {
-    saved = undefined;
+  mocks.redis.del.mockImplementation(async (key: string) => {
+    saved.delete(key);
   });
   mocks.reddit.getSubredditStyles.mockResolvedValue({ icon: firstSource });
   mocks.media.upload.mockResolvedValue({ mediaUrl: firstUpload });
@@ -51,7 +55,7 @@ describe("community post images", () => {
 
   it("refreshes the source but reuses an unchanged icon after decoding URL separators", async () => {
     const source = `${firstSource}?width=256&format=png`;
-    saved = JSON.stringify({ source, shareImageUrl: firstUpload });
+    saved.set(ICON_KEY, JSON.stringify({ source, shareImageUrl: firstUpload }));
     mocks.reddit.getSubredditStyles.mockResolvedValue({
       icon: `${firstSource}?width=256&amp;format=png`,
     });
@@ -64,7 +68,10 @@ describe("community post images", () => {
   });
 
   it("uploads and remembers a changed community icon during refresh", async () => {
-    saved = JSON.stringify({ source: firstSource, shareImageUrl: firstUpload });
+    saved.set(
+      ICON_KEY,
+      JSON.stringify({ source: firstSource, shareImageUrl: firstUpload }),
+    );
     const newSource = "https://styles.redditmedia.com/second.png?x=1&y=2";
     const newUpload = "https://i.redd.it/second.png";
     mocks.reddit.getSubredditStyles.mockResolvedValue({
@@ -78,7 +85,7 @@ describe("community post images", () => {
       url: newSource,
       type: "image",
     });
-    expect(JSON.parse(saved!)).toEqual({
+    expect(JSON.parse(saved.get(ICON_KEY)!)).toEqual({
       source: newSource,
       shareImageUrl: newUpload,
     });
@@ -98,7 +105,7 @@ describe("community post images", () => {
       source: firstSource,
       shareImageUrl: firstUpload,
     });
-    saved = previous;
+    saved.set(ICON_KEY, previous);
     mocks.reddit.getSubredditStyles.mockResolvedValue({
       icon: "https://styles.redditmedia.com/new.png",
     });
@@ -106,15 +113,18 @@ describe("community post images", () => {
     await expect(communityPostStyles(true)).rejects.toThrow(
       "Media unavailable",
     );
-    expect(saved).toBe(previous);
+    expect(saved.get(ICON_KEY)).toBe(previous);
     expect(await communityPostStyles()).toEqual({ shareImageUrl: firstUpload });
   });
 
   it("clears a removed icon so later post creation cannot reuse its cached URL", async () => {
-    saved = JSON.stringify({ source: firstSource, shareImageUrl: firstUpload });
+    saved.set(
+      ICON_KEY,
+      JSON.stringify({ source: firstSource, shareImageUrl: firstUpload }),
+    );
     mocks.reddit.getSubredditStyles.mockResolvedValue({});
     expect(await communityPostStyles(true)).toEqual({});
-    expect(saved).toBeUndefined();
+    expect(saved.get(ICON_KEY)).toBeUndefined();
     expect(await communityPostStyles()).toEqual({});
     expect(mocks.media.upload).not.toHaveBeenCalled();
   });
@@ -132,7 +142,7 @@ describe("community post images", () => {
       shareImageUrl: firstUpload,
     }),
   ])("refreshes corrupt or untrusted cache data %s", async (raw) => {
-    saved = raw;
+    saved.set(ICON_KEY, raw);
     expect(await communityPostStyles()).toEqual({ shareImageUrl: firstUpload });
     expect(mocks.media.upload).toHaveBeenCalledTimes(1);
   });
@@ -158,9 +168,198 @@ describe("community post images", () => {
       await expect(communityPostStyles()).rejects.toThrow(
         "valid Reddit image URL",
       );
-      expect(saved).toBeUndefined();
+      expect(saved.get(ICON_KEY)).toBeUndefined();
     },
   );
+});
+
+describe("community result-hub banner", () => {
+  const iconRecord = JSON.stringify({
+    source: firstSource,
+    shareImageUrl: firstUpload,
+  });
+  const bannerRecord = JSON.stringify({
+    source: firstBannerSource,
+    shareImageUrl: firstBannerUpload,
+  });
+
+  beforeEach(() => {
+    mocks.reddit.getSubredditStyles.mockResolvedValue({
+      icon: firstSource,
+      bannerBackgroundImage: firstBannerSource,
+    });
+    mocks.media.upload.mockImplementation(async ({ url }: { url: string }) => ({
+      mediaUrl: url === firstSource ? firstUpload : firstBannerUpload,
+    }));
+  });
+
+  it("uploads each image to its own cache and reuses both without another lookup", async () => {
+    expect(await communityPostStyles()).toEqual({ shareImageUrl: firstUpload });
+    expect(await communityBannerImage()).toBe(firstBannerUpload);
+    expect(await communityPostStyles()).toEqual({ shareImageUrl: firstUpload });
+    expect(await communityBannerImage()).toBe(firstBannerUpload);
+    expect(saved).toEqual(
+      new Map([
+        [ICON_KEY, iconRecord],
+        [BANNER_KEY, bannerRecord],
+      ]),
+    );
+    expect(mocks.reddit.getSubredditStyles).toHaveBeenCalledTimes(2);
+    expect(mocks.reddit.getSubredditStyles).toHaveBeenNthCalledWith(
+      2,
+      "t5_euclid",
+    );
+    expect(mocks.media.upload).toHaveBeenCalledTimes(2);
+    expect(mocks.media.upload).toHaveBeenNthCalledWith(2, {
+      url: firstBannerSource,
+      type: "image",
+    });
+  });
+
+  it("reuses an unchanged banner after decoding source URL separators", async () => {
+    const source = `${firstBannerSource}?width=3168&format=png`;
+    saved.set(
+      BANNER_KEY,
+      JSON.stringify({ source, shareImageUrl: firstBannerUpload }),
+    );
+    mocks.reddit.getSubredditStyles.mockResolvedValue({
+      bannerBackgroundImage: source.replaceAll("&", "&amp;"),
+    });
+    expect(await communityBannerImage(true)).toBe(firstBannerUpload);
+    expect(mocks.media.upload).not.toHaveBeenCalled();
+    expect(mocks.redis.set).not.toHaveBeenCalled();
+  });
+
+  it("refreshes a changed banner without changing the icon cache", async () => {
+    saved.set(ICON_KEY, iconRecord);
+    saved.set(BANNER_KEY, bannerRecord);
+    const source = "https://styles.redditmedia.com/new-banner.png?x=1&y=2";
+    const uploaded = "https://i.redd.it/new-banner.png";
+    mocks.reddit.getSubredditStyles.mockResolvedValue({
+      icon: firstSource,
+      bannerBackgroundImage: source.replaceAll("&", "&amp;"),
+    });
+    mocks.media.upload.mockResolvedValue({ mediaUrl: uploaded });
+    expect(await communityBannerImage()).toBe(firstBannerUpload);
+    expect(await communityBannerImage(true)).toBe(uploaded);
+    expect(await communityBannerImage()).toBe(uploaded);
+    expect(saved.get(ICON_KEY)).toBe(iconRecord);
+    expect(saved.get(BANNER_KEY)).toBe(
+      JSON.stringify({ source, shareImageUrl: uploaded }),
+    );
+    expect(mocks.media.upload).toHaveBeenCalledExactlyOnceWith({
+      url: source,
+      type: "image",
+    });
+  });
+
+  it("does not use the icon when no banner exists", async () => {
+    saved.set(ICON_KEY, iconRecord);
+    mocks.reddit.getSubredditStyles.mockResolvedValue({ icon: firstSource });
+    expect(await communityBannerImage()).toBeUndefined();
+    expect(mocks.media.upload).not.toHaveBeenCalled();
+    expect(mocks.redis.set).not.toHaveBeenCalled();
+    expect(mocks.redis.del).not.toHaveBeenCalled();
+    expect(saved.get(ICON_KEY)).toBe(iconRecord);
+  });
+
+  it("clears only a removed banner and never falls back to the existing icon", async () => {
+    saved.set(ICON_KEY, iconRecord);
+    saved.set(BANNER_KEY, bannerRecord);
+    mocks.reddit.getSubredditStyles.mockResolvedValue({ icon: firstSource });
+    expect(await communityBannerImage(true)).toBeUndefined();
+    expect(await communityBannerImage()).toBeUndefined();
+    expect(saved.get(BANNER_KEY)).toBeUndefined();
+    expect(saved.get(ICON_KEY)).toBe(iconRecord);
+    expect(mocks.redis.del).toHaveBeenCalledExactlyOnceWith(BANNER_KEY);
+    expect(mocks.media.upload).not.toHaveBeenCalled();
+  });
+
+  it.each(["lookup", "upload", "cache"] as const)(
+    "preserves both caches when banner replacement fails during %s",
+    async (stage) => {
+      saved.set(ICON_KEY, iconRecord);
+      saved.set(BANNER_KEY, bannerRecord);
+      mocks.reddit.getSubredditStyles.mockResolvedValue({
+        bannerBackgroundImage: "https://styles.redditmedia.com/replacement.png",
+      });
+      const error = new Error(`${stage} unavailable`);
+      if (stage === "lookup")
+        mocks.reddit.getSubredditStyles.mockRejectedValue(error);
+      if (stage === "upload") mocks.media.upload.mockRejectedValue(error);
+      if (stage === "cache") mocks.redis.set.mockRejectedValue(error);
+      await expect(communityBannerImage(true)).rejects.toThrow(error);
+      expect(saved.get(ICON_KEY)).toBe(iconRecord);
+      expect(saved.get(BANNER_KEY)).toBe(bannerRecord);
+      expect(await communityBannerImage()).toBe(firstBannerUpload);
+      expect(mocks.redis.del).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    "http://styles.redditmedia.com/banner.png",
+    "https://styles.redditmedia.com.example.com/banner.png",
+    "https://user:password@styles.redditmedia.com/banner.png",
+    "https://styles.redditmedia.com:8443/banner.png",
+    "https://127.0.0.1/banner.png",
+    "https://styles.redditmedia.com/",
+    "not a url",
+  ])(
+    "rejects unsafe banner source %s without replacing cached images",
+    async (bannerBackgroundImage) => {
+      saved.set(ICON_KEY, iconRecord);
+      saved.set(BANNER_KEY, bannerRecord);
+      mocks.reddit.getSubredditStyles.mockResolvedValue({
+        icon: firstSource,
+        bannerBackgroundImage,
+      });
+      await expect(communityBannerImage(true)).rejects.toThrow(
+        "community banner must use a Reddit image URL",
+      );
+      expect(mocks.media.upload).not.toHaveBeenCalled();
+      expect(mocks.redis.set).not.toHaveBeenCalled();
+      expect(saved.get(ICON_KEY)).toBe(iconRecord);
+      expect(saved.get(BANNER_KEY)).toBe(bannerRecord);
+    },
+  );
+
+  it.each([
+    "",
+    "http://i.redd.it/banner.png",
+    "https://styles.redditmedia.com/banner.png",
+  ])(
+    "preserves the existing banner when its uploaded URL is invalid: %s",
+    async (mediaUrl) => {
+      saved.set(BANNER_KEY, bannerRecord);
+      mocks.reddit.getSubredditStyles.mockResolvedValue({
+        bannerBackgroundImage: "https://styles.redditmedia.com/replacement.png",
+      });
+      mocks.media.upload.mockResolvedValue({ mediaUrl });
+      await expect(communityBannerImage(true)).rejects.toThrow(
+        "uploaded community banner has no valid Reddit image URL",
+      );
+      expect(saved.get(BANNER_KEY)).toBe(bannerRecord);
+      expect(mocks.redis.set).not.toHaveBeenCalled();
+    },
+  );
+
+  it("refreshes an untrusted banner cache without altering the icon", async () => {
+    saved.set(ICON_KEY, iconRecord);
+    saved.set(
+      BANNER_KEY,
+      JSON.stringify({
+        source: firstBannerSource,
+        shareImageUrl: "https://example.com/banner.png",
+      }),
+    );
+    expect(await communityBannerImage()).toBe(firstBannerUpload);
+    expect(saved.get(BANNER_KEY)).toBe(bannerRecord);
+    expect(saved.get(ICON_KEY)).toBe(iconRecord);
+    expect(mocks.media.upload).toHaveBeenCalledExactlyOnceWith({
+      url: firstBannerSource,
+      type: "image",
+    });
+  });
 });
 
 describe("community post body verification", () => {

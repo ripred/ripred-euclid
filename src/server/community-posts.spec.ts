@@ -5,6 +5,8 @@ import { resultHub, setupCommunityPosts } from "./community-posts";
 import { COMMUNITY_POSTS_KEY as POSTS_KEY } from "./community-post-keys";
 import {
   gamePostContent,
+  isResultHubText,
+  RESULT_HUB_DESCRIPTIONS,
   RESULT_HUB_HEADING,
   resultHubBody,
 } from "./community-post-content";
@@ -25,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   prepareGamePost: vi.fn(),
   ensurePostHighlighted: vi.fn(),
   communityPostStyles: vi.fn(),
+  communityBannerImage: vi.fn(),
 }));
 
 vi.mock("@devvit/web/server", () => mocks);
@@ -35,6 +38,7 @@ vi.mock("./post-highlights", () => ({
 vi.mock("./post-presentation", async (importActual) => ({
   ...(await importActual<typeof import("./post-presentation")>()),
   communityPostStyles: mocks.communityPostStyles,
+  communityBannerImage: mocks.communityBannerImage,
 }));
 
 const makePost = (
@@ -71,8 +75,8 @@ const makePost = (
 type TestPost = ReturnType<typeof makePost>;
 /** Reddit renders rich text as its own Markdown; any rendering keeps the text. */
 const render = (richtext: object) => JSON.stringify(richtext);
-const hubBody = (kind: "ai" | "h2h", icon = iconStyles.shareImageUrl) =>
-  resultHubBody(kind, game.permalink, icon);
+const hubBody = (kind: "ai" | "h2h", banner = bannerUrl) =>
+  resultHubBody(kind, game.permalink, banner);
 /** Records a hub body as setup writes it, so the hub needs no edit. */
 const markWritten = (kind: "ai" | "h2h", hub: TestPost) =>
   saved.set(
@@ -89,6 +93,7 @@ let ai: TestPost;
 let h2h: TestPost;
 let available: Map<string, TestPost>;
 const iconStyles = { shareImageUrl: "https://i.redd.it/icon.png" };
+const bannerUrl = "https://i.redd.it/banner.png";
 
 const persist = async (
   key: string,
@@ -130,7 +135,7 @@ beforeEach(() => {
   mocks.prepareGamePost.mockResolvedValue(mocks.createPost);
   mocks.reddit.submitPost.mockImplementation(async ({ title, richtext }) => {
     const old = title === RESULT_HUB_TITLES.ai ? ai : h2h;
-    const post = old.body?.includes(RESULT_HUB_HEADING)
+    const post = isResultHubText(old.body)
       ? old
       : makePost(`${old.id}text`, title);
     post.body = render(richtext);
@@ -140,6 +145,7 @@ beforeEach(() => {
   });
   mocks.ensurePostHighlighted.mockResolvedValue(true);
   mocks.communityPostStyles.mockResolvedValue(iconStyles);
+  mocks.communityBannerImage.mockResolvedValue(bannerUrl);
   mocks.reddit.getPostStyles.mockResolvedValue(iconStyles);
   vi.spyOn(console, "log").mockImplementation(() => undefined);
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
@@ -417,7 +423,7 @@ describe("community results posts", () => {
     expect(saved.has(POSTS_KEY)).toBe(true);
   });
 
-  it("reconciles each saved pinned post with the same icon without replacing or appending content", async () => {
+  it("keeps the playable post icon and hub banner separate without replacing or appending content", async () => {
     const styles = { shareImageUrl: "https://i.redd.it/icon.png" };
     mocks.communityPostStyles.mockResolvedValue(styles);
     mocks.reddit.getPostStyles.mockResolvedValue(styles);
@@ -427,7 +433,10 @@ describe("community results posts", () => {
     for (const hub of [ai, h2h]) {
       expect(hub.edit).not.toHaveBeenCalled();
       expect(hub.setTextFallback).not.toHaveBeenCalled();
+      expect(hub.body).toContain(bannerUrl);
+      expect(hub.body).not.toContain(styles.shareImageUrl);
     }
+    expect(mocks.communityBannerImage.mock.calls).toEqual([[true], [true]]);
     expect(game.setTextFallback).toHaveBeenCalledTimes(1);
     for (const [content] of game.setTextFallback.mock.calls)
       expect(content).toEqual(gamePostContent(styles.shareImageUrl));
@@ -449,12 +458,14 @@ describe("community results posts", () => {
     expect(h2h.edit).not.toHaveBeenCalled();
   });
 
-  it.each(["icon", "game"])(
+  it.each(["icon", "banner", "game"])(
     "propagates %s presentation failure while retaining working hub routing",
     async (failure) => {
       const error = new Error("Presentation unavailable");
       if (failure === "icon")
         mocks.communityPostStyles.mockRejectedValueOnce(error);
+      else if (failure === "banner")
+        mocks.communityBannerImage.mockRejectedValueOnce(error);
       else game.setTextFallback.mockRejectedValueOnce(error);
       await expect(setupCommunityPosts()).rejects.toBe(error);
       expect(await resultHub(resultPayload)).toEqual({
@@ -463,6 +474,10 @@ describe("community results posts", () => {
       });
       expect(ai.lock).toHaveBeenCalledOnce();
       expect(h2h.lock).toHaveBeenCalledOnce();
+      expect(ai.edit).not.toHaveBeenCalled();
+      expect(h2h.edit).not.toHaveBeenCalled();
+      expect(ai.remove).not.toHaveBeenCalled();
+      expect(h2h.remove).not.toHaveBeenCalled();
     },
   );
 
@@ -565,7 +580,7 @@ describe("text hub migration", () => {
     expect(first.remove).toHaveBeenCalledOnce();
   });
 
-  it("updates a current hub's body when its description or icon changes", async () => {
+  it("updates a current hub's body when its description or banner changes", async () => {
     saved.set(
       `${POSTS_KEY}:ai:body`,
       JSON.stringify({ postId: ai.id, body: "An older description" }),
@@ -580,12 +595,168 @@ describe("text hub migration", () => {
     expect(ai.remove).not.toHaveBeenCalled();
   });
 
-  it("keeps a hub's body while the icon is unavailable, then restores the icon", async () => {
-    mocks.communityPostStyles.mockRejectedValueOnce(new Error("Icon down"));
-    await expect(setupCommunityPosts()).rejects.toThrow("Icon down");
+  it("updates legacy heading bodies in place and preserves their results beyond the newest 100 posts", async () => {
+    const posts = {
+      game: game.id,
+      gamePermalink: game.permalink,
+      ai: ai.id,
+      h2h: h2h.id,
+    };
+    saved.set(POSTS_KEY, JSON.stringify(posts));
+    saved.set(`${POSTS_KEY}:game`, game.id);
+    for (const [kind, hub, count] of [
+      ["ai", ai, 7],
+      ["h2h", h2h, 11],
+    ] as const) {
+      hub.body = `## ${RESULT_HUB_HEADING}\n\nEarlier result description.`;
+      hub.numberOfComments = count;
+      saved.set(`${POSTS_KEY}:${kind}`, hub.id);
+      saved.set(
+        `${POSTS_KEY}:${kind}:body`,
+        JSON.stringify({ postId: hub.id, body: hub.body }),
+      );
+    }
+    recent = Array.from({ length: 100 }, (_, index) =>
+      makePost(`t3_new${index}`, "Community discussion", "community-member"),
+    );
+
+    expect(await setupCommunityPosts()).toEqual(posts);
+    expect(await setupCommunityPosts()).toEqual(posts);
+
+    expect(mocks.reddit.getNewPosts).toHaveBeenCalledWith({
+      subredditName: "EuclidTheGame",
+      limit: 100,
+    });
+    for (const [kind, hub, count] of [
+      ["ai", ai, 7],
+      ["h2h", h2h, 11],
+    ] as const) {
+      expect(hub.edit).toHaveBeenCalledExactlyOnceWith({
+        richtext: hubBody(kind),
+      });
+      expect(hub.body).toContain(RESULT_HUB_DESCRIPTIONS[kind]);
+      expect(hub.numberOfComments).toBe(count);
+      expect(hub.remove).not.toHaveBeenCalled();
+      expect(hub.setTextFallback).not.toHaveBeenCalled();
+      expect(hub.lock).toHaveBeenCalledTimes(2);
+      expect(hub.setSuggestedCommentSort.mock.calls).toEqual([
+        ["NEW"],
+        ["NEW"],
+      ]);
+      expect(await resultHub({ ...resultPayload, mode: kind })).toEqual({
+        postId: hub.id,
+        gamePermalink: game.permalink,
+      });
+    }
+    expect(mocks.reddit.submitPost).not.toHaveBeenCalled();
+    expect(mocks.reddit.submitCustomPost).not.toHaveBeenCalled();
+    expect(mocks.createPost).not.toHaveBeenCalled();
+    expect(JSON.parse(saved.get(POSTS_KEY)!)).toEqual(posts);
+  });
+
+  it("reads the freshly saved description before recording the body cache", async () => {
+    const bodyKey = `${POSTS_KEY}:ai:body`;
+    const legacyBody = `## ${RESULT_HUB_HEADING}\n\nEarlier result description.`;
+    ai.body = legacyBody;
+    saved.delete(bodyKey);
+    let edited = false;
+    let readBack = false;
+    ai.edit.mockImplementation(async () => {
+      edited = true;
+    });
+    const readPost = mocks.reddit.getPostById.getMockImplementation()!;
+    mocks.reddit.getPostById.mockImplementation(async (id: string) => {
+      if (id === ai.id && edited) {
+        readBack = true;
+        return { ...ai, body: render(hubBody("ai")) };
+      }
+      return readPost(id);
+    });
+    mocks.redis.set.mockImplementation(async (key, value, options) => {
+      if (key === bodyKey) expect(readBack).toBe(true);
+      return persist(key, value, options);
+    });
+
+    const posts = await setupCommunityPosts();
+
+    expect(posts.ai).toBe(ai.id);
+    expect(readBack).toBe(true);
+    expect(ai.body).toBe(legacyBody);
+    expect(JSON.parse(saved.get(bodyKey)!)).toEqual({
+      postId: ai.id,
+      body: JSON.stringify(hubBody("ai")),
+    });
+    expect(mocks.reddit.submitPost).not.toHaveBeenCalled();
+    expect(ai.remove).not.toHaveBeenCalled();
+  });
+
+  it.each(["", RESULT_HUB_HEADING, RESULT_HUB_DESCRIPTIONS.h2h])(
+    "does not cache an edit whose fresh readback lacks the correct description: %j",
+    async (readback) => {
+      const posts = await setupCommunityPosts();
+      const bodyKey = `${POSTS_KEY}:ai:body`;
+      const previousCache = JSON.stringify({
+        postId: ai.id,
+        body: "Earlier body",
+      });
+      saved.set(bodyKey, previousCache);
+      let edited = false;
+      ai.edit.mockImplementation(async () => {
+        edited = true;
+      });
+      const readPost = mocks.reddit.getPostById.getMockImplementation()!;
+      mocks.reddit.getPostById.mockImplementation(async (id: string) =>
+        id === ai.id && edited ? { ...ai, body: readback } : readPost(id),
+      );
+
+      await expect(setupCommunityPosts()).rejects.toThrow(
+        "description was not saved",
+      );
+
+      expect(edited).toBe(true);
+      expect(saved.get(bodyKey)).toBe(previousCache);
+      expect(JSON.parse(saved.get(POSTS_KEY)!)).toEqual(posts);
+      expect(await resultHub(resultPayload)).toMatchObject({ postId: ai.id });
+      expect(mocks.reddit.submitPost).not.toHaveBeenCalled();
+      expect(ai.remove).not.toHaveBeenCalled();
+      expect(h2h.remove).not.toHaveBeenCalled();
+    },
+  );
+
+  it("updates both hub banners independently of the playable post icon", async () => {
+    const nextBanner = "https://i.redd.it/replacement-banner.png";
+    mocks.communityBannerImage.mockResolvedValue(nextBanner);
+
+    await setupCommunityPosts();
+    await setupCommunityPosts();
+
+    for (const [kind, hub] of [
+      ["ai", ai],
+      ["h2h", h2h],
+    ] as const) {
+      expect(hub.edit).toHaveBeenCalledExactlyOnceWith({
+        richtext: hubBody(kind, nextBanner),
+      });
+      expect(hub.body).toContain(nextBanner);
+      expect(hub.body).not.toContain(iconStyles.shareImageUrl);
+    }
+    expect(game.setTextFallback).toHaveBeenCalledExactlyOnceWith(
+      gamePostContent(iconStyles.shareImageUrl),
+    );
+    expect(mocks.reddit.setPostStyles.mock.calls).toEqual([
+      [game.id, iconStyles],
+      [game.id, iconStyles],
+    ]);
+  });
+
+  it("keeps a hub's body while the banner is unavailable, then restores the banner", async () => {
+    const originalBody = ai.body;
+    mocks.communityBannerImage.mockRejectedValueOnce(new Error("Banner down"));
+    await expect(setupCommunityPosts()).rejects.toThrow("Banner down");
     expect(ai.edit).not.toHaveBeenCalled();
+    expect(ai.body).toBe(originalBody);
     expect(saved.has(POSTS_KEY)).toBe(true);
-    // A hub first written while the community had no icon.
+    // A hub first written while the community had no banner.
     saved.set(
       `${POSTS_KEY}:ai:body`,
       JSON.stringify({
@@ -593,7 +764,7 @@ describe("text hub migration", () => {
         body: JSON.stringify(resultHubBody("ai", game.permalink)),
       }),
     );
-    mocks.communityPostStyles.mockResolvedValue(iconStyles);
+    mocks.communityBannerImage.mockResolvedValue(bannerUrl);
     await setupCommunityPosts();
     expect(ai.edit).toHaveBeenCalledExactlyOnceWith({
       richtext: hubBody("ai"),
@@ -601,7 +772,7 @@ describe("text hub migration", () => {
   });
 
   it.each(["missing", "corrupt", "another hub", "stale body"] as const)(
-    "preserves a current hub without an icon when its body cache is %s",
+    "preserves a current hub without a banner when its body cache is %s",
     async (state) => {
       const bodyKey = `${POSTS_KEY}:ai:body`;
       const cached = {
@@ -619,7 +790,7 @@ describe("text hub migration", () => {
       if (cached === undefined) saved.delete(bodyKey);
       else saved.set(bodyKey, cached);
       const existingBody = ai.body;
-      mocks.communityPostStyles.mockResolvedValue({});
+      mocks.communityBannerImage.mockResolvedValue(undefined);
 
       await setupCommunityPosts();
       await setupCommunityPosts();
@@ -631,11 +802,11 @@ describe("text hub migration", () => {
     },
   );
 
-  it("preserves an edited hub during an icon outage after saving its body cache fails", async () => {
+  it("preserves an edited hub during a banner outage after saving its body cache fails", async () => {
     const bodyKey = `${POSTS_KEY}:ai:body`;
     saved.delete(bodyKey);
-    const styles = { shareImageUrl: "https://i.redd.it/new-icon.png" };
-    mocks.communityPostStyles.mockResolvedValue(styles);
+    const nextBanner = "https://i.redd.it/new-banner.png";
+    mocks.communityBannerImage.mockResolvedValue(nextBanner);
     mocks.redis.set.mockImplementation(async (key, value, options) => {
       if (key === bodyKey) throw new Error("Body cache unavailable");
       return persist(key, value, options);
@@ -643,27 +814,33 @@ describe("text hub migration", () => {
     await expect(setupCommunityPosts()).rejects.toThrow(
       "Body cache unavailable",
     );
-    const editedBody = render(hubBody("ai", styles.shareImageUrl));
+    const editedBody = render(hubBody("ai", nextBanner));
     expect(ai.body).toBe(editedBody);
     expect(saved.has(bodyKey)).toBe(false);
 
-    mocks.communityPostStyles.mockRejectedValueOnce(new Error("Icon down"));
-    await expect(setupCommunityPosts()).rejects.toThrow("Icon down");
+    mocks.communityBannerImage.mockRejectedValueOnce(new Error("Banner down"));
+    await expect(setupCommunityPosts()).rejects.toThrow("Banner down");
 
     expect(ai.body).toBe(editedBody);
     expect(ai.edit).toHaveBeenCalledExactlyOnceWith({
-      richtext: hubBody("ai", styles.shareImageUrl),
+      richtext: hubBody("ai", nextBanner),
     });
     expect(saved.has(bodyKey)).toBe(false);
     expect(await resultHub(resultPayload)).toMatchObject({ postId: ai.id });
     expect(mocks.reddit.submitPost).not.toHaveBeenCalled();
   });
 
-  it("puts the community icon first so feeds can show it", () => {
+  it("puts the community banner first followed by one short paragraph", () => {
     expect(hubBody("ai").document[0]).toEqual({
       e: "img",
-      mediaUrl: iconStyles.shareImageUrl,
+      mediaUrl: bannerUrl,
     });
+    expect(hubBody("ai").document).toHaveLength(2);
+    expect(hubBody("ai").document[1]).toMatchObject({ e: "par" });
+    expect(render(hubBody("ai"))).toContain(RESULT_HUB_DESCRIPTIONS.ai);
+    expect(render(hubBody("h2h"))).toContain(RESULT_HUB_DESCRIPTIONS.h2h);
+    expect(render(hubBody("ai"))).not.toContain(RESULT_HUB_HEADING);
+    expect(render(hubBody("ai"))).toContain("Play Euclid");
   });
 
   it("retains the claim and old routing after an uncertain text submission", async () => {
@@ -794,9 +971,9 @@ describe("text hub migration", () => {
     expect(saved.get(`${POSTS_KEY}:ai`)).toBe("t3_aitext");
   });
 
-  it("creates text hubs without a community icon", async () => {
+  it("creates text hubs without a community banner", async () => {
     useImageHubs();
-    mocks.communityPostStyles.mockResolvedValue({});
+    mocks.communityBannerImage.mockResolvedValue(undefined);
     const next = await setupCommunityPosts();
     expect(next.ai).toBe("t3_aitext");
     expect(available.get(next.ai)!.body).toBe(

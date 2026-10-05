@@ -26,7 +26,7 @@ textarea {
 }
 
 :focus-visible {
-  outline: 2px solid var(--text);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -116,17 +116,17 @@ textarea {
 }
 
 .btn--primary {
-  --top: #f75b43;
-  --bottom: #de341c;
-  --lip: #8e1a0b;
-  --btn-text: #fff;
+  --top: var(--accent-button-top);
+  --bottom: var(--accent-button-bottom);
+  --lip: var(--accent-button-lip);
+  --btn-text: var(--accent-on-color);
 }
 
 .btn--blue {
-  --top: #4d6bff;
-  --bottom: #2345e6;
-  --lip: #0f1d7c;
-  --btn-text: #fff;
+  --top: var(--button-blue-top, #4d6bff);
+  --bottom: var(--button-blue-bottom, #2345e6);
+  --lip: var(--button-blue-lip, #0f1d7c);
+  --btn-text: var(--blue-on-color, #fff);
 }
 
 .btn--outline,
@@ -398,12 +398,12 @@ textarea {
 }
 
 .switch input:checked {
-  background: var(--red);
+  background: var(--control-accent);
   box-shadow: none;
 }
 
 .switch input:checked::after {
-  background: var(--on-color);
+  background: var(--control-on-accent);
   transform: translateX(18px);
 }
 

@@ -1,5 +1,6 @@
 import { emptyCells, pointIndex } from "../shared/game/geometry";
 import { completedSquares } from "./completed-squares";
+import { playerName } from "./design/player-palette";
 
 export type Owner = 1 | 2;
 export type DemoStepId =
@@ -116,7 +117,7 @@ const CAPTURED_STEPS = new Map<number, CapturedStepMeta>([
           (sum, square) => sum + square.points,
           0,
         );
-        return `Blue closes a straight square here and scores ${points} points on that move.`;
+        return `${playerName(2, true)} closes a straight square here and scores ${points} points on that move.`;
       },
     },
   ],
@@ -131,7 +132,7 @@ const CAPTURED_STEPS = new Map<number, CapturedStepMeta>([
           (sum, square) => sum + square.points,
           0,
         );
-        return `Red answers in the same demo with a leaning square for ${points} points. Rotated squares are fully legal.`;
+        return `${playerName(1, true)} answers in the same demo with a leaning square for ${points} points. Rotated squares are fully legal.`;
       },
     },
   ],
@@ -146,7 +147,7 @@ const CAPTURED_STEPS = new Map<number, CapturedStepMeta>([
           (sum, square) => sum + square.points,
           0,
         );
-        return `Later, Blue finishes a larger square worth ${points} points and jumps ahead ${frame.scores[1]} to ${frame.scores[0]}.`;
+        return `Later, ${playerName(2, true)} finishes a larger square worth ${points} points and jumps ahead ${frame.scores[1]} to ${frame.scores[0]}.`;
       },
     },
   ],
@@ -157,7 +158,7 @@ const CAPTURED_STEPS = new Map<number, CapturedStepMeta>([
       label: "Blocking",
       title: "You can block squares too!",
       buildBody: () =>
-        "Blue claims the last open corner Red needed, blocking that square before it can ever score.",
+        `${playerName(2, true)} claims the last open corner ${playerName(1, true)} needed, blocking that square before it can ever score.`,
     },
   ],
   [

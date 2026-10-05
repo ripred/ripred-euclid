@@ -38,11 +38,11 @@
 }
 
 .board__point--hint-1 .board__point-well {
-  stroke: var(--red);
+  stroke: var(--red-hint, var(--red));
 }
 
 .board__point--hint-2 .board__point-well {
-  stroke: var(--blue);
+  stroke: var(--blue-hint, var(--blue));
 }
 
 .board__point--hint-near .board__point-well {
@@ -78,11 +78,11 @@
 }
 
 .board__piece--1 .board__piece-groove {
-  stroke: rgb(90 14 2 / 0.55);
+  stroke: var(--piece-red-groove, rgb(90 14 2 / 0.55));
 }
 
 .board__piece--2 .board__piece-groove {
-  stroke: rgb(4 10 60 / 0.55);
+  stroke: var(--piece-blue-groove, rgb(4 10 60 / 0.55));
 }
 
 .board__piece-groove-light {
@@ -232,11 +232,11 @@
 }
 
 .board__flash--1 {
-  stroke: #ffd2c7;
+  stroke: var(--piece-red-flash, #ffd2c7);
 }
 
 .board__flash--2 {
-  stroke: #d3dbff;
+  stroke: var(--piece-blue-flash, #d3dbff);
 }
 
 @keyframes corner-flash {

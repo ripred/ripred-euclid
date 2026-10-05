@@ -102,7 +102,7 @@
 .splash-dots [aria-current] span {
   width: 22px;
   border-radius: 6px;
-  background: var(--red);
+  background: var(--control-accent);
   opacity: 1;
 }
 .splash-pause {
@@ -133,8 +133,8 @@
    panel edged in the same colour, so the rotation reads as one story. */
 .splash-scene {
   --band-draw-delay: 860ms;
-  --scene: var(--red);
-  --scene-text: var(--red-text);
+  --scene: var(--accent);
+  --scene-text: var(--accent-text);
 }
 .splash-scene--blue {
   --scene: var(--blue);

@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { getHomeRecordPresentations } from "./home-ui";
 import {
@@ -252,6 +252,62 @@ describe("home dashboard structure", () => {
 });
 
 describe("home challenge entries", () => {
+  it.each([0, 0.5, 0.999999])(
+    "keeps all four square silhouettes distinct throughout their drift (random=%s)",
+    (random) => {
+      const randomSpy = vi.spyOn(Math, "random").mockReturnValue(random);
+      try {
+        const challenge = {
+          enabled: true,
+          status: "open" as const,
+          instanceId: "test",
+          opensAt: Date.UTC(2026, 8, 27),
+          endsAt: Date.UTC(2026, 8, 28),
+          showStandings: true,
+        };
+        const markup = renderToStaticMarkup(
+          <HomeScreen
+            {...homeProps({
+              competitions: {
+                daily: { ...challenge, period: "daily" },
+                weekly: { ...challenge, period: "weekly" },
+              },
+              competitionNow: Date.UTC(2026, 8, 27, 12),
+              onChallenge: () => undefined,
+            })}
+          />,
+        );
+        const styles = Array.from(
+          markup.matchAll(/class="home-card__float" style="([^"]+)"/g),
+          (match) => match[1]!,
+        );
+        expect(styles).toHaveLength(4);
+        const origins = styles.map((style) =>
+          Number(style.match(/--float-origin:[^;]*rotate\(([-\d.]+)deg\)/)![1]),
+        );
+        expect(origins).toEqual([-27, -4, 18, 41]);
+        styles.forEach((style, index) => {
+          const rotations = Array.from(
+            style.matchAll(/rotate\(([-\d.]+)deg\)/g),
+            (match) => Number(match[1]),
+          );
+          expect(rotations).toHaveLength(4);
+          for (const rotation of rotations) {
+            expect(Math.abs(rotation - origins[index]!)).toBeLessThanOrEqual(4);
+          }
+        });
+        // Include the wraparound: a square repeats after 90 degrees, not 360.
+        for (let index = 0; index < origins.length; index++) {
+          const next = origins[(index + 1) % origins.length]!;
+          const separation = (next - origins[index]! + 90) % 90;
+          expect(separation - 8).toBeGreaterThanOrEqual(14);
+        }
+      } finally {
+        randomSpy.mockRestore();
+      }
+    },
+  );
+
   it.each([
     [false, false],
     [true, false],
