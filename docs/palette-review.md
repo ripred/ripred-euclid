@@ -29,6 +29,20 @@ VITE_COLOR_SCHEME=red-blue npm run build
 VITE_COLOR_SCHEME=amber-amethyst npm run build
 ```
 
+## Community colors
+
+The staging community uses these seeds in Reddit's **Community appearance** settings:
+
+| Setting           | Seed      | Role                                          |
+| ----------------- | --------- | --------------------------------------------- |
+| Key color         | `#5E3478` | Amethyst navigation links and primary buttons |
+| Base color        | `#706B76` | Nearly neutral graphite surfaces and borders  |
+| Pinned post color | `#D9A626` | Muted amber highlights for pinned posts       |
+
+Reddit derives the rendered shades from these seeds for light and dark modes, so the displayed colors can differ from the entered hex values. These controls do not change Reddit's native vote colors. The banner, icon and in-game player palette are configured separately.
+
+To restore the previous community colors, choose **Reset to Default** for each of these three settings, return to the appearance overview and save. This does not require changing the installed app version or artwork. Check both light and dark views after any color update; platform-owned button text is not independently configurable.
+
 ## Review deployment
 
 Use `r/ripred_euclid_dev` as staging. Record the currently installed versions and preserve the existing artwork for both communities before making changes. After the checks pass, upload the proposed palette once and install that version in staging:
