@@ -3,7 +3,11 @@ import { RESULT_HUB_TITLES } from "../shared/result-sharing";
 import type { ResultSharePayload } from "../shared/types/api";
 import { resultHub, setupCommunityPosts } from "./community-posts";
 import { COMMUNITY_POSTS_KEY as POSTS_KEY } from "./community-post-keys";
-import { gamePostContent } from "./community-post-content";
+import {
+  gamePostContent,
+  RESULT_HUB_HEADING,
+  resultHubBody,
+} from "./community-post-content";
 
 const mocks = vi.hoisted(() => ({
   context: { subredditName: "EuclidTheGame", appSlug: "ripred-euclid" },
@@ -47,14 +51,11 @@ const makePost = (
     archived: false,
     removedByCategory: undefined as string | undefined,
     permalink: `/r/EuclidTheGame/comments/${id.slice(3)}`,
-    url:
-      title === "Euclid"
-        ? `https://www.reddit.com/r/EuclidTheGame/comments/${id.slice(3)}`
-        : `https://i.redd.it/${id}.png`,
+    url: `https://www.reddit.com/r/EuclidTheGame/comments/${id.slice(3)}`,
     numberOfComments: 0,
     body: "" as string | undefined,
-    edit: vi.fn(async ({ text }: { text: string }) => {
-      post.body = text;
+    edit: vi.fn(async (content: { text: string } | { richtext: object }) => {
+      post.body = "text" in content ? content.text : render(content.richtext);
     }),
     setTextFallback: vi.fn(async ({ text }: { text: string }) => {
       post.body = text;
@@ -68,6 +69,19 @@ const makePost = (
   return post;
 };
 type TestPost = ReturnType<typeof makePost>;
+/** Reddit renders rich text as its own Markdown; any rendering keeps the text. */
+const render = (richtext: object) => JSON.stringify(richtext);
+const hubBody = (kind: "ai" | "h2h", icon = iconStyles.shareImageUrl) =>
+  resultHubBody(kind, game.permalink, icon);
+/** Records a hub body as setup writes it, so the hub needs no edit. */
+const markWritten = (kind: "ai" | "h2h", hub: TestPost) =>
+  saved.set(
+    `${POSTS_KEY}:${kind}:body`,
+    JSON.stringify({
+      postId: hub.id,
+      body: JSON.stringify(hubBody(kind)),
+    }),
+  );
 let saved: Map<string, string>;
 let recent: TestPost[];
 let game: TestPost;
@@ -92,6 +106,10 @@ beforeEach(() => {
   game = makePost("t3_game", "Euclid");
   ai = makePost("t3_ai", RESULT_HUB_TITLES.ai);
   h2h = makePost("t3_h2h", RESULT_HUB_TITLES.h2h);
+  ai.body = render(hubBody("ai"));
+  h2h.body = render(hubBody("h2h"));
+  markWritten("ai", ai);
+  markWritten("h2h", h2h);
   recent = [h2h, ai, game];
   available = new Map(recent.map((post) => [post.id, post]));
   mocks.redis.get.mockImplementation(async (key: string) => saved.get(key));
@@ -110,11 +128,12 @@ beforeEach(() => {
     return game;
   });
   mocks.prepareGamePost.mockResolvedValue(mocks.createPost);
-  mocks.reddit.submitPost.mockImplementation(async ({ title }) => {
+  mocks.reddit.submitPost.mockImplementation(async ({ title, richtext }) => {
     const old = title === RESULT_HUB_TITLES.ai ? ai : h2h;
-    const post = old.url.startsWith("https://i.redd.it/")
+    const post = old.body?.includes(RESULT_HUB_HEADING)
       ? old
-      : makePost(`${old.id}image`, title);
+      : makePost(`${old.id}text`, title);
+    post.body = render(richtext);
     available.set(post.id, post);
     recent.unshift(post);
     return post;
@@ -161,18 +180,17 @@ describe("community results posts", () => {
     );
   });
 
-  it("creates missing native image hubs once with the community image", async () => {
+  it("creates missing text hubs once with bodies describing them", async () => {
     recent = [];
     await setupCommunityPosts();
     await setupCommunityPosts();
     expect(mocks.createPost).toHaveBeenCalledTimes(1);
     expect(mocks.reddit.submitPost).toHaveBeenCalledTimes(2);
-    for (const title of Object.values(RESULT_HUB_TITLES)) {
+    for (const kind of ["ai", "h2h"] as const) {
       expect(mocks.reddit.submitPost).toHaveBeenCalledWith({
         subredditName: "EuclidTheGame",
-        title,
-        kind: "image",
-        imageUrls: [iconStyles.shareImageUrl],
+        title: RESULT_HUB_TITLES[kind],
+        richtext: hubBody(kind),
         runAs: "APP",
         sendreplies: false,
       });
@@ -270,7 +288,7 @@ describe("community results posts", () => {
     });
     await expect(setupCommunityPosts()).rejects.toThrow("Redis unavailable");
     expect(recent).toContain(ai);
-    expect(saved.get(`${POSTS_KEY}:ai:image-v1:creating`)).toBe("pending");
+    expect(saved.get(`${POSTS_KEY}:ai:text-v2:creating`)).toBe("pending");
     expect(saved.has(POSTS_KEY)).toBe(true);
     await setupCommunityPosts();
     expect(
@@ -280,15 +298,10 @@ describe("community results posts", () => {
   });
 
   it("does not repeat an uncertain submission while no created post is visible", async () => {
-    vi.useFakeTimers();
     recent = [game];
     mocks.reddit.submitPost.mockRejectedValueOnce(new Error("response lost"));
-    const failed = expect(setupCommunityPosts()).rejects.toThrow(
-      "response lost",
-    );
-    await vi.runAllTimersAsync();
-    await failed;
-    expect(mocks.reddit.getNewPosts).toHaveBeenCalledTimes(5);
+    await expect(setupCommunityPosts()).rejects.toThrow("response lost");
+    expect(mocks.reddit.getNewPosts).toHaveBeenCalledTimes(1);
     await expect(setupCommunityPosts()).rejects.toThrow("already pending");
     expect(mocks.reddit.submitPost).toHaveBeenCalledTimes(1);
     expect(saved.has(POSTS_KEY)).toBe(false);
@@ -321,22 +334,17 @@ describe("community results posts", () => {
     );
     await expect(setupCommunityPosts()).rejects.toThrow("RATELIMIT");
     expect(mocks.reddit.getNewPosts).toHaveBeenCalledTimes(1);
-    expect(saved.has(`${POSTS_KEY}:ai:image-v1:creating`)).toBe(false);
+    expect(saved.has(`${POSTS_KEY}:ai:text-v2:creating`)).toBe(false);
     await setupCommunityPosts();
     expect(mocks.reddit.submitPost).toHaveBeenCalledTimes(3);
   });
 
   it("retains the claim when a submitted post's follow-up read fails", async () => {
-    vi.useFakeTimers();
     recent = [game];
     mocks.reddit.submitPost.mockRejectedValueOnce(
       Object.assign(new Error("Post read forbidden"), { code: 7 }),
     );
-    const failed = expect(setupCommunityPosts()).rejects.toThrow(
-      "Post read forbidden",
-    );
-    await vi.runAllTimersAsync();
-    await failed;
+    await expect(setupCommunityPosts()).rejects.toThrow("Post read forbidden");
     await expect(setupCommunityPosts()).rejects.toThrow("already pending");
     expect(mocks.reddit.submitPost).toHaveBeenCalledTimes(1);
   });
@@ -471,10 +479,12 @@ describe("community results posts", () => {
   });
 });
 
-describe("native image hub migration", () => {
-  function useTextHubs() {
-    ai.url = `https://www.reddit.com${ai.permalink}`;
-    h2h.url = `https://www.reddit.com${h2h.permalink}`;
+describe("text hub migration", () => {
+  function useImageHubs() {
+    for (const hub of [ai, h2h]) {
+      hub.url = `https://i.redd.it/${hub.id}.png`;
+      hub.body = "";
+    }
     const posts = {
       game: game.id,
       gamePermalink: game.permalink,
@@ -487,8 +497,8 @@ describe("native image hub migration", () => {
     return posts;
   }
 
-  it("publishes both configured images together before removing empty originals", async () => {
-    const old = useTextHubs();
+  it("publishes both text hubs together before removing the image hubs", async () => {
+    const old = useImageHubs();
     const submit = mocks.reddit.submitPost.getMockImplementation()!;
     mocks.reddit.submitPost.mockImplementation(async (options) => {
       const post = await submit(options);
@@ -500,7 +510,7 @@ describe("native image hub migration", () => {
     for (const post of [ai, h2h])
       post.remove.mockImplementation(async () => {
         const route = JSON.parse(saved.get(POSTS_KEY)!);
-        expect(route).toMatchObject({ ai: "t3_aiimage", h2h: "t3_h2himage" });
+        expect(route).toMatchObject({ ai: "t3_aitext", h2h: "t3_h2htext" });
         expect(available.get(route.ai)!.lock).toHaveBeenCalledOnce();
         expect(
           available.get(route.h2h)!.setSuggestedCommentSort,
@@ -509,8 +519,9 @@ describe("native image hub migration", () => {
       });
     const next = await setupCommunityPosts();
     expect(next.game).toBe(old.game);
-    expect(next.ai).toBe("t3_aiimage");
-    expect(next.h2h).toBe("t3_h2himage");
+    expect(next.ai).toBe("t3_aitext");
+    expect(next.h2h).toBe("t3_h2htext");
+    expect(available.get(next.ai)!.body).toBe(render(hubBody("ai")));
     expect(await resultHub(resultPayload)).toMatchObject({ postId: next.ai });
     for (const [kind, post] of [
       ["ai", ai],
@@ -522,138 +533,189 @@ describe("native image hub migration", () => {
     }
   });
 
-  it("preserves occupied text hubs while replacing empty ones", async () => {
-    useTextHubs();
-    ai.numberOfComments = 1;
+  it("removes replaced hubs even when they hold shared results", async () => {
+    useImageHubs();
+    ai.numberOfComments = 3;
+    const next = await setupCommunityPosts();
+    expect(next.ai).toBe("t3_aitext");
+    expect(ai.remove).toHaveBeenCalledOnce();
+  });
+
+  it("removes earlier text hubs that lack the current description", async () => {
+    const first = makePost("t3_firstai", RESULT_HUB_TITLES.ai);
+    first.body = "Game results shared from Euclid appear below, newest first.";
+    first.numberOfComments = 2;
+    recent.push(first);
+    available.set(first.id, first);
     const next = await setupCommunityPosts();
     expect(next.ai).toBe(ai.id);
-    expect(next.h2h).toBe("t3_h2himage");
-    expect(mocks.reddit.submitPost).toHaveBeenCalledTimes(1);
+    expect(first.remove).toHaveBeenCalledOnce();
     expect(ai.remove).not.toHaveBeenCalled();
-    expect(ai.edit).not.toHaveBeenCalled();
-    expect(console.warn).toHaveBeenCalledWith(
-      "[COMMUNITY] Preserving occupied result hub",
-      ai.id,
-    );
+    expect(mocks.reddit.submitPost).not.toHaveBeenCalled();
   });
 
-  it("rechecks comments after switching routing and retains late comments", async () => {
-    useTextHubs();
-    mocks.redis.set.mockImplementation(async (key, value, options) => {
-      const result = await persist(key, value, options);
-      if (key === POSTS_KEY) ai.numberOfComments = 1;
-      return result;
-    });
+  it("never adopts an earlier text hub as the current one", async () => {
+    recent = [game];
+    const first = makePost("t3_firstai", RESULT_HUB_TITLES.ai);
+    first.body = "Game results shared from Euclid appear below, newest first.";
+    recent.push(first);
+    available.set(first.id, first);
     const next = await setupCommunityPosts();
-    expect(next.ai).toBe("t3_aiimage");
-    expect(ai.remove).not.toHaveBeenCalled();
-    expect(h2h.remove).toHaveBeenCalledOnce();
-    expect(saved.get(`${POSTS_KEY}:ai`)).toBe(next.ai);
+    expect(next.ai).not.toBe(first.id);
+    expect(first.remove).toHaveBeenCalledOnce();
   });
 
-  it.each([
-    { visibleAfter: 0, reads: 2 },
-    { visibleAfter: 250, reads: 3 },
-    { visibleAfter: 1000, reads: 4 },
-    { visibleAfter: 2500, reads: 5 },
-  ])(
-    "adopts an asynchronous image within one setup when visible after $visibleAfter ms",
-    async ({ visibleAfter, reads }) => {
-      vi.useFakeTimers();
-      const old = useTextHubs();
-      const submit = mocks.reddit.submitPost.getMockImplementation()!;
-      mocks.reddit.submitPost.mockImplementationOnce(async (options) => {
-        const post = await submit(options);
-        if (visibleAfter) {
-          recent = recent.filter(({ id }) => id !== post.id);
-          setTimeout(() => {
-            expect(JSON.parse(saved.get(POSTS_KEY)!)).toEqual(old);
-            recent.unshift(post);
-          }, visibleAfter);
-        }
-        throw new Error(
-          "Image post type is being created asynchronously and should be updated in the subreddit soon.",
-        );
-      });
-      const setup = setupCommunityPosts();
-      await vi.runAllTimersAsync();
-      const next = await setup;
-      expect(next.ai).toBe("t3_aiimage");
-      expect(next.h2h).toBe("t3_h2himage");
-      expect(mocks.reddit.getNewPosts).toHaveBeenCalledTimes(reads);
-      expect(mocks.reddit.submitPost).toHaveBeenCalledTimes(2);
-      expect(saved.get(`${POSTS_KEY}:ai:image-v1:creating`)).toBe("pending");
-      expect(ai.remove).toHaveBeenCalledOnce();
-      expect(h2h.remove).toHaveBeenCalledOnce();
+  it("updates a current hub's body when its description or icon changes", async () => {
+    saved.set(
+      `${POSTS_KEY}:ai:body`,
+      JSON.stringify({ postId: ai.id, body: "An older description" }),
+    );
+    await setupCommunityPosts();
+    await setupCommunityPosts();
+    expect(ai.edit).toHaveBeenCalledExactlyOnceWith({
+      richtext: hubBody("ai"),
+    });
+    expect(h2h.edit).not.toHaveBeenCalled();
+    expect(mocks.reddit.submitPost).not.toHaveBeenCalled();
+    expect(ai.remove).not.toHaveBeenCalled();
+  });
+
+  it("keeps a hub's body while the icon is unavailable, then restores the icon", async () => {
+    mocks.communityPostStyles.mockRejectedValueOnce(new Error("Icon down"));
+    await expect(setupCommunityPosts()).rejects.toThrow("Icon down");
+    expect(ai.edit).not.toHaveBeenCalled();
+    expect(saved.has(POSTS_KEY)).toBe(true);
+    // A hub first written while the community had no icon.
+    saved.set(
+      `${POSTS_KEY}:ai:body`,
+      JSON.stringify({
+        postId: ai.id,
+        body: JSON.stringify(resultHubBody("ai", game.permalink)),
+      }),
+    );
+    mocks.communityPostStyles.mockResolvedValue(iconStyles);
+    await setupCommunityPosts();
+    expect(ai.edit).toHaveBeenCalledExactlyOnceWith({
+      richtext: hubBody("ai"),
+    });
+  });
+
+  it.each(["missing", "corrupt", "another hub", "stale body"] as const)(
+    "preserves a current hub without an icon when its body cache is %s",
+    async (state) => {
+      const bodyKey = `${POSTS_KEY}:ai:body`;
+      const cached = {
+        missing: undefined,
+        corrupt: "{",
+        "another hub": JSON.stringify({
+          postId: h2h.id,
+          body: JSON.stringify(hubBody("h2h")),
+        }),
+        "stale body": JSON.stringify({
+          postId: ai.id,
+          body: "An older description",
+        }),
+      }[state];
+      if (cached === undefined) saved.delete(bodyKey);
+      else saved.set(bodyKey, cached);
+      const existingBody = ai.body;
+      mocks.communityPostStyles.mockResolvedValue({});
+
+      await setupCommunityPosts();
+      await setupCommunityPosts();
+
+      expect(ai.body).toBe(existingBody);
+      expect(ai.edit).not.toHaveBeenCalled();
+      expect(saved.get(bodyKey)).toBe(cached);
+      expect(mocks.reddit.submitPost).not.toHaveBeenCalled();
     },
   );
 
-  it.each([false, true])(
-    "retains the claim and old routing when image discovery never succeeds (read failure=%s)",
-    async (readFailure) => {
-      vi.useFakeTimers();
-      const old = useTextHubs();
-      const failure = new Error("Image creation is asynchronous");
-      mocks.reddit.submitPost.mockImplementationOnce(async () => {
-        if (readFailure)
-          mocks.reddit.getNewPosts.mockImplementation(() => ({
-            all: async () => {
-              throw new Error("Listing unavailable");
-            },
-          }));
-        throw failure;
-      });
-      const failed = expect(setupCommunityPosts()).rejects.toBe(failure);
-      await vi.runAllTimersAsync();
-      await failed;
-      expect(mocks.reddit.getNewPosts).toHaveBeenCalledTimes(5);
-      expect(mocks.reddit.submitPost).toHaveBeenCalledTimes(1);
-      expect(saved.get(`${POSTS_KEY}:ai:image-v1:creating`)).toBe("pending");
-      expect(JSON.parse(saved.get(POSTS_KEY)!)).toEqual(old);
-      expect(ai.remove).not.toHaveBeenCalled();
-      expect(h2h.remove).not.toHaveBeenCalled();
-    },
-  );
-
-  it("validates a recovered image before changing routing", async () => {
-    const old = useTextHubs();
-    const submit = mocks.reddit.submitPost.getMockImplementation()!;
-    mocks.reddit.submitPost.mockImplementationOnce(async (options) => {
-      const post = await submit(options);
-      post.subredditName = "AnotherCommunity";
-      throw new Error("Image creation is asynchronous");
+  it("preserves an edited hub during an icon outage after saving its body cache fails", async () => {
+    const bodyKey = `${POSTS_KEY}:ai:body`;
+    saved.delete(bodyKey);
+    const styles = { shareImageUrl: "https://i.redd.it/new-icon.png" };
+    mocks.communityPostStyles.mockResolvedValue(styles);
+    mocks.redis.set.mockImplementation(async (key, value, options) => {
+      if (key === bodyKey) throw new Error("Body cache unavailable");
+      return persist(key, value, options);
     });
     await expect(setupCommunityPosts()).rejects.toThrow(
-      "Invalid or unavailable",
+      "Body cache unavailable",
     );
-    expect(saved.get(`${POSTS_KEY}:ai:image-v1:creating`)).toBe("pending");
-    expect(JSON.parse(saved.get(POSTS_KEY)!)).toEqual(old);
+    const editedBody = render(hubBody("ai", styles.shareImageUrl));
+    expect(ai.body).toBe(editedBody);
+    expect(saved.has(bodyKey)).toBe(false);
+
+    mocks.communityPostStyles.mockRejectedValueOnce(new Error("Icon down"));
+    await expect(setupCommunityPosts()).rejects.toThrow("Icon down");
+
+    expect(ai.body).toBe(editedBody);
+    expect(ai.edit).toHaveBeenCalledExactlyOnceWith({
+      richtext: hubBody("ai", styles.shareImageUrl),
+    });
+    expect(saved.has(bodyKey)).toBe(false);
+    expect(await resultHub(resultPayload)).toMatchObject({ postId: ai.id });
+    expect(mocks.reddit.submitPost).not.toHaveBeenCalled();
+  });
+
+  it("puts the community icon first so feeds can show it", () => {
+    expect(hubBody("ai").document[0]).toEqual({
+      e: "img",
+      mediaUrl: iconStyles.shareImageUrl,
+    });
+  });
+
+  it("retains the claim and old routing after an uncertain text submission", async () => {
+    const old = useImageHubs();
+    const failure = new Error("response lost");
+    mocks.reddit.submitPost.mockRejectedValueOnce(failure);
+    await expect(setupCommunityPosts()).rejects.toBe(failure);
+    await expect(setupCommunityPosts()).rejects.toThrow("already pending");
     expect(mocks.reddit.submitPost).toHaveBeenCalledTimes(1);
+    expect(saved.get(`${POSTS_KEY}:ai:text-v2:creating`)).toBe("pending");
+    expect(JSON.parse(saved.get(POSTS_KEY)!)).toEqual(old);
     expect(ai.remove).not.toHaveBeenCalled();
     expect(h2h.remove).not.toHaveBeenCalled();
   });
 
-  it("does not adopt another author's image after an uncertain submission", async () => {
-    vi.useFakeTimers();
-    const old = useTextHubs();
-    const failure = new Error("Image creation is asynchronous");
+  it("validates a submitted hub before changing routing", async () => {
+    const old = useImageHubs();
+    const submit = mocks.reddit.submitPost.getMockImplementation()!;
+    mocks.reddit.submitPost.mockImplementationOnce(async (options) => {
+      const post = await submit(options);
+      post.subredditName = "AnotherCommunity";
+      return post;
+    });
+    await expect(setupCommunityPosts()).rejects.toThrow(
+      "Invalid or unavailable",
+    );
+    expect(JSON.parse(saved.get(POSTS_KEY)!)).toEqual(old);
+    expect(ai.remove).not.toHaveBeenCalled();
+    expect(h2h.remove).not.toHaveBeenCalled();
+  });
+
+  it("does not adopt another author's text hub after an uncertain submission", async () => {
+    const old = useImageHubs();
+    const failure = new Error("response lost");
     mocks.reddit.submitPost.mockImplementationOnce(async () => {
-      recent.unshift(
-        makePost("t3_foreign", RESULT_HUB_TITLES.ai, "another-user"),
+      const foreign = makePost(
+        "t3_foreign",
+        RESULT_HUB_TITLES.ai,
+        "another-user",
       );
+      foreign.body = render(hubBody("ai"));
+      recent.unshift(foreign);
       throw failure;
     });
-    const failed = expect(setupCommunityPosts()).rejects.toBe(failure);
-    await vi.runAllTimersAsync();
-    await failed;
-    expect(mocks.reddit.getNewPosts).toHaveBeenCalledTimes(5);
+    await expect(setupCommunityPosts()).rejects.toBe(failure);
+    await expect(setupCommunityPosts()).rejects.toThrow("already pending");
     expect(mocks.reddit.submitPost).toHaveBeenCalledTimes(1);
-    expect(saved.get(`${POSTS_KEY}:ai:image-v1:creating`)).toBe("pending");
     expect(JSON.parse(saved.get(POSTS_KEY)!)).toEqual(old);
   });
 
   it("retains old routing if replacement configuration fails, then adopts on retry", async () => {
-    const old = useTextHubs();
+    const old = useImageHubs();
     const submit = mocks.reddit.submitPost.getMockImplementation()!;
     mocks.reddit.submitPost.mockImplementation(async (options) => {
       const post = await submit(options);
@@ -670,7 +732,7 @@ describe("native image hub migration", () => {
   });
 
   it("does not remove originals when atomic routing publication fails", async () => {
-    const old = useTextHubs();
+    const old = useImageHubs();
     mocks.redis.set.mockImplementationOnce(persist);
     let fail = true;
     mocks.redis.set.mockImplementation(async (key, value, options) => {
@@ -691,7 +753,7 @@ describe("native image hub migration", () => {
   it.each([false, true])(
     "retains cleanup pointers across removal failure with missing saved keys=%s",
     async (missingKeys) => {
-      useTextHubs();
+      useImageHubs();
       if (missingKeys) {
         saved.delete(`${POSTS_KEY}:ai`);
         saved.delete(`${POSTS_KEY}:h2h`);
@@ -701,8 +763,8 @@ describe("native image hub migration", () => {
         "Removal unavailable",
       );
       expect(JSON.parse(saved.get(POSTS_KEY)!)).toMatchObject({
-        ai: "t3_aiimage",
-        h2h: "t3_h2himage",
+        ai: "t3_aitext",
+        h2h: "t3_h2htext",
       });
       expect(saved.get(`${POSTS_KEY}:ai`)).toBe(ai.id);
       await setupCommunityPosts();
@@ -713,10 +775,10 @@ describe("native image hub migration", () => {
   );
 
   it("does not remove twice when cleanup succeeded but saving the new canonical ID failed", async () => {
-    useTextHubs();
+    useImageHubs();
     let fail = true;
     mocks.redis.set.mockImplementation(async (key, value, options) => {
-      if (key === `${POSTS_KEY}:ai` && value === "t3_aiimage" && fail) {
+      if (key === `${POSTS_KEY}:ai` && value === "t3_aitext" && fail) {
         fail = false;
         throw new Error("Canonical ID unavailable");
       }
@@ -729,22 +791,25 @@ describe("native image hub migration", () => {
     expect(saved.get(`${POSTS_KEY}:ai`)).toBe(ai.id);
     await setupCommunityPosts();
     expect(ai.remove).toHaveBeenCalledOnce();
-    expect(saved.get(`${POSTS_KEY}:ai`)).toBe("t3_aiimage");
+    expect(saved.get(`${POSTS_KEY}:ai`)).toBe("t3_aitext");
   });
 
-  it("requires the icon before reserving any image creation", async () => {
-    const old = useTextHubs();
+  it("creates text hubs without a community icon", async () => {
+    useImageHubs();
     mocks.communityPostStyles.mockResolvedValue({});
-    await expect(setupCommunityPosts()).rejects.toThrow(
-      "community icon is required",
+    const next = await setupCommunityPosts();
+    expect(next.ai).toBe("t3_aitext");
+    expect(available.get(next.ai)!.body).toBe(
+      render(resultHubBody("ai", game.permalink)),
     );
-    expect(saved.has(`${POSTS_KEY}:ai:image-v1:creating`)).toBe(false);
-    expect(mocks.reddit.submitPost).not.toHaveBeenCalled();
-    expect(JSON.parse(saved.get(POSTS_KEY)!)).toEqual(old);
+    expect(available.get(next.ai)!.edit).not.toHaveBeenCalled();
+    expect(available.get(next.h2h)!.edit).not.toHaveBeenCalled();
+    expect(await setupCommunityPosts()).toEqual(next);
+    expect(mocks.reddit.submitPost).toHaveBeenCalledTimes(2);
   });
 
   it("refuses to remove a retired post whose ownership changed", async () => {
-    useTextHubs();
+    useImageHubs();
     mocks.redis.set.mockImplementation(async (key, value, options) => {
       const result = await persist(key, value, options);
       if (key === POSTS_KEY) ai.authorName = "someone-else";

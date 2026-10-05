@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { COMMUNITY_POSTS_KEY } from "../../src/server/community-post-keys.ts";
 import { RESULT_HUB_TITLES } from "../../src/shared/result-sharing.ts";
+import { resultHubBody } from "../../src/server/community-post-content.ts";
 import { createLocalCommunity } from "./community.mjs";
 import { createLocalRedis } from "./redis-store.mjs";
 
@@ -18,9 +19,16 @@ test("local community seeds the game and locked newest-first hubs using shared t
   for (const [kind, title] of Object.entries(RESULT_HUB_TITLES)) {
     const hub = await local.reddit.getPostById(registry[kind]);
     assert.equal(hub.title, title);
-    assert.equal(hub.kind, "image");
-    assert.deepEqual(hub.imageUrls, ["https://i.redd.it/localicon.png"]);
-    assert.equal(hub.url, hub.imageUrls[0]);
+    assert.deepEqual(
+      hub.richtext,
+      resultHubBody(
+        kind,
+        registry.gamePermalink,
+        "https://i.redd.it/localicon.png",
+      ),
+    );
+    assert.match(hub.body, /About this post/);
+    assert.equal(hub.url, `http://localhost${hub.permalink}`);
     assert.equal(hub.locked, true);
     assert.equal(hub.suggestedCommentSort, "NEW");
   }

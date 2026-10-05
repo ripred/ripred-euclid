@@ -10,7 +10,11 @@ import {
   communityPostStyles,
   updateGamePostContent,
 } from "./post-presentation";
-import { gamePostContent } from "./community-post-content";
+import {
+  gamePostContent,
+  RESULT_HUB_HEADING,
+  resultHubBody,
+} from "./community-post-content";
 import { isDefinitiveRedditRejection } from "./reddit-write-errors";
 
 type HubKind = keyof typeof RESULT_HUB_TITLES;
@@ -32,6 +36,21 @@ function isImagePost(post: Post) {
   } catch {
     return false;
   }
+}
+
+/** A current result hub: a text post whose body explains what it holds. */
+const isTextHub = (post: Post) =>
+  !isImagePost(post) && post.body?.includes(RESULT_HUB_HEADING) === true;
+
+/** The body this app last wrote to a hub. Reddit's own rendering of rich
+ * text cannot be compared with what was sent. */
+function readWrittenBody(raw: string | null | undefined) {
+  const value = parseJson(raw);
+  return isRecord(value) &&
+    isPostId(value.postId) &&
+    typeof value.body === "string"
+    ? { postId: value.postId, body: value.body }
+    : null;
 }
 
 function isCommunityPermalink(value: unknown, postId: string): value is string {
@@ -137,7 +156,6 @@ export async function setupCommunityPosts() {
     title: string,
     prepare: () => Promise<() => Promise<Post>>,
     accept: (post: Post) => boolean = () => true,
-    recoverImageSubmission = false,
   ) => {
     let post = findOwnedPost(owned, title, accept);
     if (!post) {
@@ -156,26 +174,9 @@ export async function setupCommunityPosts() {
       try {
         post = await create();
       } catch (error) {
-        if (isDefinitiveRedditRejection(error, "post")) {
+        if (isDefinitiveRedditRejection(error, "post"))
           await redis.del(`${key}:creating`);
-          throw error;
-        }
-        if (!recoverImageSubmission) throw error;
-        // Native image submission can report asynchronous creation without an
-        // ID. Only read for its arrival; the durable claim forbids resubmission.
-        for (const delay of [0, 250, 750, 1500]) {
-          if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
-          try {
-            const latest = await reddit
-              .getNewPosts({ subredditName, limit: 100 })
-              .all();
-            post = findOwnedPost(latest, title, accept);
-          } catch {
-            // A failed discovery read cannot settle an uncertain submission.
-          }
-          if (post) break;
-        }
-        if (!post) throw error;
+        throw error;
       }
     }
     await validatePost(post, title, undefined, false);
@@ -203,9 +204,16 @@ export async function setupCommunityPosts() {
   };
   const game = await readPost("game", "Euclid", prepareGamePost);
   const hubs = {} as Record<HubKind, Post>;
-  const retired = new Map<HubKind, Post["id"]>();
+  // Prior app-owned hubs found in the newest 100 posts or saved IDs are removed
+  // once routing has switched.
+  const retired = new Map<HubKind, Set<Post["id"]>>();
   let stylesPromise: ReturnType<typeof communityPostStyles> | undefined;
   const getStyles = () => (stylesPromise ??= communityPostStyles(true));
+  // Hubs work without the icon; presentation reports its failure below.
+  const iconUrl = await getStyles().then(
+    (styles) => styles.shareImageUrl,
+    () => undefined,
+  );
   for (const kind of ["ai", "h2h"] as const) {
     const title = RESULT_HUB_TITLES[kind];
     const key = `${COMMUNITY_POSTS_KEY}:${kind}`;
@@ -219,40 +227,46 @@ export async function setupCommunityPosts() {
           title,
           existingId,
         )
-      : owned.filter((post) => post.title === title && !post.removed).at(-1);
+      : owned
+          .filter(
+            (post) => post.title === title && !post.removed && isTextHub(post),
+          )
+          .at(-1);
     if (hub) await validatePost(hub, title, hub.id);
     if (hub && !saved) await redis.set(key, hub.id);
-    if (hub && !isImagePost(hub) && hub.numberOfComments !== 0) {
-      console.warn("[COMMUNITY] Preserving occupied result hub", hub.id);
-    } else if (!hub || !isImagePost(hub)) {
-      const oldId = hub?.id;
+    const richtext = resultHubBody(kind, game.permalink, iconUrl);
+    const body = JSON.stringify(richtext);
+    const bodyKey = `${key}:body`;
+    const old = new Set<Post["id"]>();
+    if (!hub || !isTextHub(hub)) {
+      if (hub) old.add(hub.id);
       hub = await createOrAdoptPost(
-        `${key}:image-v1`,
+        `${key}:text-v2`,
         title,
-        async () => {
-          const { shareImageUrl } = await getStyles();
-          if (!shareImageUrl)
-            throw new Error(
-              "A community icon is required to create result image posts.",
-            );
-          return () =>
-            reddit.submitPost({
-              subredditName,
-              title,
-              kind: "image",
-              imageUrls: [shareImageUrl],
-              runAs: "APP",
-              sendreplies: false,
-            });
-        },
-        isImagePost,
-        true,
+        async () => () =>
+          reddit.submitPost({
+            subredditName,
+            title,
+            richtext,
+            runAs: "APP",
+            sendreplies: false,
+          }),
+        isTextHub,
       );
-      if (oldId) retired.set(kind, oldId);
+    }
+    const written = readWrittenBody(await redis.get(bodyKey));
+    // Without the icon, preserve the existing body regardless of cache state.
+    if (iconUrl && !(written?.postId === hub.id && written.body === body)) {
+      await hub.edit({ richtext });
+      await redis.set(bodyKey, JSON.stringify({ postId: hub.id, body }));
     }
     // Old canonical IDs remain cleanup pointers if removal failed after routing
     // switched on an earlier upgrade. They never determine result routing now.
-    if (saved && saved !== hub.id) retired.set(kind, saved);
+    if (saved && saved !== hub.id) old.add(saved);
+    for (const post of owned)
+      if (post.title === title && post.id !== hub.id && !post.removed)
+        old.add(post.id);
+    retired.set(kind, old);
     await hub.lock();
     await hub.setSuggestedCommentSort("NEW");
     hubs[kind] = hub;
@@ -283,24 +297,13 @@ export async function setupCommunityPosts() {
   console.log("[COMMUNITY] Results posts ready", posts);
 
   for (const kind of ["ai", "h2h"] as const) {
-    const oldId = retired.get(kind);
-    if (oldId) {
+    for (const oldId of retired.get(kind) ?? []) {
       const old = await reddit.getPostById(oldId);
-      if (
-        !hasPostIdentity(old, RESULT_HUB_TITLES[kind], oldId) ||
-        isImagePost(old)
-      )
+      if (!hasPostIdentity(old, RESULT_HUB_TITLES[kind], oldId))
         throw new Error(`Unsafe retired result hub: ${oldId}`);
       if (!old.removed) {
-        if (old.numberOfComments === 0) {
-          await old.remove();
-          console.log("[COMMUNITY] Removed empty replaced hub", old.id);
-        } else {
-          console.warn(
-            "[COMMUNITY] Retaining comments added to replaced hub",
-            old.id,
-          );
-        }
+        await old.remove();
+        console.log("[COMMUNITY] Removed replaced result hub", old.id);
       }
     }
     await redis.set(`${COMMUNITY_POSTS_KEY}:${kind}`, hubs[kind].id);
@@ -309,7 +312,7 @@ export async function setupCommunityPosts() {
   // Presentation runs only after the hubs are usable. Its failure must not
   // disable result sharing or create replacement posts.
   const styles = await getStyles();
-  // Result hubs are native images. Custom game/result posts also support styles.
+  // Result hubs are text posts. Custom game/result posts also support styles.
   // Read back the stored URL without assuming highlight rendering.
   if (styles.shareImageUrl) {
     const stylePosts = new Map([game, ...owned].map((post) => [post.id, post]));

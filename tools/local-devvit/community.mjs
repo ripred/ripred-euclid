@@ -1,11 +1,15 @@
 import { COMMUNITY_POSTS_KEY } from "../../src/server/community-post-keys.ts";
 import { RESULT_HUB_TITLES } from "../../src/shared/result-sharing.ts";
+import { resultHubBody } from "../../src/server/community-post-content.ts";
 
 const LOCAL_ICON = "https://i.redd.it/localicon.png";
 const reject = (message, code = "invalid_argument") =>
   Object.assign(new Error(message), { code });
 
+/** Rich text is kept as JSON: enough for local reads of the hub text. */
 function snapshotBody(content) {
+  if (content?.richtext !== undefined)
+    content = { text: JSON.stringify(content.richtext) };
   if (typeof content?.text !== "string")
     throw reject("Local post body must contain text.");
   if (content.text.length > 100_000)
@@ -43,7 +47,11 @@ export function createLocalCommunity({
     const permalink = `/r/${subredditName}/comments/${id.slice(3)}/`;
     const post = {
       ...structuredClone(options),
-      body: options.textFallback?.text ?? options.text,
+      body:
+        options.textFallback?.text ??
+        (options.text !== undefined || options.richtext !== undefined
+          ? snapshotBody(options).text
+          : undefined),
       id,
       permalink,
       url:
@@ -94,8 +102,7 @@ export function createLocalCommunity({
       title,
       locked: true,
       suggestedCommentSort: "NEW",
-      kind: "image",
-      imageUrls: [LOCAL_ICON],
+      richtext: resultHubBody(kind, game.permalink, LOCAL_ICON),
     });
     registry[kind] = hub.id;
   }
