@@ -23,7 +23,9 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run test:dependencies
+      - run: npm run test:local-adapter
       - run: npm run check:devvit
+      - run: npm run build
       - run: npm run build
         env:
           VITE_COLOR_SCHEME: amber-amethyst

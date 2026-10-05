@@ -74,10 +74,10 @@ const PREVIEWS = Object.fromEntries(
 
 export function Gallery() {
   const [status, setStatus] = useState("");
-  const [exporting, setExporting] = useState(false);
+  const [exporting, setExporting] = useState<ColorScheme | null>(null);
   const exportArtwork = async (scheme: ColorScheme) => {
     if (exporting) return;
-    setExporting(true);
+    setExporting(scheme);
     setStatus(`Exporting ${SCHEME_LABELS[scheme].toLowerCase()} artwork...`);
     try {
       for (const name of Object.keys(BRAND_ASSETS) as BrandAssetName[])
@@ -90,7 +90,7 @@ export function Gallery() {
     } catch (error) {
       setStatus(`Export failed: ${String(error)}`);
     } finally {
-      setExporting(false);
+      setExporting(null);
     }
   };
   return (
@@ -112,17 +112,19 @@ export function Gallery() {
       <div className="asset-gallery__export">
         <button
           type="button"
-          disabled={exporting}
+          disabled={exporting !== null}
           onClick={() => void exportArtwork("red-blue")}
         >
-          Export current
+          {exporting === "red-blue" ? "Exporting current..." : "Export current"}
         </button>
         <button
           type="button"
-          disabled={exporting}
+          disabled={exporting !== null}
           onClick={() => void exportArtwork("amber-amethyst")}
         >
-          {exporting ? "Exporting proposal..." : "Export proposal"}
+          {exporting === "amber-amethyst"
+            ? "Exporting proposal..."
+            : "Export proposal"}
         </button>
         <p>Four exact-size images per palette, saved to separate filenames.</p>
         <output aria-live="polite">{status}</output>

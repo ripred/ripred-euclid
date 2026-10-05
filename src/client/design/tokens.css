@@ -91,7 +91,7 @@
   --accent-button-lip: var(--button-red-lip, #8e1a0b);
   --control-accent: var(--control-accent-dark, var(--accent));
   --control-on-accent: var(--control-on-accent-dark, var(--accent-on-color));
-  --focus-ring: var(--accent-text);
+  --focus-ring: var(--accent-focus, var(--text));
   --board-focus-ring: var(--text);
   --attention: #f5b82e;
   --attention-soft: rgb(245 184 46 / 0.14);

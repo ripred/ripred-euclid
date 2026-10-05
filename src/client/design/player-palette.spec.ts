@@ -81,7 +81,9 @@ describe("build-time player palette", () => {
     const input = cssSource("../ui/board-input.css");
     const base = cssSource("./base.css");
     expect(tokens).toMatch(/--board-focus-ring:\s*var\(--text\);/);
-    expect(tokens).toMatch(/--focus-ring:\s*var\(--accent-text\);/);
+    expect(tokens).toMatch(
+      /--focus-ring:\s*var\(--accent-focus, var\(--text\)\);/,
+    );
     expect(input).toMatch(
       /\.game__cell:focus-visible\s*\{[^}]*var\(--board-focus-ring\)/,
     );
@@ -123,6 +125,8 @@ describe("build-time player palette", () => {
         "--accent-text-dark": accent.textDark,
         "--accent-text-light": accent.textLight,
         "--accent-on-color": accent.onColor,
+        "--accent-focus":
+          scheme === "amber-amethyst" ? "var(--accent-text)" : "var(--text)",
         "--accent-button-top": accent.buttonTop,
         "--accent-button-bottom": accent.buttonBottom,
         "--accent-button-lip": accent.buttonLip,

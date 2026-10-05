@@ -171,6 +171,7 @@ export function paletteVariables(
     "--accent-text-dark": accent.textDark,
     "--accent-text-light": accent.textLight,
     "--accent-on-color": accent.onColor,
+    "--accent-focus": purpleAccent ? "var(--accent-text)" : "var(--text)",
     "--accent-button-top": accent.buttonTop,
     "--accent-button-bottom": accent.buttonBottom,
     "--accent-button-lip": accent.buttonLip,
