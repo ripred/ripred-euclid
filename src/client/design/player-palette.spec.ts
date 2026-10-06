@@ -33,8 +33,8 @@ afterEach(() => {
 });
 
 describe("build-time player palette", () => {
-  it("keeps red-blue as the default and rejects unknown selections", () => {
-    expect(parseColorScheme(undefined)).toBe("red-blue");
+  it("uses amber-amethyst by default and rejects unknown selections", () => {
+    expect(parseColorScheme(undefined)).toBe("amber-amethyst");
     expect(parseColorScheme("red-blue")).toBe("red-blue");
     expect(parseColorScheme("amber-amethyst")).toBe("amber-amethyst");
     expect(() => parseColorScheme("yellow-purple")).toThrow(
@@ -52,7 +52,7 @@ describe("build-time player palette", () => {
     },
   );
 
-  it("keeps CSS default colors and literal fallbacks aligned with the default palette", () => {
+  it("keeps CSS fallback colors aligned with the legacy red-blue palette", () => {
     const variables = paletteVariables(paletteForScheme("red-blue"));
     const tokens = cssSource("./tokens.css");
     const declarations = Array.from(

@@ -1,6 +1,6 @@
 # Amber and amethyst review
 
-This is an opt-in visual proposal. Red and blue remain the default build, and both palettes retain the same player indices, game rules, scores and saved data.
+Amber and amethyst are the default player palette. Red and blue remain available as an explicit compatibility build, and both palettes retain the same player indices, game rules, scores and saved data.
 
 The proposed palette uses warm amber (`#FBB80F`) and deep amethyst (`#5E3478`). Lighter square edges, darker hint rings and separate light/dark text colors keep the pieces and controls readable against the existing graphite board. The community mark uses a complete tilted square with an open center. Both banners reuse the original red/blue banner geometry: identical piece and square sizes, counts, positions, dimensions and crop, with only the palette changed. The icon and entry splash retain their separate proposed compositions.
 
@@ -24,11 +24,11 @@ VITE_COLOR_SCHEME=amber-amethyst npm run dev:local
 
 Open `/dev/brand-assets.html` to compare the current and proposed icon, desktop banner, mobile banner and splash. **Export current** writes the existing red/blue paths, while **Export proposal** writes only the separate amber/amethyst files. The page links to the inline game preview and expanded app.
 
-The supported build values are `red-blue` and `amber-amethyst`. Omission selects `red-blue`; unsupported values fail explicitly. This setting selects both player names and rendering tokens. Reddit's light/dark appearance remains independent.
+The supported build values are `red-blue` and `amber-amethyst`. Omission selects `amber-amethyst`; unsupported values fail explicitly. This setting selects both player names and rendering tokens. Reddit's light/dark appearance remains independent.
 
 ```bash
+npm run build
 VITE_COLOR_SCHEME=red-blue npm run build
-VITE_COLOR_SCHEME=amber-amethyst npm run build
 ```
 
 ## Community colors
@@ -65,4 +65,4 @@ npx devvit list installs EuclidTheGame
 
 Installing an app version does not change community appearance. The proposed 300×300 icon, 3168×256 desktop banner and 1592×128 mobile banner are separate moderator uploads. Apply and verify those appearance updates in staging first, then in `r/EuclidTheGame`. Preserve the previous appearance and app version when comparing, and restore them independently if reverting the proposal.
 
-Choosing the theme for a future default release remains a separate decision.
+Red and blue can still be built explicitly for comparison or rollback.
