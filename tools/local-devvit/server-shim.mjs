@@ -133,6 +133,15 @@ function saveBrandAsset(req, res, file) {
 
 /* ---------- HTTP server ---------- */
 
+function localRedirectTarget(url, fallback) {
+  const next = url.searchParams.get("next");
+  if (next === null) return fallback;
+  // A single root slash stays local; browsers reinterpret backslashes/controls.
+  if (!/^\/(?!\/)/.test(next) || /[\\\u0000-\u0020\u007f]/.test(next))
+    return null;
+  return next;
+}
+
 export const getServerPort = () => Number(process.env.EUCLID_API_PORT ?? 7475);
 
 export function createServer(app) {
@@ -191,6 +200,11 @@ export function createServer(app) {
       return;
     }
     if (url.pathname === "/__local/post") {
+      const next = localRedirectTarget(url, "/preview.html");
+      if (next === null) {
+        res.writeHead(400).end("Choose a root-relative local destination.");
+        return;
+      }
       // Without an id this returns to the ordinary game post.
       const id = readCookie(
         `${POST_COOKIE}=${url.searchParams.get("id") ?? ""}`,
@@ -198,16 +212,21 @@ export function createServer(app) {
       );
       res.writeHead(302, {
         "set-cookie": `${POST_COOKIE}=${id}; Path=/; SameSite=Lax`,
-        location: url.searchParams.get("next") ?? "/preview.html",
+        location: next,
       });
       res.end();
       return;
     }
     if (url.pathname === "/__local/as") {
+      const next = localRedirectTarget(url, "/");
+      if (next === null) {
+        res.writeHead(400).end("Choose a root-relative local destination.");
+        return;
+      }
       const name = cookieUser(`${USER_COOKIE}=${url.searchParams.get("user")}`);
       res.writeHead(302, {
         "set-cookie": `${USER_COOKIE}=${name}; Path=/; SameSite=Lax`,
-        location: url.searchParams.get("next") ?? "/",
+        location: next,
       });
       res.end();
       return;

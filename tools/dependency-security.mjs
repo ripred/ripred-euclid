@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import {
   mkdtempSync,
   mkdirSync,
@@ -21,6 +22,7 @@ import { pathToFileURL } from "node:url";
 // Resolve the actual transitive dependencies used by this project's tools.
 const require = createRequire(resolve("package.json"));
 const cliRequire = createRequire(require.resolve("@devvit/cli/package.json"));
+const imageSizePath = cliRequire.resolve("image-size");
 const inquirerPath = cliRequire.resolve("inquirer");
 const inquirerRequire = createRequire(inquirerPath);
 const { default: inquirer } = await import(pathToFileURL(inquirerPath));
@@ -31,6 +33,93 @@ const { interceptorPlugin } = await import(
   pathToFileURL(require.resolve("@vitest/mocker/node"))
 );
 const { resolveConfig } = await import(pathToFileURL(require.resolve("vite")));
+
+function imageBox(size, type, payload = Buffer.alloc(0)) {
+  const header = Buffer.alloc(8);
+  header.writeUInt32BE(size);
+  header.write(type, 4);
+  return Buffer.concat([header, payload]);
+}
+
+const zeroSizedIcns = Buffer.from("69636e73000000106963703400000000", "hex");
+const zeroSizedJxl = Buffer.concat([
+  imageBox(12, "JXL ", Buffer.from("0d0a870a", "hex")),
+  imageBox(12, "ftyp", Buffer.from("jxl ")),
+  imageBox(0, "jxlp", Buffer.alloc(8)),
+]);
+const dimensions = Buffer.alloc(12);
+dimensions.writeUInt32BE(256, 4);
+dimensions.writeUInt32BE(256, 8);
+const ispe = imageBox(0, "ispe", dimensions);
+const ipco = imageBox(8 + ispe.length, "ipco", ispe);
+const iprp = imageBox(8 + ipco.length, "iprp", ipco);
+const zeroSizedHeif = Buffer.concat([
+  imageBox(12, "ftyp", Buffer.from("heic")),
+  imageBox(12 + iprp.length, "meta", Buffer.concat([Buffer.alloc(4), iprp])),
+]);
+
+for (const [format, input] of [
+  ["ICNS", zeroSizedIcns],
+  ["JXL", zeroSizedJxl],
+  ["HEIF", zeroSizedHeif],
+]) {
+  test(`CLI image parser terminates on zero-sized ${format} entries`, () => {
+    // Keep parser regressions out of the test runner's event loop.
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--max-old-space-size=64",
+        "-e",
+        'const {imageSize}=require(process.argv[1]); try { console.log(JSON.stringify({size:imageSize(Buffer.from(process.argv[2],"hex"))})); } catch(error) { console.log(JSON.stringify({error:error.message})); }',
+        imageSizePath,
+        input.toString("hex"),
+      ],
+      { timeout: 2000, encoding: "utf8" },
+    );
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(
+      JSON.parse(result.stdout).error,
+      "Malformed entries must be rejected",
+    );
+  });
+}
+
+test("CLI image parser preserves CommonJS and named imports for normal PNGs", async () => {
+  const png = Buffer.from(
+    "89504e470d0a1a0a0000000d4948445200000100000001000806000000",
+    "hex",
+  );
+  const expected = { width: 256, height: 256, type: "png" };
+  assert.deepEqual(cliRequire("image-size").imageSize(png), expected);
+  const { imageSize } = await import(pathToFileURL(imageSizePath));
+  assert.deepEqual(imageSize(png), expected);
+});
+
+test("CLI image parsing preserves JPEG dimensions and product-icon validation", async () => {
+  const { imageSize } = cliRequire("image-size");
+  assert.deepEqual(imageSize(readFileSync("src/client/public/splash.jpg")), {
+    width: 1200,
+    height: 900,
+    type: "jpg",
+  });
+  // This caller uses the CLI's real ESM named import and its PNG-only contract.
+  const { validateProductIcon } = await import(
+    pathToFileURL(
+      join(
+        dirname(require.resolve("@devvit/cli/package.json")),
+        "dist/util/payments/paymentsConfig.js",
+      ),
+    )
+  );
+  assert.doesNotThrow(() =>
+    validateProductIcon("subreddit/images/euclid_amber_amethyst_icon_300.png"),
+  );
+  assert.throws(
+    () => validateProductIcon("src/client/public/splash.jpg"),
+    /must be a PNG/,
+  );
+});
 
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), "euclid-dependencies-"));

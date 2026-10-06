@@ -2,7 +2,7 @@ import express from "express";
 import { once } from "node:events";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_CHALLENGE_OPTIONS } from "../shared/challenge";
 import {
   CHALLENGE_PERIODS,
@@ -101,6 +101,50 @@ async function start(period: ChallengePeriod = "daily") {
 }
 
 describe("competition endpoint permissions and responses", () => {
+  it.each([
+    "__proto__",
+    "constructor",
+    "prototype",
+    "toString",
+    "%5f%5fproto%5f%5f",
+    "%63onstructor",
+    "%255f%255fproto%255f%255f",
+    "daily%00",
+    "daily%2fweekly",
+    "DAILY",
+  ])(
+    "rejects noncanonical period %s before any state operation",
+    async (period) => {
+      const redis = service.redis as CompetitionMemoryRedis;
+      const before = [...redis.values];
+      const prototype = Object.getOwnPropertyDescriptors(Object.prototype);
+      const apply = vi.spyOn(service, "apply");
+      for (const action of ["state", "standings"])
+        expect((await request(`${period}/${action}`)).status).toBe(404);
+      for (const action of ["apply", "start", "move", "retry", "abandon"])
+        expect((await request(`${period}/${action}`, {})).status).toBe(404);
+      expect(apply).not.toHaveBeenCalled();
+      expect(redis.reads).toEqual([]);
+      expect(redis.commits).toEqual([]);
+      expect([...redis.values]).toEqual(before);
+      expect(Object.getOwnPropertyDescriptors(Object.prototype)).toEqual(
+        prototype,
+      );
+    },
+  );
+  it.each(CHALLENGE_PERIODS)(
+    "still applies a canonical %s template",
+    async (period) => {
+      const response = await request(`${period}/apply`, {
+        expectedRevision: 0,
+        commandId: "canonical-period",
+        options: DEFAULT_CHALLENGE_OPTIONS,
+      });
+      expect(response.status).toBe(200);
+      const result = (await response.json()) as CompetitionTemplatesResponse;
+      expect(result.templates[period].revision).toBe(1);
+    },
+  );
   it("requires current moderator authorization for every template operation", async () => {
     moderator = null;
     expect((await request("templates")).status).toBe(403);
