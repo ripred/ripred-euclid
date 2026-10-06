@@ -1,6 +1,9 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
   "name": "ripred-euclid",
+  "marketingAssets": {
+    "icon": "subreddit/images/euclid_app_profile_icon_1024.png"
+  },
   "permissions": { "media": true, "journeys": true },
   "triggers": {
     "onAppInstall": "/internal/community/setup",
