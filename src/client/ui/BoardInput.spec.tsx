@@ -10,7 +10,7 @@ import { useBoardInput } from "./use-board-input";
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("hint inspection input", () => {
-  it("previews keyboard focus without placing and requires a second touch tap even on large cells", async () => {
+  it("inspects keyboard focus and places immediately with one touch tap on small cells", async () => {
     const place = vi.fn();
     const inspect = vi.fn();
     function Harness() {
@@ -18,9 +18,7 @@ describe("hint inspection input", () => {
       const controls = useBoardInput({
         width: 2,
         height: 2,
-        cellSize: 50,
         enabled: true,
-        confirmTouch: true,
         revision: 0,
         gridRef,
         isOpen: () => true,
@@ -30,7 +28,7 @@ describe("hint inspection input", () => {
         <BoardInput
           width={2}
           height={2}
-          cellSize={50}
+          cellSize={30}
           controls={controls}
           label="Board"
           describeCell={String}
@@ -53,9 +51,11 @@ describe("hint inspection input", () => {
         cell.dispatchEvent(pointer);
         cell.click();
       });
-      expect(place).not.toHaveBeenCalled();
-      await act(async () => cell.click());
       expect(place).toHaveBeenCalledExactlyOnceWith(0);
+      inspect.mockClear();
+      const other = host.querySelector<HTMLElement>('[data-index="1"]')!;
+      await act(async () => other.focus());
+      expect(inspect).not.toHaveBeenCalled();
     } finally {
       await act(async () => root.unmount());
       host.remove();

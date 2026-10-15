@@ -38,7 +38,7 @@ The main menu offers **Play Euclid**, **Play a Redditor**, **Daily Challenge**, 
 
 **Change difficulty** appears in Practice. Its slider has a tick for each of the nine levels and shows the selected level as you move it. Ranked keeps the same preset for everyone. Reloading resumes a saved solo game; canceling Ranked before your first move is unrated, while leaving after play begins records a loss.
 
-You can place pieces with a mouse or keyboard (arrow keys to move, Enter or Space to place). On touch screens with small board points, the first tap aims and the second tap on that point places. Completed squares light up so you can see exactly where the points came from.
+You can place pieces with a mouse or keyboard (arrow keys to move, Enter or Space to place). On touch screens, one tap on an open point places a piece. Completed squares light up so you can see exactly where the points came from.
 
 After completing a win or loss against Euclid, **Share result** adds an app comment to the pinned **Redditors vs Euclid** hub. Its heading names the winner and includes the score, such as **trent beat Euclid, 156–132** or **Euclid beat trent, 156–132**. Draws and abandoned games cannot be shared.
 
@@ -112,7 +112,7 @@ git diff --check
 
 `npm run check` applies formatting and lint fixes, so use the individual commands above when you only want to inspect a worktree. Tests live beside the source in `*.spec.ts` and `*.spec.tsx` files.
 
-The package version is **0.2.49** and Devvit is pinned to **0.14.6**. `npm run dev` starts the Reddit playtest workflow for `r/ripred_euclid_dev`; `npm run dev:local` is the standalone workflow above. Building, pushing to GitHub, uploading to Devvit, and installing on a subreddit are separate steps. The [deployment commands](docs/engineering.md#devvit-operation) cover the Reddit side.
+The package version is **0.2.55** and Devvit is pinned to **0.14.7**. `npm run dev` starts the Reddit playtest workflow for `r/ripred_euclid_dev`; `npm run dev:local` is the standalone workflow above. Building, pushing to GitHub, uploading to Devvit, and installing on a subreddit are separate steps. The [deployment commands](docs/engineering.md#devvit-operation) cover the Reddit side.
 
 ### Keeping the pictures current
 

@@ -277,32 +277,6 @@
   height: 22px;
 }
 
-/* Aim prompt: floats over the board's top edge while a touch aim waits for
-   its second tap, so it never takes height from the board. */
-
-.game__aim {
-  position: absolute;
-  z-index: 2;
-  top: 0;
-  left: 50%;
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  margin: 0;
-  padding: 0 var(--sp-3);
-  border-radius: var(--radius-pill);
-  background: var(--surface-2);
-  box-shadow: var(--panel-shadow);
-  color: var(--text);
-  font-size: var(--fs-sm);
-  font-weight: 700;
-  width: max-content;
-  max-width: 100%;
-  text-align: center;
-  pointer-events: none;
-  transform: translate(-50%, -60%);
-}
-
 /* Board -------------------------------------------------------------------- */
 
 .game__board {

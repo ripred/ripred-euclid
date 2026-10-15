@@ -10,9 +10,7 @@ import { shouldPlaceFromKey } from "../game-ui";
 interface InputOptions {
   width: number;
   height: number;
-  cellSize: number;
   enabled: boolean;
-  confirmTouch?: boolean;
   revision: number | string;
   gridRef: RefObject<HTMLDivElement | null>;
   isOpen: (index: number) => boolean;
@@ -21,16 +19,13 @@ interface InputOptions {
 }
 
 /**
- * Shared fresh-key, roving-focus, and touch placement policy. Touch taps aim
- * first on small cells, or whenever `confirmTouch` is set (square hints).
+ * Shared fresh-key, roving-focus, and immediate single-tap placement policy.
  */
 export function useBoardInput(options: InputOptions) {
   const {
     width,
     height,
-    cellSize,
     enabled,
-    confirmTouch,
     revision,
     gridRef,
     isOpen,
@@ -40,34 +35,18 @@ export function useBoardInput(options: InputOptions) {
   const [focus, setFocus] = useState(
     () => Math.floor(height / 2) * width + Math.floor(width / 2),
   );
-  const [aim, setAim] = useState<{
-    index: number;
-    revision: number | string;
-  } | null>(null);
   const pointerType = useRef("mouse");
   const since = useRef(Infinity);
   useLayoutEffect(() => {
     since.current = enabled ? performance.now() : Infinity;
   }, [enabled, revision]);
-  const aimIndex =
-    enabled && aim !== null && aim.revision === revision && isOpen(aim.index)
-      ? aim.index
-      : null;
   const safeFocus = Math.min(focus, width * height - 1);
   const activate = (index: number) => {
     if (!enabled || !isOpen(index)) return;
-    if (
-      pointerType.current !== "mouse" &&
-      (cellSize < 38 || confirmTouch) &&
-      aimIndex !== index
-    ) {
-      setAim({ index, revision });
-      return;
-    }
-    setAim(null);
     onPlace(index);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    pointerType.current = "keyboard";
     const index = Number(
       (event.target as HTMLElement).dataset.index ?? safeFocus,
     );
@@ -97,14 +76,12 @@ export function useBoardInput(options: InputOptions) {
         isOpen(index) &&
         (!acceptKey || acceptKey(event))
       ) {
-        setAim(null);
         onPlace(index);
       }
     }
   };
   return {
     gridRef,
-    aimIndex,
     safeFocus,
     setFocus,
     pointerType,

@@ -12,10 +12,9 @@ import React, {
 import type { ShareChatItem, ShareSquare } from "../shared/types/api";
 import type { Board } from "../shared/game/engine";
 import type { PlayerColor, PlayerIndex } from "../shared/game/rules";
-import { rulesSummary } from "./format";
+import { formatCount, rulesSummary } from "./format";
 import { tidePieceDescription } from "./tide";
 import { TIDE_MOVE_LIMIT } from "../shared/game/rules";
-import { formatCount } from "./format";
 import { calculateBoardLayout } from "./game-ui";
 import {
   formatScoreFeedback,
@@ -31,8 +30,6 @@ import {
   pointIndex,
   pointLabel,
   squareHints,
-  scoringPreview,
-  tapAgainPrompt,
   type BoardMarker,
   type BoardSquareShape,
   type Owner,
@@ -191,7 +188,7 @@ export interface GameScreenProps {
   midText: string;
   /** Whose turn it is, for the scoreboard; null once decided. */
   activeSide: PlayerColor | null;
-  /** The side the local player may place right now, for the hover preview. */
+  /** The side the local player may place right now. */
   placingSide: PlayerColor | null;
   thinking?: boolean;
   overlay: ReactNode;
@@ -344,7 +341,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({
 
   /* ===== Assist: hover one of your pieces to see squares it can finish ===== */
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
-  const [previewIdx, setPreviewIdx] = useState<number | null>(null);
 
   const hints = useMemo(
     () =>
@@ -356,7 +352,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
             hoverIdx,
             myColor,
             (corners) => board.canFinishTarget(corners, myColor),
-          )
+          ).filter((hint) => hint.strength === "near")
         : [],
     [assistOn, hoverIdx, myColor, board],
   );
@@ -364,7 +360,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({
 
   const clearHover = () => {
     setHoverIdx(null);
-    setPreviewIdx(null);
   };
 
   // Mobile touch for assist: press and drag across your pieces.
@@ -407,7 +402,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     };
   }, [assistOn, isMobile, cell, board.W, board.m_board, myColor]);
 
-  /* ===== Touch on dense boards or with hints: tap to aim, tap again to place ===== */
+  /* ===== Place immediately on an open point ===== */
   const tapSound = useBoardSounds({
     history: board.m_history,
     cells: board.m_board,
@@ -423,45 +418,19 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     ) {
       tapSound(placingSide);
     }
+    clearHover();
     onCellClick(x, y);
   };
   const boardInput = useBoardInput({
     width: board.W,
     height: board.H,
-    cellSize: cell,
     gridRef,
     enabled: placingSide !== null,
-    confirmTouch: assistOn,
     revision: board.m_history.length,
     isOpen: (index) => ownerAt(board.m_board, index) === 0,
     onPlace: (index) => place(index % board.W, Math.floor(index / board.W)),
     acceptKey: acceptPlacementKey,
   });
-  const liveAimIdx = boardInput.aimIndex;
-  const aimPrompt =
-    liveAimIdx === null
-      ? null
-      : tapAgainPrompt(
-          pointLabel(liveAimIdx % board.W, Math.floor(liveAimIdx / board.W)),
-        );
-
-  const inspectedIndex = liveAimIdx ?? previewIdx;
-  const movePreview =
-    assistOn && placingSide && inspectedIndex !== null
-      ? scoringPreview(
-          board.m_board,
-          board.W,
-          board.H,
-          inspectedIndex,
-          placingSide,
-        )
-      : null;
-  const previewSummary =
-    movePreview && movePreview.squares.length > 0
-      ? `${formatCount(movePreview.squares.length, "square")} · +${movePreview.points} points`
-      : null;
-  const boardPrompt = [previewSummary, aimPrompt].filter(Boolean).join(" · ");
-
   const lastIndex =
     board.m_last.x >= 0
       ? pointIndex(board.m_last.x, board.m_last.y, board.W)
@@ -476,35 +445,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       kind: "last",
     });
   }
-  if (placingSide && liveAimIdx !== null) {
-    markers.push(
-      {
-        x: liveAimIdx % board.W,
-        y: Math.floor(liveAimIdx / board.W),
-        owner: placingSide,
-        kind: "ghost",
-      },
-      {
-        x: liveAimIdx % board.W,
-        y: Math.floor(liveAimIdx / board.W),
-        owner: placingSide,
-        kind: "pending",
-      },
-    );
-  } else if (
-    placingSide &&
-    previewIdx !== null &&
-    !assistShowing &&
-    ownerAt(board.m_board, previewIdx) === 0
-  ) {
-    markers.push({
-      x: previewIdx % board.W,
-      y: Math.floor(previewIdx / board.W),
-      owner: placingSide,
-      kind: "ghost",
-    });
-  }
-
   const scoreBadgePosition = scoreFeedback
     ? {
         left: Math.min(
@@ -640,7 +580,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         {/* The highlighted score card shows whose turn it is, so the board
             keeps this row's height; screen readers still hear the status. */}
         <p className="euclid-sr-only" aria-live="polite">
-          {boardPrompt || midText}
+          {midText}
         </p>
 
         <div
@@ -649,11 +589,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({
           style={{ width: bw, height: bh }}
           onMouseLeave={clearHover}
         >
-          {boardPrompt ? (
-            <p className="game__aim" aria-hidden="true">
-              {boardPrompt}
-            </p>
-          ) : null}
           <div
             className="game__board-art"
             style={{
@@ -669,7 +604,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
               cells={board.m_board}
               tide={board.tide}
               ply={board.m_history.length}
-              squares={[...squares, ...(movePreview?.squares ?? [])]}
+              squares={squares}
               footprints={footprints}
               markers={markers}
               hints={assistOn && hoverIdx !== null ? hints : []}
@@ -704,7 +639,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({
             label="Board. Use arrow keys to move and Enter to place."
             describeCell={describeCell}
             onHover={(index) => {
-              setPreviewIdx(index);
               if (assistOn && myColor != null)
                 setHoverIdx(
                   ownerAt(board.m_board, index) === myColor

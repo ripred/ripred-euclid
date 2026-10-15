@@ -7,7 +7,6 @@ import { useBoardInput } from "./use-board-input";
 import {
   BOARD_BLEED,
   pointLabel,
-  tapAgainPrompt,
   type BoardSquareShape,
 } from "./board-geometry";
 import "../challenge-screen.css";
@@ -89,7 +88,6 @@ export function ChallengeBoard({
   const input = useBoardInput({
     width: 8,
     height: 8,
-    cellSize,
     gridRef: grid,
     enabled,
     revision,
@@ -131,18 +129,7 @@ export function ChallengeBoard({
             cells={cells}
             squares={squares}
             blockedPoints={[...blocked]}
-            markers={
-              input.aimIndex !== null && !editing
-                ? [
-                    {
-                      x: input.aimIndex % 8,
-                      y: Math.floor(input.aimIndex / 8),
-                      owner: 1,
-                      kind: "pending",
-                    },
-                  ]
-                : []
-            }
+            markers={[]}
             arrivingIndex={editing ? null : (placements.at(-1) ?? null)}
           />
         </div>
@@ -159,27 +146,9 @@ export function ChallengeBoard({
       </div>
     </div>
   );
-  const hint = (
-    <p
-      className={`field__hint${fitToSpace ? " challenge-board-fit__hint" : ""}`}
-      style={{ visibility: input.aimIndex === null ? "hidden" : "visible" }}
-      aria-hidden={input.aimIndex === null}
-    >
-      {tapAgainPrompt(
-        coordinates(input.aimIndex ?? 0),
-        editing ? "toggle its block" : "place",
-      )}
-    </p>
-  );
   return fitToSpace ? (
-    <div className="challenge-board-fit">
-      {board}
-      {hint}
-    </div>
+    <div className="challenge-board-fit">{board}</div>
   ) : (
-    <>
-      {board}
-      {input.aimIndex !== null && hint}
-    </>
+    board
   );
 }

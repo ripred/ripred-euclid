@@ -98,31 +98,48 @@ async function touch(host: HTMLElement, type: string, index?: number) {
 }
 
 describe("game hint values", () => {
-  it("shows all potential values when an owned piece receives focus without placing", async () => {
-    await withHintGame([0, 3, 7], async (host, onPlace) => {
+  it("shows only one-move square values when an owned piece receives focus without placing", async () => {
+    await withHintGame([0, 3, 7, 24], async (host, onPlace) => {
       await focusPoint(host, 0);
-      expect(hintValues(host)).toEqual(["16", "16", "64", "64"]);
+      expect(hintValues(host)).toEqual(["16"]);
       expect(
-        host.querySelector('[data-index="24"]')!.getAttribute("aria-label"),
+        host.querySelector('[data-index="27"]')!.getAttribute("aria-label"),
       ).toContain("potential square values 16 points");
       expect(onPlace).not.toHaveBeenCalled();
     });
   });
 
-  it("summarizes the squares and points an open point would score", async () => {
+  it("does not preview scores or create a placement prompt for an open point", async () => {
     await withHintGame([0, 3, 24], async (host, onPlace) => {
       await focusPoint(host, 27);
-      expect(host.querySelector(".game__aim")?.textContent).toBe(
-        "1 square · +16 points",
-      );
+      expect(host.querySelector(".game__aim")).toBeNull();
+      expect(hintValues(host)).toEqual([]);
       expect(onPlace).not.toHaveBeenCalled();
     });
   });
 
+  it("places the first touch tap immediately and clears inspected hints", async () => {
+    await withHintGame([0, 3, 24], async (host, onPlace) => {
+      await focusPoint(host, 0);
+      expect(hintValues(host)).toEqual(["16"]);
+      const point = host.querySelector<HTMLElement>('[data-index="27"]')!;
+      await act(async () => {
+        const pointer = new Event("pointerdown", { bubbles: true });
+        Object.defineProperty(pointer, "pointerType", { value: "touch" });
+        point.dispatchEvent(pointer);
+        point.focus();
+        point.click();
+      });
+      expect(onPlace).toHaveBeenCalledExactlyOnceWith(3, 3);
+      expect(hintValues(host)).toEqual([]);
+      expect(host.querySelector(".game__aim")).toBeNull();
+    });
+  });
+
   it("holds the page still only while a touch presses the player's own piece", async () => {
-    await withHintGame([0, 3, 7], async (host) => {
+    await withHintGame([0, 3, 7, 24], async (host) => {
       expect((await touch(host, "touchstart", 0)).defaultPrevented).toBe(true);
-      expect(hintValues(host)).toEqual(["16", "16", "64", "64"]);
+      expect(hintValues(host)).toEqual(["16"]);
       await touch(host, "touchend");
       expect(hintValues(host)).toEqual([]);
       expect((await touch(host, "touchstart", 27)).defaultPrevented).toBe(

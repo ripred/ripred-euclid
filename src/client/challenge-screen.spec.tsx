@@ -245,7 +245,7 @@ describe("challenge playground interactions", () => {
     await click(point(8));
     expect(requests.filter((r) => r.action === "move")).toHaveLength(1);
   });
-  it("requires a confirming second tap on small touch targets", async () => {
+  it("places with one tap on small touch targets", async () => {
     // Re-mount with a phone-sized board measurement.
     await act(async () => root.unmount());
     vi.stubGlobal(
@@ -277,9 +277,7 @@ describe("challenge playground interactions", () => {
       await click(point(index));
     }
     await tap(8);
-    expect(requests.filter((r) => r.action === "move")).toHaveLength(0);
-    expect(host.textContent).toContain("Tap A2 again");
-    await tap(8);
+    expect(host.textContent).not.toContain("Tap A2 again");
     expect(requests.filter((r) => r.action === "move")).toHaveLength(1);
   });
   it("lets the moderator leave when state recovery is unavailable", async () => {

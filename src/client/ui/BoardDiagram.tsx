@@ -462,26 +462,15 @@ export function BoardDiagram({
         )),
       )}
 
-      {markers.map((marker) =>
-        marker.kind === "ghost" ? (
-          <PieceShape
-            key={`ghost-${marker.x}-${marker.y}`}
-            owner={marker.owner}
-            x={centre(marker.x)}
-            y={centre(marker.y)}
-            ids={ids}
-            className="board__piece--ghost"
-          />
-        ) : (
-          <circle
-            key={`${marker.kind}-${marker.x}-${marker.y}`}
-            className={`board__marker board__marker--${marker.kind} board__marker--${marker.owner}`}
-            cx={centre(marker.x)}
-            cy={centre(marker.y)}
-            r={0.49}
-          />
-        ),
-      )}
+      {markers.map((marker) => (
+        <circle
+          key={`${marker.kind}-${marker.x}-${marker.y}`}
+          className={`board__marker board__marker--${marker.kind} board__marker--${marker.owner}`}
+          cx={centre(marker.x)}
+          cy={centre(marker.y)}
+          r={0.49}
+        />
+      ))}
 
       {hints.map((hint) => {
         const x = centre(hint.index % width);

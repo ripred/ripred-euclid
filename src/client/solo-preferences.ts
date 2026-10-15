@@ -13,7 +13,7 @@ export interface PracticePreferences {
 /** How the square-hints preference is labelled wherever it is offered. */
 export const SQUARE_HINTS_COPY = {
   label: "Square hints",
-  hint: "Inspect your pieces to see potential square values on highlighted points. Inspect an open point for its combined move score. On touch, tap again to place.",
+  hint: "Inspect your pieces to see square values on open points that complete a square next move.",
 } as const;
 
 export const DEFAULT_PRACTICE_PREFERENCES: PracticePreferences = {

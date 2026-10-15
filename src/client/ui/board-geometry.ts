@@ -19,8 +19,7 @@ export interface BoardSquareShape {
   corners: readonly GridPoint[];
   /**
    * "fresh" squares were completed by the move being shown. "blocked"
-   * squares draw as a dashed outline: squares a move denied, or squares an
-   * open point would complete in a scoring preview.
+   * squares draw as a dashed outline for squares a move denied.
    */
   tone: "history" | "fresh" | "blocked";
   /** Optional per-square strength for fading older history. */
@@ -36,7 +35,7 @@ export interface BoardFootprint {
   height: number;
 }
 
-export type BoardMarkerKind = "last" | "pending" | "ghost";
+export type BoardMarkerKind = "last" | "pending";
 
 export interface BoardMarker {
   x: number;
@@ -79,10 +78,6 @@ export function ownerAt(cells: ArrayLike<number>, index: number): Owner | 0 {
 }
 
 export const ownerName = playerName;
-
-/** Touch placement asks for a second tap on the aimed point. */
-export const tapAgainPrompt = (point: string, action = "place") =>
-  `Tap ${point} again to ${action}.`;
 
 export function pointLabel(x: number, y: number): string {
   return `${COLUMN_NAMES[x] ?? `column ${x + 1}`}${y + 1}`;
@@ -168,39 +163,4 @@ export function squareHints(
     ...toHints(near, "near"),
     ...toHints(far, "far").filter((hint) => !near.has(hint.index)),
   ];
-}
-
-/** Every square an open point completes, using the same geometry as blocking. */
-export function scoringPreview(
-  cells: ArrayLike<number>,
-  width: number,
-  height: number,
-  index: number,
-  owner: Owner,
-) {
-  const corners =
-    cells[index] === 0
-      ? blockedSquares(
-          cells,
-          width,
-          height,
-          index % width,
-          Math.floor(index / width),
-          owner,
-        )
-      : [];
-  return {
-    squares: corners.map(
-      (points, i): BoardSquareShape => ({
-        key: `preview-${index}-${i}`,
-        owner,
-        corners: points,
-        tone: "blocked",
-      }),
-    ),
-    points: corners.reduce(
-      (total, points) => total + scoreGridFootprint(points),
-      0,
-    ),
-  };
 }

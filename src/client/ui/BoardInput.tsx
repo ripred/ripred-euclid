@@ -46,7 +46,8 @@ export function BoardInput({
                 className={`game__cell${available ? " game__cell--open" : ""}`}
                 onFocus={() => {
                   controls.setFocus(index);
-                  onHover?.(index);
+                  if (controls.pointerType.current !== "touch")
+                    onHover?.(index);
                 }}
                 onPointerDown={(e) => {
                   controls.pointerType.current = e.pointerType;

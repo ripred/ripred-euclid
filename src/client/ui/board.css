@@ -110,11 +110,6 @@
   animation: piece-shadow 460ms var(--piece-delay, 0ms) var(--ease-out) both;
 }
 
-.board__piece--ghost {
-  opacity: 0.45;
-  pointer-events: none;
-}
-
 @keyframes piece-drop {
   0% {
     opacity: 0;

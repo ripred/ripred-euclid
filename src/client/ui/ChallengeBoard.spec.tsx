@@ -96,15 +96,10 @@ describe("ChallengeBoard space fitting", () => {
     expect(footprint().gridWidth).toBe(8 * 68);
   });
 
-  it("reserves touch-confirmation text outside the measured board slot", async () => {
+  it("places with one touch tap without changing the measured board footprint", async () => {
     await render();
     await size(240, 180);
-    const hint = host.querySelector<HTMLParagraphElement>(
-      ".challenge-board-fit__hint",
-    )!;
-    const container = host.querySelector(".challenge-board-container--fit")!;
-    expect(container.contains(hint)).toBe(false);
-    expect(hint.style.visibility).toBe("hidden");
+    expect(host.querySelector(".field__hint")).toBeNull();
     const initialWidth = footprint().gridWidth;
     const point = host.querySelector('[data-index="0"]')!;
     await act(async () => {
@@ -113,14 +108,9 @@ describe("ChallengeBoard space fitting", () => {
       point.dispatchEvent(event);
       point.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    expect(onPlace).not.toHaveBeenCalled();
-    expect(hint.style.visibility).toBe("visible");
-    expect(hint.textContent).toBe("Tap A1 again to place.");
-    expect(footprint().gridWidth).toBe(initialWidth);
-    await act(async () =>
-      point.dispatchEvent(new MouseEvent("click", { bubbles: true })),
-    );
     expect(onPlace).toHaveBeenCalledExactlyOnceWith(0);
+    expect(footprint().gridWidth).toBe(initialWidth);
+    expect(host.querySelector(".field__hint")).toBeNull();
   });
 
   it("keeps the moderator playground width-based sizing", async () => {
